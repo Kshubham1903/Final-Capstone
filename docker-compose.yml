@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  # Database Service: MongoDB
+  mongodb:
+    image: mongo:latest
+    container_name: edupilot-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  # Cache Service: Redis
+  redis:
+    image: redis:alpine
+    container_name: edupilot-redis
+    ports:
+      - "6379:6379"
+
+  # Python AI & Machine Learning Service
+  ai-service:
+    build:
+      context: ./ai
+      dockerfile: Dockerfile
+    container_name: edupilot-ai
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongodb
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/edupilot
+
+  # Spring Boot Backend API Service
+  backend-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: edupilot-backend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mongodb
+      - redis
+      - ai-service
+    environment:
+      - SPRING_DATA_MONGODB_URI=mongodb://mongodb:27017/edupilot
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATA_REDIS_PORT=6379
+      - AI_SERVICE_URL=http://ai-service:8000
+
+  # Next.js Web Frontend Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: edupilot-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend-api
+    environment:
+      - VITE_API_URL=http://backend-api:8080
+      - NEXT_PUBLIC_API_URL=http://backend-api:8080
+
+volumes:
+  mongo-data:
