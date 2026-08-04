@@ -2,8 +2,10 @@ package com.edupilot.controller;
 
 import com.edupilot.model.User;
 import com.edupilot.repository.UserRepository;
+import com.edupilot.service.JwtService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -19,6 +21,12 @@ public class AuthController {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private JwtService jwtService;
+
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody User user) {
         if (userRepository.existsByEmail(user.getEmail())) {
@@ -26,7 +34,8 @@ public class AuthController {
         }
         
         user.setCreatedAt(LocalDateTime.now());
-        // In production, encrypt the password before saving
+        // Secure BCrypt password hashing before database persistence
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
         User saved = userRepository.save(user);
         
         return ResponseEntity.ok(Map.of(
@@ -42,16 +51,16 @@ public class AuthController {
         String password = request.get("password");
         
         Optional<User> userOpt = userRepository.findByEmail(email);
-        if (userOpt.isEmpty() || !userOpt.get().getPassword().equals(password)) {
+        if (userOpt.isEmpty() || !passwordEncoder.matches(password, userOpt.get().getPassword())) {
             return ResponseEntity.status(401).body(Map.of("message", "Invalid email or password."));
         }
         
         User user = userOpt.get();
-        // Generate mockup token (we will use proper JWT configuration in security setup)
-        String mockToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mockTokenForEduPilot." + user.getId();
+        // Generate real HMAC-SHA256 signed JWT token
+        String token = jwtService.generateToken(user.getId(), user.getEmail(), user.getRole().name());
         
         Map<String, Object> response = new HashMap<>();
-        response.put("token", mockToken);
+        response.put("token", token);
         response.put("role", user.getRole());
         response.put("fullName", user.getFullName());
         response.put("email", user.getEmail());

@@ -88,18 +88,7 @@ export default function Home() {
       }
 
       if (role === "STUDENT") {
-        const studentUserId = res.userId || loginRes.userId || "";
-        const newStudentProfile = {
-          userId: studentUserId,
-          course: course,
-          semester: parseInt(semester) || 1,
-          subjects: ["Data Structures & Algorithms", "Database Management Systems", "Artificial Intelligence"],
-          careerGoals: ["Software Engineer at Tech Firm"],
-          preferredStudyHoursPerDay: 4,
-          targetCgpa: parseFloat(targetCgpa) || 8.5
-        };
-        await onboardStudent(newStudentProfile);
-        navigate("/dashboard");
+        navigate("/onboarding");
       } else if (role === "FACULTY") {
         navigate("/faculty");
       } else {

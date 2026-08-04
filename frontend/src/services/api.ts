@@ -4,6 +4,15 @@ const BACKEND_URL = (import.meta as any).env?.VITE_API_URL || "http://127.0.0.1:
 
 let isBackendOnline = false;
 
+export function getAuthHeaders(): Record<string, string> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("edupilot_token") : null;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 export async function checkBackendConnection(): Promise<boolean> {
   try {
     const controller = new AbortController();
@@ -88,7 +97,9 @@ export async function fetchOnboardingStatus(userId: string): Promise<{
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/students/onboarding-status/${userId}`);
+      const res = await fetch(`${BACKEND_URL}/api/students/onboarding-status/${userId}`, {
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         return await res.json();
       }
@@ -117,7 +128,7 @@ export async function saveOnboardingStep(userId: string, step: number, data: any
     try {
       const res = await fetch(`${BACKEND_URL}/api/students/onboard/step`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ userId, step, data })
       });
       if (res.ok) {
@@ -134,7 +145,9 @@ export async function fetchFullProfile(userId: string): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/students/profile-full/${userId}`);
+      const res = await fetch(`${BACKEND_URL}/api/students/profile-full/${userId}`, {
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         return await res.json();
       }
@@ -151,7 +164,7 @@ export async function updateFullProfile(userId: string, data: any): Promise<Stud
     try {
       const res = await fetch(`${BACKEND_URL}/api/students/profile/${userId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(data)
       });
       if (res.ok) {
@@ -173,7 +186,9 @@ export async function fetchProfile(userId: string): Promise<StudentProfile> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/students/profile/${userId}`);
+      const res = await fetch(`${BACKEND_URL}/api/students/profile/${userId}`, {
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         return await res.json();
       }
@@ -190,7 +205,7 @@ export async function onboardStudent(payload: any): Promise<StudentProfile> {
     try {
       const res = await fetch(`${BACKEND_URL}/api/students/onboard`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
       if (res.ok) {
@@ -235,7 +250,7 @@ export async function postLifestyleLog(profileId: string, log: any): Promise<Stu
     try {
       const res = await fetch(`${BACKEND_URL}/api/students/lifestyle/${profileId}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           sleepHours: log.sleepHours,
           screenTimeHours: log.screenTimeHours,
@@ -276,7 +291,7 @@ export async function postQuestionnaire(profileId: string, data: any): Promise<S
     try {
       const res = await fetch(`${BACKEND_URL}/api/students/questionnaire/${profileId}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(data)
       });
       if (res.ok) {
@@ -302,7 +317,9 @@ export async function getRecommendations(profileId: string): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/students/recommendations/${profileId}`);
+      const res = await fetch(`${BACKEND_URL}/api/students/recommendations/${profileId}`, {
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         return await res.json();
       }
@@ -338,7 +355,9 @@ export async function fetchQuizQuestions(subject: string, difficulty: string): P
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/quizzes/questions?subject=${encodeURIComponent(subject)}&difficulty=${difficulty}`);
+      const res = await fetch(`${BACKEND_URL}/api/quizzes/questions?subject=${encodeURIComponent(subject)}&difficulty=${difficulty}`, {
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         return await res.json();
       }
@@ -370,7 +389,7 @@ export async function createQuizQuestion(question: {
     try {
       const res = await fetch(`${BACKEND_URL}/api/quizzes`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(question)
       });
       if (res.ok) {
@@ -405,7 +424,7 @@ export async function submitQuizAnswer(payload: {
     try {
       const res = await fetch(`${BACKEND_URL}/api/quizzes/submit`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
       if (res.ok) {
