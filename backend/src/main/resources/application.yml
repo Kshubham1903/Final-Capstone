@@ -27,7 +27,9 @@ llm:
     model: ${OPENAI_MODEL:gpt-4o-mini}
   gemini:
     api-key: ${GEMINI_API_KEY:mock-key}
-    model: ${GEMINI_MODEL:gemini-1.5-flash}
-  temperature: 0.7
-  max-tokens: 800
-  timeout-seconds: 15
+    model: ${GEMINI_MODEL:gemini-flash-latest}
+  temperature: ${LLM_TEMPERATURE:0.7}
+  top-p: ${LLM_TOP_P:0.95}
+  top-k: ${LLM_TOP_K:40}
+  max-tokens: ${LLM_MAX_TOKENS:8192}
+  timeout-seconds: ${LLM_TIMEOUT_SECONDS:15}

@@ -16,9 +16,13 @@ public class OpenAIProvider implements LLMProvider {
 
     @Override
     public String generateResponse(String systemPrompt, String userMessage, Map<String, Object> context) {
-        // Infrastructure stub returning formatted AI response based on student context
-        String concept = context != null && context.containsKey("referencedConcept") ? (String) context.get("referencedConcept") : "your learning plan topic";
-        return "[OpenAI " + modelName + "] Hello! I am your AI Tutor. Regarding " + concept + ": " + userMessage + ". Let's break down this concept step-by-step so you can master it!";
+        if (apiKey == null || apiKey.isBlank() || "mock-key".equalsIgnoreCase(apiKey)) {
+            return "⚠️ **OpenAI API Configuration Error**\n\n" +
+                   "- **Status**: API Key Not Configured\n" +
+                   "- **Reason**: The `OPENAI_API_KEY` environment variable is missing or set to default `mock-key`.\n" +
+                   "- **Action**: Please set a valid OpenAI API key or select Gemini provider (`llm.provider=gemini`).";
+        }
+        return "⚠️ **OpenAI Service Not Configured**\n\nOpenAI integration requires active API endpoint implementation. Please select `llm.provider=gemini`.";
     }
 
     @Override

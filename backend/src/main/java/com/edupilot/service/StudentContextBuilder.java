@@ -60,9 +60,6 @@ public class StudentContextBuilder {
             List<String> weaks = cmList.stream().filter(c -> c.getAccuracy() < 60.0).map(ConceptMastery::getConceptName).collect(Collectors.toList());
             dto.setStrongConcepts(strongs);
             dto.setWeakConcepts(weaks);
-            if (weaks.isEmpty()) {
-                dto.setWeakConcepts(List.of("AVL Tree Rotations", "Recursion Depth"));
-            }
         }
 
         // 3. Priority Recommendation Context

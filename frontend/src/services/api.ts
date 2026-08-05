@@ -925,6 +925,20 @@ export async function endStudySession(payload: { sessionId: string; actualDurati
 
 // AI Tutor & Conversational LLM Infrastructure API Services
 
+export async function fetchLLMProviderInfo(): Promise<{ provider: string; model: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/ai/provider-info`, {
+      headers: getAuthHeaders()
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn("Error fetching LLM provider info:", err);
+  }
+  return { provider: "Google Gemini", model: "gemini-2.0-flash" };
+}
+
 export async function sendChatMessage(payload: { studentId: string; conversationId?: string; message: string; learningPlanTaskId?: string; referencedConcept?: string; learningMode?: string }): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
@@ -937,15 +951,35 @@ export async function sendChatMessage(payload: { studentId: string; conversation
       if (res.ok) {
         return await res.json();
       }
+      const text = await res.text();
+      return {
+        conversationId: payload.conversationId || "conv_error",
+        messageId: "msg_err_" + Date.now(),
+        role: "assistant",
+        content: text || JSON.stringify({
+          success: false,
+          provider: "Gemini",
+          errorType: "HTTP_ERROR_" + res.status,
+          message: `Backend returned HTTP ${res.status}`,
+          suggestion: "Please check backend logs."
+        }),
+        timestamp: new Date().toISOString()
+      };
     } catch (err) {
       console.warn("Error sending AI Tutor chat message:", err);
     }
   }
   return {
-    conversationId: payload.conversationId || "conv_fallback",
-    messageId: "msg_fallback_" + Date.now(),
+    conversationId: payload.conversationId || "conv_error",
+    messageId: "msg_err_" + Date.now(),
     role: "assistant",
-    content: "[AI Tutor] I am connected! Let's explore your concept together.",
+    content: JSON.stringify({
+      success: false,
+      provider: "Gemini",
+      errorType: "NETWORK_ERROR",
+      message: "Unable to connect to Spring Boot backend API service.",
+      suggestion: "Please check backend service health on port 8080."
+    }),
     timestamp: new Date().toISOString()
   };
 }

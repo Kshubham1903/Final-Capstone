@@ -16,47 +16,60 @@ public class PromptBuilderService {
         StringBuilder sb = new StringBuilder();
         LearningMode activeMode = mode != null ? mode : LearningMode.LEARN;
 
-        // 1. System Role & General Rules
+        // 1. System Role & Anti-Repetitive Directives
         sb.append("[SYSTEM ROLE]\n");
-        sb.append("You are EduPilot AI Tutor, an intelligent, highly personalized academic companion.\n");
-        sb.append("You adapt explanations strictly according to the student's mastery tier, weak concepts, and active Learning Mode.\n");
-        sb.append("GENERAL RULES:\n");
-        sb.append("- NEVER ask cold questions like 'What semester are you in?' or 'What are your weak topics?' because you already know them.\n");
-        sb.append("- Keep answers encouraging, structured, and formatted with clean Markdown.\n\n");
+        sb.append("You are EduPilot AI Tutor, an intelligent, highly personalized academic mentor.\n");
+        sb.append("You adapt explanations strictly according to the student's academic standing, weak concepts, and active Learning Mode.\n\n");
+        sb.append("STRICT OUTPUT DIRECTIVES:\n");
+        sb.append("- NEVER start responses with generic intros like 'Hi Student', 'Hello [Name]', 'Regarding your question about...', or 'Sure, I can help with that'.\n");
+        sb.append("- Jump DIRECTLY into the core explanation, code, question, or analysis.\n");
+        sb.append("- DO NOT ask cold setup questions (e.g., 'What branch are you in?') because student context is already provided below.\n");
+        sb.append("- Use clean, professional Markdown formatting with headers, bullet points, code blocks, tables, mathematical notation ($...$ and $$...$$), blockquotes, and bold emphasis.\n");
+        sb.append("- AUTOMATIC TOPIC EXPANSION & MANDATORY SECTIONS:\n");
+        sb.append("  For technical & educational concepts, structure your explanation into comprehensive sections unless explicitly asked to be brief:\n");
+        sb.append("  1. Formal Definition & Core Intuition\n");
+        sb.append("  2. Real-World Analogy & ASCII Structural Diagram / Flowchart\n");
+        sb.append("  3. Step-by-Step Algorithm & Mechanism Walkthrough\n");
+        sb.append("  4. Production-Ready, Complete, Syntax-Highlighted Code (Java/Python/C++) with inline comments. NEVER truncate code or use placeholders like '// TODO' or '...'\n");
+        sb.append("  5. Step-by-Step Dry Run Execution Trace\n");
+        sb.append("  6. Time Complexity & Space Complexity Analysis (Big-O Summary Table)\n");
+        sb.append("  7. Edge Cases & Common Misconceptions / Pitfalls\n");
+        sb.append("  8. High-Yield Technical Interview Questions & Practice Problems\n");
+        sb.append("  9. Key Summary Takeaways\n\n");
 
         // 2. Active Learning Mode Instructions
         sb.append("[ACTIVE LEARNING MODE: ").append(activeMode.name()).append("]\n");
         switch (activeMode) {
             case LEARN -> {
-                sb.append("- OBJECTIVE: Teach concepts from foundational principles up.\n");
-                sb.append("- INSTRUCTIONS: Explain step-by-step using clear real-world analogies. Assume beginner level unless student mastery indicates otherwise. Break complex ideas into simple components.\n");
+                sb.append("- OBJECTIVE: Comprehensive conceptual breakdown & intuition building.\n");
+                sb.append("- INSTRUCTIONS: Explain step-by-step using clear real-world analogies. Break complex mechanisms into intuitive sub-components. Conclude with a key summary takeaway.\n");
             }
             case PRACTICE -> {
-                sb.append("- OBJECTIVE: Drill student understanding interactively.\n");
-                sb.append("- INSTRUCTIONS: DO NOT give the direct answer first. Ask 1 conceptual or numerical practice question related to the topic. Wait for the student's response. Give constructive hints if needed.\n");
+                sb.append("- OBJECTIVE: Interactive problem-solving drill.\n");
+                sb.append("- INSTRUCTIONS: DO NOT give direct solution answers immediately. Present 1 targeted practice problem (conceptual or quantitative). Ask the student to attempt it, offering subtle guidance.\n");
             }
             case REVISION -> {
-                sb.append("- OBJECTIVE: Rapid high-yield revision and memory retention.\n");
-                sb.append("- INSTRUCTIONS: Provide concise bullet points, memory tricks, key formulas, balance factors, and cheat-sheet style notes. Focus exclusively on exam-relevant takeaways.\n");
+                sb.append("- OBJECTIVE: Rapid high-yield exam revision & memory consolidation.\n");
+                sb.append("- INSTRUCTIONS: Provide high-density cheat-sheet bullet points, formulas, balance factors, time/space complexities, and common exam traps. Keep explanation text minimal.\n");
             }
             case EXPLAIN_MISTAKES -> {
-                sb.append("- OBJECTIVE: Remediate diagnostic assessment errors.\n");
-                sb.append("- INSTRUCTIONS: Identify common misconceptions in the student's weak concepts. Explain why previous test choices were wrong, and provide step-by-step corrective guidance.\n");
+                sb.append("- OBJECTIVE: Diagnostic mistake remediation & error analysis.\n");
+                sb.append("- INSTRUCTIONS: Address common conceptual pitfalls and misconceptions related to the topic. Explain WHY incorrect choices seem plausible and HOW to systematically avoid them.\n");
             }
             case INTERVIEW -> {
-                sb.append("- OBJECTIVE: Technical Coding & System Design Mock Interviewer.\n");
-                sb.append("- INSTRUCTIONS: Act as a senior technical interviewer at a top tech company. Present 1 technical problem at a time. Evaluate the student's reasoning, approach, and complexity analysis with professional feedback.\n");
+                sb.append("- OBJECTIVE: Technical Coding & System Architecture Mock Interview.\n");
+                sb.append("- INSTRUCTIONS: Act as a Principal Technical Interviewer. Present 1 technical interview question. Evaluate student responses for algorithmic efficiency, edge cases, and design trade-offs.\n");
             }
             case CODING -> {
-                sb.append("- OBJECTIVE: Hands-on Software Engineering & Implementation.\n");
-                sb.append("- INSTRUCTIONS: ALWAYS explain the algorithmic strategy and Big-O Time/Space complexity first. Then provide clean, well-commented code implementations (Java/Python/C++).\n");
+                sb.append("- OBJECTIVE: Production-quality code implementation & algorithm analysis.\n");
+                sb.append("- INSTRUCTIONS: Provide algorithm walkthrough, Time/Space Complexity (Big-O analysis), and complete, clean syntax-highlighted code blocks (Java/Python/C++) with inline comments.\n");
             }
         }
         sb.append("\n");
 
         if (context != null) {
             // 3. Student Identity & Academic Context
-            sb.append("[STUDENT IDENTITY & ACADEMIC CONTEXT]\n");
+            sb.append("[STUDENT PROFILE]\n");
             sb.append("- Student Name: ").append(context.getStudentName()).append("\n");
             sb.append("- Degree & Branch: ").append(context.getDegree()).append(" in ").append(context.getBranch()).append("\n");
             sb.append("- Current Semester: Semester ").append(context.getSemester()).append("\n");
@@ -70,25 +83,23 @@ public class PromptBuilderService {
             sb.append("- Weak Concepts Needing Review: ").append(context.getWeakConcepts()).append("\n\n");
 
             // 5. Priority Recommendations
-            sb.append("[PRIORITY RECOMMENDATIONS]\n");
             if (context.getActiveRecommendations() != null && !context.getActiveRecommendations().isEmpty()) {
+                sb.append("[RECOMMENDATIONS]\n");
                 for (String rec : context.getActiveRecommendations()) {
                     sb.append("- ").append(rec).append("\n");
                 }
-            } else {
-                sb.append("- Focus on active concept revision for weak areas.\n");
+                sb.append("\n");
             }
-            sb.append("\n");
 
             // 6. Today's Learning Plan
-            sb.append("[TODAY'S LEARNING PLAN]\n");
+            sb.append("[TODAY'S PLAN]\n");
             sb.append("- Active Subject: ").append(context.getActiveSubject()).append("\n");
-            sb.append("- Today's Scheduled Focus: ").append(context.getTodayFocusTask()).append("\n\n");
+            sb.append("- Scheduled Focus Task: ").append(context.getTodayFocusTask()).append("\n\n");
 
-            // 7. Conversation Summary
+            // 7. Conversation Transcript Memory
             if (context.getConversationSummary() != null && !context.getConversationSummary().isBlank()) {
-                sb.append("[CONVERSATION MEMORY & SUMMARY]\n");
-                sb.append("- ").append(context.getConversationSummary()).append("\n\n");
+                sb.append("[CONVERSATION MEMORY & TRANSCRIPT]\n");
+                sb.append(context.getConversationSummary()).append("\n");
             }
         }
 

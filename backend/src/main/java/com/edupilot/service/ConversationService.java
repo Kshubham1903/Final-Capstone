@@ -29,15 +29,6 @@ public class ConversationService {
         conv.setCreatedAt(LocalDateTime.now());
         conv.setUpdatedAt(LocalDateTime.now());
 
-        // Add initial welcoming system message
-        AiConversation.ChatMessage welcomeMsg = new AiConversation.ChatMessage(
-                "msg_welcome",
-                "assistant",
-                "Hello! I am your EduPilot AI Tutor. How can I help you master " + (concept != null ? concept : "your learning goals") + " today?",
-                LocalDateTime.now()
-        );
-        conv.getMessages().add(welcomeMsg);
-
         AiConversation saved = conversationRepository.save(conv);
         return new ConversationResponse(saved);
     }

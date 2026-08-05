@@ -26,6 +26,14 @@ public class AITutorController {
     @Autowired
     private com.edupilot.service.StudentContextBuilder contextBuilder;
 
+    @GetMapping("/provider-info")
+    public ResponseEntity<Map<String, String>> getProviderInfo() {
+        return ResponseEntity.ok(Map.of(
+            "provider", aiTutorService.getActiveProvider().getProviderName(),
+            "model", aiTutorService.getActiveModelName()
+        ));
+    }
+
     @GetMapping("/context/{studentId}")
     public ResponseEntity<com.edupilot.dto.StudentContextDTO> getStudentContext(
             @PathVariable String studentId,

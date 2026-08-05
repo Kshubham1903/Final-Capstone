@@ -71,24 +71,39 @@ public class AITutorService {
         String concept = req.getReferencedConcept() != null ? req.getReferencedConcept() : conversation.getReferencedConcept();
         com.edupilot.dto.StudentContextDTO contextDTO = contextBuilder.buildCompleteContext(req.getStudentId(), concept);
         
-        // Add rolling conversation summary
-        if (conversation.getMessages() != null && conversation.getMessages().size() > 2) {
-            contextDTO.setConversationSummary("Previous " + conversation.getMessages().size() + " messages exchanged in thread regarding " + (concept != null ? concept : "course concepts") + ".");
+        // Add sliding-window conversation memory transcript (up to last 6 messages, trimmed for input token efficiency)
+        if (conversation.getMessages() != null && conversation.getMessages().size() > 1) {
+            StringBuilder memorySb = new StringBuilder();
+            var history = conversation.getMessages();
+            int startIdx = Math.max(0, history.size() - 7);
+            for (int i = startIdx; i < history.size() - 1; i++) {
+                var m = history.get(i);
+                String roleLabel = m.getRole().equalsIgnoreCase("user") ? "Student Question: " : "Tutor Key Points: ";
+                String rawContent = m.getContent() != null ? m.getContent() : "";
+                String trimmedContent = rawContent.length() > 400 ? rawContent.substring(0, 400) + "... [transcript compressed]" : rawContent;
+                memorySb.append(roleLabel).append(trimmedContent).append("\n\n");
+            }
+            if (memorySb.length() > 0) {
+                contextDTO.setConversationSummary(memorySb.toString());
+            }
         }
 
         String systemPrompt = promptBuilderService.buildStructuredSystemPrompt(contextDTO, activeMode);
         Map<String, Object> contextMap = Map.of(
             "studentName", contextDTO.getStudentName(),
-            "referencedConcept", concept != null ? concept : contextDTO.getTodayFocusTask()
+            "referencedConcept", concept != null ? concept : (contextDTO.getTodayFocusTask() != null ? contextDTO.getTodayFocusTask() : "General Studies"),
+            "conversationId", conversation.getConversationId(),
+            "learningMode", activeMode.name()
         );
 
-        System.out.println("======== AI REQUEST ========");
+        System.out.println("======== AI TUTOR REQUEST ========");
         System.out.println("Conversation ID: " + conversation.getConversationId());
         System.out.println("Learning Mode: " + activeMode);
-        System.out.println("Question: " + req.getMessage());
-        System.out.println("Prompt Length: " + systemPrompt.length());
-        System.out.println("Student Context Loaded: " + (contextDTO != null));
-        System.out.println("============================");
+        System.out.println("Student ID: " + req.getStudentId());
+        System.out.println("User Question: " + req.getMessage());
+        System.out.println("System Prompt Length: " + systemPrompt.length() + " chars");
+        System.out.println("Thread History Messages Included: " + Math.max(0, conversation.getMessages().size() - 1));
+        System.out.println("==================================");
 
         // 3. Select active LLM Provider
         LLMProvider provider = selectProvider();
@@ -113,6 +128,18 @@ public class AITutorService {
                 aiTextResponse,
                 LocalDateTime.now()
         );
+    }
+
+    public LLMProvider getActiveProvider() {
+        return selectProvider();
+    }
+
+    public String getActiveModelName() {
+        LLMProvider provider = selectProvider();
+        if (provider instanceof com.edupilot.service.llm.GeminiProvider) {
+            return ((com.edupilot.service.llm.GeminiProvider) provider).getModelName();
+        }
+        return provider.getProviderName();
     }
 
     private LLMProvider selectProvider() {
