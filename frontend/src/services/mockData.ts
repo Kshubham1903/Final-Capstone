@@ -25,13 +25,16 @@ export interface StudentProfile {
   fullName: string;
   email: string;
   isCompleted?: boolean;
+  institution?: string;
+  degree?: string;
+  branch?: string;
   course: string;
   semester: number;
   subjects: string[];
   careerGoals: string[];
   preferredStudyHoursPerDay: number;
-  targetCgpa: number;
   currentCgpa: number;
+  targetCgpa: number;
   
   consistencyScore: number; // 0-100
   productivityScore: number; // 0-100
@@ -60,13 +63,16 @@ export const EMPTY_STUDENT_PROFILE: StudentProfile = {
   id: "",
   fullName: "",
   email: "",
-  course: "",
+  institution: "EduPilot Academy",
+  degree: "B.Tech",
+  branch: "Computer Science & Engineering",
+  course: "Computer Science & Engineering",
   semester: 1,
+  currentCgpa: 8.0,
+  targetCgpa: 8.5,
   subjects: [],
   careerGoals: [],
   preferredStudyHoursPerDay: 0,
-  targetCgpa: 0,
-  currentCgpa: 0,
   
   consistencyScore: 0,
   productivityScore: 0,
@@ -123,15 +129,14 @@ export function saveStudentProfile(profile: StudentProfile) {
 }
 
 export function calculateLocalSgi(profile: StudentProfile): number {
-  // Client-side representation of the Python AI algorithm
-  const academicScore = (profile.currentCgpa / 10.0) * 100.0;
+  const academicScore = ((profile.currentCgpa || 8.0) / 10.0) * 100.0;
   
-  const masteryValues = Object.values(profile.conceptMastery);
+  const masteryValues = Object.values(profile.conceptMastery || {});
   const avgMastery = masteryValues.length > 0 ? masteryValues.reduce((a,b)=>a+b, 0) / masteryValues.length : 50.0;
   
-  const latestLog = profile.lifestyleHistory[profile.lifestyleHistory.length - 1] || {
-    sleepHours: 7.5, stressLevel: 5, exerciseMinutes: 30, screenTimeHours: 4.0, studyMinutes: 180
-  };
+  const latestLog = profile.lifestyleHistory && profile.lifestyleHistory.length > 0 
+    ? profile.lifestyleHistory[profile.lifestyleHistory.length - 1] 
+    : { sleepHours: 7.5, stressLevel: 5, exerciseMinutes: 30, screenTimeHours: 4.0, studyMinutes: 180 };
   
   const sleepPoints = 100 - Math.min(Math.abs(latestLog.sleepHours - 8.0) * 20, 100);
   const stressPoints = (10 - latestLog.stressLevel) * 10;

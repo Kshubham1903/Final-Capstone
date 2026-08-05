@@ -13,6 +13,15 @@ export function getAuthHeaders(): Record<string, string> {
   return headers;
 }
 
+export function handleAuthError(res: Response): void {
+  if (res.status === 401 || res.status === 403) {
+    console.warn(`[Security Alert] HTTP ${res.status} Unauthorized / Forbidden received. Clearing invalid session token.`);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("edupilot_token");
+    }
+  }
+}
+
 export async function checkBackendConnection(): Promise<boolean> {
   try {
     const controller = new AbortController();
@@ -366,7 +375,6 @@ export async function fetchQuizQuestions(subject: string, difficulty: string): P
     }
   }
   
-  // Local fallback: load static seeds + custom local storage questions
   const localBankRaw = typeof window !== "undefined" ? localStorage.getItem("edupilot_custom_questions") : null;
   const localQuestions = localBankRaw ? JSON.parse(localBankRaw) : [];
   const fullBank = [...QUESTION_BANK, ...localQuestions];
@@ -400,13 +408,11 @@ export async function createQuizQuestion(question: {
     }
   }
 
-  // Local fallback persistence
   const localBankRaw = localStorage.getItem("edupilot_custom_questions");
   const localBank = localBankRaw ? JSON.parse(localBankRaw) : [];
   localBank.push(question);
   localStorage.setItem("edupilot_custom_questions", JSON.stringify(localBank));
   
-  // Push to active memory array for immediate local session use
   QUESTION_BANK.push(question as any);
   return question;
 }
@@ -474,4 +480,564 @@ export async function submitQuizAnswer(payload: {
   }
 
   return { nextDifficulty, reason };
+}
+
+// Academic Catalog Master API Services
+
+export async function fetchSubjectBranches(): Promise<string[]> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/subjects/branches`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error fetching branches from backend:", err);
+    }
+  }
+  return [
+    "Computer Science & Engineering",
+    "Artificial Intelligence & Data Science",
+    "Information Technology"
+  ];
+}
+
+export async function fetchSubjectsByBranchAndSemester(branch: string, semester: number): Promise<any[]> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/subjects/branches/${encodeURIComponent(branch)}/semesters/${semester}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error fetching subjects by branch & semester:", err);
+    }
+  }
+  
+  return [
+    { id: "1", subjectCode: "CS301", subjectName: "Data Structures & Algorithms", credits: 4, branch, semester, isActive: true },
+    { id: "2", subjectCode: "CS302", subjectName: "Database Management Systems", credits: 4, branch, semester, isActive: true },
+    { id: "3", subjectCode: "CS303", subjectName: "Discrete Mathematical Structures", credits: 3, branch, semester, isActive: true }
+  ];
+}
+
+export async function fetchAllSubjects(): Promise<any[]> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/subjects`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error fetching all subjects:", err);
+    }
+  }
+  return [];
+}
+
+// Diagnostic Assessment Engine API Services
+
+export async function startDiagnosticAssessment(payload: {
+  userId: string;
+  branch: string;
+  semester: number;
+  subjectCode: string;
+  questionCount?: number;
+}): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/assessment/start`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error starting diagnostic assessment on backend:", err);
+    }
+  }
+
+  // Fallback diagnostic session
+  return {
+    sessionId: "sess_local_" + Date.now(),
+    branch: payload.branch,
+    semester: payload.semester,
+    subjectCode: payload.subjectCode,
+    subjectName: "Data Structures & Algorithms",
+    totalQuestions: 3,
+    totalMarks: 6,
+    questions: [
+      {
+        questionId: "q1",
+        topic: "Binary Search Trees",
+        questionText: "What is the worst-case time complexity of searching in an unbalanced Binary Search Tree?",
+        options: ["O(1)", "O(log N)", "O(N)", "O(N log N)"],
+        marks: 2,
+        difficulty: "MEDIUM"
+      },
+      {
+        questionId: "q2",
+        topic: "Sorting Algorithms",
+        questionText: "Which sorting algorithm is guaranteed O(N log N) time in worst case and is stable?",
+        options: ["Quick Sort", "Merge Sort", "Heap Sort", "Selection Sort"],
+        marks: 2,
+        difficulty: "EASY"
+      },
+      {
+        questionId: "q3",
+        topic: "Graph Theory",
+        questionText: "Which graph traversal algorithm uses a Queue data structure?",
+        options: ["Depth First Search (DFS)", "Breadth First Search (BFS)", "Dijkstra Algorithm", "Kruskal Algorithm"],
+        marks: 2,
+        difficulty: "EASY"
+      }
+    ]
+  };
+}
+
+export async function submitDiagnosticAssessment(payload: {
+  sessionId: string;
+  userId: string;
+  timeTakenSeconds: number;
+  answers: Array<{ questionId: string; selectedOption: number }>;
+}): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/assessment/submit`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error submitting assessment to backend:", err);
+    }
+  }
+
+  // Fallback result
+  return {
+    id: "res_local_" + Date.now(),
+    sessionId: payload.sessionId,
+    userId: payload.userId,
+    subjectCode: "CS301",
+    subjectName: "Data Structures & Algorithms",
+    totalQuestions: payload.answers.length,
+    correctAnswers: Math.max(1, payload.answers.length - 1),
+    incorrectAnswers: 1,
+    skippedQuestions: 0,
+    score: 4,
+    totalMarks: 6,
+    percentage: 66.7,
+    accuracy: 66.7,
+    timeTakenSeconds: payload.timeTakenSeconds,
+    masteryLevel: "PROFICIENT",
+    topicBreakdown: {
+      "Binary Search Trees": { correct: 1, total: 1, percentage: 100.0 },
+      "Sorting Algorithms": { correct: 1, total: 1, percentage: 100.0 }
+    },
+    userAnswers: []
+  };
+}
+
+export async function fetchLatestDiagnosticResult(userId: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/assessment/latest/${userId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error fetching latest diagnostic result:", err);
+    }
+  }
+  return null;
+}
+
+// Knowledge Intelligence Engine Master APIs
+
+export async function fetchKnowledgeProfile(userId: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/knowledge/profile/${userId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error fetching Knowledge Profile from backend:", err);
+    }
+  }
+  return null;
+}
+
+export async function fetchWeakConcepts(userId: string): Promise<any[]> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/knowledge/weak-concepts/${userId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error fetching weak concepts from backend:", err);
+    }
+  }
+  return [];
+}
+
+export async function fetchStrongConcepts(userId: string): Promise<any[]> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/knowledge/strong-concepts/${userId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error fetching strong concepts from backend:", err);
+    }
+  }
+  return [];
+}
+
+// Personalized Recommendation Engine Master API Services
+
+export async function fetchStudentRecommendations(userId: string): Promise<any[]> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/recommendations/${userId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error fetching recommendations from backend:", err);
+    }
+  }
+  return [
+    {
+      id: "rec_fallback_1",
+      userId,
+      recommendationType: "CONCEPT_REVISION",
+      priority: "CRITICAL",
+      subjectCode: "CS301",
+      subjectName: "Data Structures & Algorithms",
+      topic: "Binary Search Trees",
+      conceptName: "Binary Search Trees",
+      reason: "Your concept mastery for Binary Search Trees is 40.0%, which is below the 50% threshold after 2 attempts.",
+      recommendedAction: "Review BST balancing rules and attempt 5 practice questions.",
+      estimatedStudyTimeMinutes: 25,
+      difficulty: "MEDIUM",
+      confidenceScore: 40.0,
+      status: "ACTIVE"
+    }
+  ];
+}
+
+export async function fetchHighPriorityRecommendations(userId: string): Promise<any[]> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/recommendations/high-priority/${userId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error fetching high priority recommendations:", err);
+    }
+  }
+  return [];
+}
+
+export async function regenerateStudentRecommendations(userId: string): Promise<any[]> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/recommendations/regenerate/${userId}`, {
+        method: "POST",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error regenerating recommendations on backend:", err);
+    }
+  }
+  return [];
+}
+
+export async function completeRecommendation(id: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/recommendations/${id}/complete`, {
+        method: "PATCH",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error marking recommendation complete on backend:", err);
+    }
+  }
+  return null;
+}
+
+// Personalized Learning Planner Master API Services
+
+export async function fetchTodayPlan(userId: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/planner/today/${userId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error fetching today's learning plan:", err);
+    }
+  }
+  return null;
+}
+
+export async function fetchWeekPlan(userId: string): Promise<any[]> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/planner/week/${userId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error fetching weekly learning plan:", err);
+    }
+  }
+  return [];
+}
+
+export async function regeneratePlan(userId: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/planner/regenerate/${userId}`, {
+        method: "POST",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error regenerating learning plan:", err);
+    }
+  }
+  return null;
+}
+
+export async function completePlannerTask(taskId: string, userId: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/planner/task/${taskId}/complete?userId=${encodeURIComponent(userId)}`, {
+        method: "PATCH",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error completing planner task:", err);
+    }
+  }
+  return null;
+}
+
+export async function startStudySession(payload: { userId: string; taskId: string; subjectCode: string; conceptName: string }): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/planner/session/start`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error starting study session:", err);
+    }
+  }
+  return null;
+}
+
+export async function endStudySession(payload: { sessionId: string; actualDurationMinutes: number; pausedDurationMinutes: number; completionNotes: string }): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/planner/session/end`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error ending study session:", err);
+    }
+  }
+  return null;
+}
+
+// AI Tutor & Conversational LLM Infrastructure API Services
+
+export async function sendChatMessage(payload: { studentId: string; conversationId?: string; message: string; learningPlanTaskId?: string; referencedConcept?: string; learningMode?: string }): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/ai/chat`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error sending AI Tutor chat message:", err);
+    }
+  }
+  return {
+    conversationId: payload.conversationId || "conv_fallback",
+    messageId: "msg_fallback_" + Date.now(),
+    role: "assistant",
+    content: "[AI Tutor] I am connected! Let's explore your concept together.",
+    timestamp: new Date().toISOString()
+  };
+}
+
+export async function createNewConversation(studentId: string, title?: string, taskId?: string, concept?: string, learningMode?: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const query = new URLSearchParams({ studentId });
+      if (title) query.append("title", title);
+      if (taskId) query.append("taskId", taskId);
+      if (concept) query.append("concept", concept);
+      if (learningMode) query.append("mode", learningMode);
+
+      const res = await fetch(`${BACKEND_URL}/api/ai/new-conversation?${query.toString()}`, {
+        method: "POST",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error creating new AI conversation:", err);
+    }
+  }
+  return null;
+}
+
+export async function fetchConversationHistory(studentId: string): Promise<any[]> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/ai/history/${studentId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error fetching conversation history:", err);
+    }
+  }
+  return [];
+}
+
+export async function fetchConversationById(conversationId: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/ai/conversation/${conversationId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error fetching conversation details:", err);
+    }
+  }
+  return null;
+}
+
+export async function deleteConversation(conversationId: string): Promise<boolean> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/ai/conversation/${conversationId}`, {
+        method: "DELETE",
+        headers: getAuthHeaders()
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn("Error deleting conversation:", err);
+    }
+  }
+  return false;
+}
+
+export async function fetchStudentContext(studentId: string, concept?: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const query = concept ? `?concept=${encodeURIComponent(concept)}` : "";
+      const res = await fetch(`${BACKEND_URL}/api/ai/context/${studentId}${query}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error fetching student learning context:", err);
+    }
+  }
+  return null;
 }

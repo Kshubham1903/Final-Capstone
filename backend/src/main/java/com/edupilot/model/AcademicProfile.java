@@ -12,6 +12,8 @@ public class AcademicProfile {
     private String id;
     private String userId;
 
+    private String institution = "EduPilot Academy";
+    private String degree = "B.Tech";
     private String stream = "ENGINEERING"; // Default ENGINEERING, extendable for MEDICAL, COMMERCE, ARTS, LAW, MBA
     private String engineeringBranch;
     private int semester;
@@ -45,9 +47,19 @@ public class AcademicProfile {
     public AcademicProfile() {
     }
 
-    public AcademicProfile(String id, String userId, String stream, String engineeringBranch, int semester, double currentCgpa, double targetCgpa, List<String> currentSubjects, List<String> weakSubjects, List<String> strongSubjects, String careerGoal, String dreamCompany, List<String> programmingLanguages, List<String> frameworks, List<String> technologies, List<String> projects, List<String> internships, List<String> hackathons, String githubUrl, String linkedInUrl, String leetcodeUrl, double weeklyCodingHours, String preferredLearningStyle, List<String> academicAchievements, List<String> certifications, LocalDateTime updatedAt) {
+    public AcademicProfile(String id, String userId, String institution, String degree, String stream, 
+                           String engineeringBranch, int semester, double currentCgpa, double targetCgpa, 
+                           List<String> currentSubjects, List<String> weakSubjects, List<String> strongSubjects, 
+                           String careerGoal, String dreamCompany, List<String> programmingLanguages, 
+                           List<String> frameworks, List<String> technologies, List<String> projects, 
+                           List<String> internships, List<String> hackathons, String githubUrl, 
+                           String linkedInUrl, String leetcodeUrl, double weeklyCodingHours, 
+                           String preferredLearningStyle, List<String> academicAchievements, 
+                           List<String> certifications, LocalDateTime updatedAt) {
         this.id = id;
         this.userId = userId;
+        this.institution = institution;
+        this.degree = degree;
         this.stream = stream;
         this.engineeringBranch = engineeringBranch;
         this.semester = semester;
@@ -88,6 +100,22 @@ public class AcademicProfile {
 
     public void setUserId(String userId) {
         this.userId = userId;
+    }
+
+    public String getInstitution() {
+        return institution != null ? institution : "EduPilot Academy";
+    }
+
+    public void setInstitution(String institution) {
+        this.institution = institution;
+    }
+
+    public String getDegree() {
+        return degree != null ? degree : "B.Tech";
+    }
+
+    public void setDegree(String degree) {
+        this.degree = degree;
     }
 
     public String getStream() {

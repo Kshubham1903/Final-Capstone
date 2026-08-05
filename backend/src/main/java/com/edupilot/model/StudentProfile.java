@@ -15,13 +15,18 @@ public class StudentProfile {
     private String email;
     private boolean isCompleted = false;
 
-    // Academic Onboarding
-    private String course;
-    private int semester;
+    // Academic Profile & Identity
+    private String institution = "EduPilot Academy";
+    private String degree = "B.Tech";
+    private String branch = "Computer Science & Engineering";
+    private String course = "Computer Science & Engineering";
+    private int semester = 1;
+    private double currentCgpa = 8.0;
+    private double targetCgpa = 8.5;
+
     private List<String> subjects;
     private List<String> careerGoals;
     private double preferredStudyHoursPerDay;
-    private double targetCgpa;
 
     // Diagnostics & Streaks
     private int consistencyScore; // 0-100
@@ -65,18 +70,34 @@ public class StudentProfile {
     public StudentProfile() {
     }
 
-    public StudentProfile(String id, String userId, String fullName, String email, boolean isCompleted, String course, int semester, List<String> subjects, List<String> careerGoals, double preferredStudyHoursPerDay, double targetCgpa, int consistencyScore, int productivityScore, int lifestyleScore, String learningStyle, int currentStreakCount, double studentGrowthIndex, Map<String, Double> conceptMastery, Map<String, List<String>> weakConcepts, Map<String, List<String>> strongConcepts, int completedQuizzesCount, double predictedCgpa, String academicRiskLevel, String parentalInvolvement, String accessToResources, String extracurricularActivities, String motivationLevel, String internetAccess, int tutoringSessions, String familyIncome, String teacherQuality, String schoolType, String peerInfluence, String learningDisabilities, String parentalEducationLevel, String distanceFromHome, String gender, List<Map<String, Object>> lifestyleHistory) {
+    public StudentProfile(String id, String userId, String fullName, String email, boolean isCompleted, 
+                          String institution, String degree, String branch, String course, int semester, 
+                          double currentCgpa, double targetCgpa, List<String> subjects, List<String> careerGoals, 
+                          double preferredStudyHoursPerDay, int consistencyScore, int productivityScore, 
+                          int lifestyleScore, String learningStyle, int currentStreakCount, 
+                          double studentGrowthIndex, Map<String, Double> conceptMastery, 
+                          Map<String, List<String>> weakConcepts, Map<String, List<String>> strongConcepts, 
+                          int completedQuizzesCount, double predictedCgpa, String academicRiskLevel, 
+                          String parentalInvolvement, String accessToResources, String extracurricularActivities, 
+                          String motivationLevel, String internetAccess, int tutoringSessions, String familyIncome, 
+                          String teacherQuality, String schoolType, String peerInfluence, String learningDisabilities, 
+                          String parentalEducationLevel, String distanceFromHome, String gender, 
+                          List<Map<String, Object>> lifestyleHistory) {
         this.id = id;
         this.userId = userId;
         this.fullName = fullName;
         this.email = email;
         this.isCompleted = isCompleted;
+        this.institution = institution;
+        this.degree = degree;
+        this.branch = branch;
         this.course = course;
         this.semester = semester;
+        this.currentCgpa = currentCgpa;
+        this.targetCgpa = targetCgpa;
         this.subjects = subjects;
         this.careerGoals = careerGoals;
         this.preferredStudyHoursPerDay = preferredStudyHoursPerDay;
-        this.targetCgpa = targetCgpa;
         this.consistencyScore = consistencyScore;
         this.productivityScore = productivityScore;
         this.lifestyleScore = lifestyleScore;
@@ -146,6 +167,30 @@ public class StudentProfile {
         isCompleted = completed;
     }
 
+    public String getInstitution() {
+        return institution != null ? institution : "EduPilot Academy";
+    }
+
+    public void setInstitution(String institution) {
+        this.institution = institution;
+    }
+
+    public String getDegree() {
+        return degree != null ? degree : "B.Tech";
+    }
+
+    public void setDegree(String degree) {
+        this.degree = degree;
+    }
+
+    public String getBranch() {
+        return branch != null ? branch : (course != null ? course : "Computer Science & Engineering");
+    }
+
+    public void setBranch(String branch) {
+        this.branch = branch;
+    }
+
     public String getCourse() {
         return course;
     }
@@ -160,6 +205,22 @@ public class StudentProfile {
 
     public void setSemester(int semester) {
         this.semester = semester;
+    }
+
+    public double getCurrentCgpa() {
+        return currentCgpa;
+    }
+
+    public void setCurrentCgpa(double currentCgpa) {
+        this.currentCgpa = currentCgpa;
+    }
+
+    public double getTargetCgpa() {
+        return targetCgpa;
+    }
+
+    public void setTargetCgpa(double targetCgpa) {
+        this.targetCgpa = targetCgpa;
     }
 
     public List<String> getSubjects() {
@@ -184,14 +245,6 @@ public class StudentProfile {
 
     public void setPreferredStudyHoursPerDay(double preferredStudyHoursPerDay) {
         this.preferredStudyHoursPerDay = preferredStudyHoursPerDay;
-    }
-
-    public double getTargetCgpa() {
-        return targetCgpa;
-    }
-
-    public void setTargetCgpa(double targetCgpa) {
-        this.targetCgpa = targetCgpa;
     }
 
     public int getConsistencyScore() {
@@ -420,12 +473,16 @@ public class StudentProfile {
         private String fullName;
         private String email;
         private boolean isCompleted = false;
-        private String course;
-        private int semester;
+        private String institution = "EduPilot Academy";
+        private String degree = "B.Tech";
+        private String branch = "Computer Science & Engineering";
+        private String course = "Computer Science & Engineering";
+        private int semester = 1;
+        private double currentCgpa = 8.0;
+        private double targetCgpa = 8.5;
         private List<String> subjects;
         private List<String> careerGoals;
         private double preferredStudyHoursPerDay;
-        private double targetCgpa;
         private int consistencyScore;
         private int productivityScore;
         private int lifestyleScore;
@@ -479,6 +536,21 @@ public class StudentProfile {
             return this;
         }
 
+        public StudentProfileBuilder institution(String institution) {
+            this.institution = institution;
+            return this;
+        }
+
+        public StudentProfileBuilder degree(String degree) {
+            this.degree = degree;
+            return this;
+        }
+
+        public StudentProfileBuilder branch(String branch) {
+            this.branch = branch;
+            return this;
+        }
+
         public StudentProfileBuilder course(String course) {
             this.course = course;
             return this;
@@ -486,6 +558,16 @@ public class StudentProfile {
 
         public StudentProfileBuilder semester(int semester) {
             this.semester = semester;
+            return this;
+        }
+
+        public StudentProfileBuilder currentCgpa(double currentCgpa) {
+            this.currentCgpa = currentCgpa;
+            return this;
+        }
+
+        public StudentProfileBuilder targetCgpa(double targetCgpa) {
+            this.targetCgpa = targetCgpa;
             return this;
         }
 
@@ -501,11 +583,6 @@ public class StudentProfile {
 
         public StudentProfileBuilder preferredStudyHoursPerDay(double preferredStudyHoursPerDay) {
             this.preferredStudyHoursPerDay = preferredStudyHoursPerDay;
-            return this;
-        }
-
-        public StudentProfileBuilder targetCgpa(double targetCgpa) {
-            this.targetCgpa = targetCgpa;
             return this;
         }
 
@@ -645,7 +722,14 @@ public class StudentProfile {
         }
 
         public StudentProfile build() {
-            return new StudentProfile(id, userId, fullName, email, isCompleted, course, semester, subjects, careerGoals, preferredStudyHoursPerDay, targetCgpa, consistencyScore, productivityScore, lifestyleScore, learningStyle, currentStreakCount, studentGrowthIndex, conceptMastery, weakConcepts, strongConcepts, completedQuizzesCount, predictedCgpa, academicRiskLevel, parentalInvolvement, accessToResources, extracurricularActivities, motivationLevel, internetAccess, tutoringSessions, familyIncome, teacherQuality, schoolType, peerInfluence, learningDisabilities, parentalEducationLevel, distanceFromHome, gender, lifestyleHistory);
+            return new StudentProfile(id, userId, fullName, email, isCompleted, institution, degree, branch, course, 
+                                      semester, currentCgpa, targetCgpa, subjects, careerGoals, preferredStudyHoursPerDay, 
+                                      consistencyScore, productivityScore, lifestyleScore, learningStyle, currentStreakCount, 
+                                      studentGrowthIndex, conceptMastery, weakConcepts, strongConcepts, completedQuizzesCount, 
+                                      predictedCgpa, academicRiskLevel, parentalInvolvement, accessToResources, 
+                                      extracurricularActivities, motivationLevel, internetAccess, tutoringSessions, 
+                                      familyIncome, teacherQuality, schoolType, peerInfluence, learningDisabilities, 
+                                      parentalEducationLevel, distanceFromHome, gender, lifestyleHistory);
         }
     }
 }

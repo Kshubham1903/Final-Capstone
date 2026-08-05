@@ -52,12 +52,16 @@ public class StudentService {
         // Initialize new StudentProfile for this userId
         StudentProfile newProfile = StudentProfile.builder()
                 .userId(idOrUserId)
+                .institution("EduPilot Academy")
+                .degree("B.Tech")
+                .branch("Computer Science & Engineering")
                 .course("Computer Science & Engineering")
                 .semester(1)
+                .currentCgpa(8.0)
+                .targetCgpa(8.5)
                 .subjects(List.of("Data Structures & Algorithms", "Database Management Systems", "Artificial Intelligence"))
                 .careerGoals(List.of("Software Engineer"))
                 .preferredStudyHoursPerDay(4.0)
-                .targetCgpa(8.5)
                 .consistencyScore(70)
                 .productivityScore(60)
                 .lifestyleScore(65)
@@ -172,6 +176,8 @@ public class StudentService {
                         return a;
                     });
 
+            if (payload.containsKey("institution")) academic.setInstitution(parseString(payload.get("institution")));
+            if (payload.containsKey("degree")) academic.setDegree(parseString(payload.get("degree")));
             if (payload.containsKey("engineeringBranch")) academic.setEngineeringBranch(parseString(payload.get("engineeringBranch")));
             if (payload.containsKey("semester")) academic.setSemester(parseInt(payload.get("semester"), 1));
             if (payload.containsKey("currentCgpa")) academic.setCurrentCgpa(parseDouble(payload.get("currentCgpa"), 8.0));
@@ -249,6 +255,7 @@ public class StudentService {
         StudentProfile profile = findOrCreateProfile(userId);
 
         profile.setCourse(course != null ? course : "Computer Science & Engineering");
+        profile.setBranch(course != null ? course : "Computer Science & Engineering");
         profile.setSemester(semester > 0 ? semester : 1);
         profile.setSubjects(subjects != null ? subjects : List.of("Data Structures & Algorithms", "Database Management Systems", "Artificial Intelligence"));
         profile.setCareerGoals(goals != null ? goals : List.of("Software Engineer"));
@@ -298,11 +305,19 @@ public class StudentService {
         StudentProfile profile = findOrCreateProfile(idOrUserId);
         inputData.setStudentProfileId(profile.getId());
         inputData.setDate(LocalDate.now());
+
         lifestyleRepository.save(inputData);
 
+        profile.setCompletedQuizzesCount(profile.getCompletedQuizzesCount() + 1);
+
+        double lifestyleScore = Math.min((inputData.getSleepHours() * 8.0) + (inputData.getExerciseMinutes() * 0.5), 100.0);
+        double productivityScore = inputData.getProductivityRating() * 10.0;
+
+        profile.setLifestyleScore((int) Math.round(lifestyleScore));
+        profile.setProductivityScore((int) Math.round(productivityScore));
+
         runSilentBackgroundPrediction(profile);
-        StudentProfile saved = profileRepository.save(profile);
-        return populateLifestyleHistory(saved);
+        return profileRepository.save(profile);
     }
 
     public StudentProfile submitQuestionnaireAndRunAnalytics(String idOrUserId, LifestyleQuestionnaire questionnaireInput) {
@@ -330,13 +345,38 @@ public class StudentService {
         StudentProfile profile = findOrCreateProfile(userId);
 
         if (payload.containsKey("fullName")) profile.setFullName(parseString(payload.get("fullName")));
+        if (payload.containsKey("institution")) profile.setInstitution(parseString(payload.get("institution")));
+        if (payload.containsKey("degree")) profile.setDegree(parseString(payload.get("degree")));
+        if (payload.containsKey("branch")) {
+            String branchVal = parseString(payload.get("branch"));
+            profile.setBranch(branchVal);
+            profile.setCourse(branchVal);
+        }
+        if (payload.containsKey("course")) profile.setCourse(parseString(payload.get("course")));
+        if (payload.containsKey("semester")) profile.setSemester(parseInt(payload.get("semester"), 1));
+        if (payload.containsKey("currentCgpa")) profile.setCurrentCgpa(parseDouble(payload.get("currentCgpa"), 8.0));
         if (payload.containsKey("targetCgpa")) profile.setTargetCgpa(parseDouble(payload.get("targetCgpa"), 8.5));
         if (payload.containsKey("preferredStudyHoursPerDay")) profile.setPreferredStudyHoursPerDay(parseDouble(payload.get("preferredStudyHoursPerDay"), 4.0));
         if (payload.containsKey("learningStyle")) profile.setLearningStyle(parseString(payload.get("learningStyle")));
-        if (payload.containsKey("course")) profile.setCourse(parseString(payload.get("course")));
-        if (payload.containsKey("semester")) profile.setSemester(parseInt(payload.get("semester"), 1));
         if (payload.containsKey("subjects")) profile.setSubjects(parseList(payload.get("subjects")));
         if (payload.containsKey("careerGoals")) profile.setCareerGoals(parseList(payload.get("careerGoals")));
+
+        // Sync with AcademicProfile collection
+        Optional<AcademicProfile> academicOpt = academicRepository.findByUserId(userId);
+        AcademicProfile academic = academicOpt.orElseGet(() -> {
+            AcademicProfile a = new AcademicProfile();
+            a.setUserId(userId);
+            return a;
+        });
+        academic.setInstitution(profile.getInstitution());
+        academic.setDegree(profile.getDegree());
+        academic.setEngineeringBranch(profile.getBranch());
+        academic.setSemester(profile.getSemester());
+        academic.setCurrentCgpa(profile.getCurrentCgpa());
+        academic.setTargetCgpa(profile.getTargetCgpa());
+        if (profile.getSubjects() != null) academic.setCurrentSubjects(profile.getSubjects());
+        academic.setUpdatedAt(LocalDateTime.now());
+        academicRepository.save(academic);
 
         StudentProfile saved = profileRepository.save(profile);
         runSilentBackgroundPrediction(saved);
@@ -448,19 +488,14 @@ public class StudentService {
 
     public Optional<StudentProfile> getProfileById(String id) {
         Optional<StudentProfile> opt = profileRepository.findById(id);
-        opt.ifPresent(this::populateLifestyleHistory);
-        return opt;
+        return opt.map(this::populateLifestyleHistory);
     }
 
     private StudentProfile populateLifestyleHistory(StudentProfile profile) {
-        if (profile == null) return null;
-        List<LifestyleData> logs = lifestyleRepository.findByStudentProfileId(profile.getId());
-        if (logs == null || logs.isEmpty()) {
-            logs = lifestyleRepository.findByStudentProfileId(profile.getUserId());
-        }
-        if (logs != null && !logs.isEmpty()) {
+        List<LifestyleData> history = lifestyleRepository.findByStudentProfileId(profile.getId());
+        if (history != null && !history.isEmpty()) {
             List<Map<String, Object>> formattedLogs = new ArrayList<>();
-            for (LifestyleData d : logs) {
+            for (LifestyleData d : history) {
                 Map<String, Object> map = new HashMap<>();
                 map.put("date", d.getDate() != null ? d.getDate().toString() : "Today");
                 map.put("sleepHours", d.getSleepHours());

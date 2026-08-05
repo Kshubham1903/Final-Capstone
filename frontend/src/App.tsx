@@ -11,6 +11,7 @@ import Quizzes from "./app/dashboard/quizzes/page";
 import FacultyDashboard from "./app/faculty/page";
 import QuizManagerDashboard from "./app/faculty/quiz-manager/page";
 import AdminDashboard from "./app/admin/page";
+import AITutorPage from "./pages/AITutorPage";
 import OnboardingGuard from "./components/OnboardingGuard";
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
       <Route path="/dashboard/career" element={<OnboardingGuard><CareerCenter /></OnboardingGuard>} />
       <Route path="/dashboard/pomodoro" element={<OnboardingGuard><Pomodoro /></OnboardingGuard>} />
       <Route path="/dashboard/quizzes" element={<OnboardingGuard><Quizzes /></OnboardingGuard>} />
+      <Route path="/dashboard/ai-tutor" element={<OnboardingGuard><AITutorPage /></OnboardingGuard>} />
       <Route path="/faculty" element={<FacultyDashboard />} />
       <Route path="/faculty/quiz-manager" element={<QuizManagerDashboard />} />
       <Route path="/admin" element={<AdminDashboard />} />

@@ -4,16 +4,13 @@ import {
   User, 
   GraduationCap, 
   Activity, 
-  Sparkles, 
   Save, 
-  ShieldCheck, 
   Flame, 
   Award, 
   RefreshCw, 
   CheckCircle,
-  FileText,
-  Clock,
-  BookOpen
+  AlertCircle,
+  Building2
 } from "lucide-react";
 import { fetchFullProfile, updateFullProfile } from "../../../services/api";
 
@@ -21,14 +18,18 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
 
   const userId = typeof window !== "undefined" ? (localStorage.getItem("edupilot_user_id") || "") : "";
 
-  // Aggregate State
+  // Academic Profile State
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [course, setCourse] = useState("");
+  const [institution, setInstitution] = useState("EduPilot Academy");
+  const [degree, setDegree] = useState("B.Tech");
+  const [branch, setBranch] = useState("Computer Science & Engineering");
   const [semester, setSemester] = useState(1);
+  const [currentCgpa, setCurrentCgpa] = useState(8.0);
   const [targetCgpa, setTargetCgpa] = useState(8.5);
   const [preferredStudyHours, setPreferredStudyHours] = useState(4.0);
   const [learningStyle, setLearningStyle] = useState("Visual");
@@ -51,8 +52,11 @@ export default function ProfilePage() {
         const p = data.profile;
         setFullName(p.fullName || localStorage.getItem("edupilot_user_name") || "");
         setEmail(p.email || localStorage.getItem("edupilot_user_email") || "");
-        setCourse(p.course || "Computer Science & Engineering");
+        setInstitution(p.institution || "EduPilot Academy");
+        setDegree(p.degree || "B.Tech");
+        setBranch(p.branch || p.course || "Computer Science & Engineering");
         setSemester(p.semester || 1);
+        setCurrentCgpa(p.currentCgpa || 8.0);
         setTargetCgpa(p.targetCgpa || 8.5);
         setPreferredStudyHours(p.preferredStudyHoursPerDay || 4.0);
         setLearningStyle(p.learningStyle || "Visual");
@@ -70,27 +74,68 @@ export default function ProfilePage() {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaving(true);
+    setErrorMsg("");
     setSuccessMsg("");
+
+    // Validations
+    if (!fullName.trim()) {
+      setErrorMsg("Student Name is required.");
+      return;
+    }
+    if (!institution.trim()) {
+      setErrorMsg("Institution name is required.");
+      return;
+    }
+    if (!degree.trim()) {
+      setErrorMsg("Degree program is required.");
+      return;
+    }
+    if (!branch.trim()) {
+      setErrorMsg("Branch / Specialization is required.");
+      return;
+    }
+    if (semester < 1 || semester > 12) {
+      setErrorMsg("Semester must be between 1 and 12.");
+      return;
+    }
+    if (currentCgpa < 0.0 || currentCgpa > 10.0) {
+      setErrorMsg("Current CGPA must be between 0.0 and 10.0.");
+      return;
+    }
+    if (targetCgpa < 0.0 || targetCgpa > 10.0) {
+      setErrorMsg("Target CGPA must be between 0.0 and 10.0.");
+      return;
+    }
+
+    setSaving(true);
 
     const updatePayload = {
       fullName,
-      course,
+      institution,
+      degree,
+      branch,
+      course: branch,
       semester: Number(semester),
+      currentCgpa: Number(currentCgpa),
       targetCgpa: Number(targetCgpa),
       preferredStudyHoursPerDay: Number(preferredStudyHours),
       learningStyle,
       careerGoals: careerGoals.split(",").map(s => s.trim())
     };
 
-    const updated = await updateFullProfile(userId, updatePayload);
-    if (updated) {
-      setSgi(updated.studentGrowthIndex || sgi);
-      setPredictedCgpa(updated.predictedCgpa || predictedCgpa);
-      setRiskLevel(updated.academicRiskLevel || riskLevel);
-      setSuccessMsg("Profile updated successfully! AI predictions recalculation completed.");
+    try {
+      const updated = await updateFullProfile(userId, updatePayload);
+      if (updated) {
+        setSgi(updated.studentGrowthIndex || sgi);
+        setPredictedCgpa(updated.predictedCgpa || predictedCgpa);
+        setRiskLevel(updated.academicRiskLevel || riskLevel);
+        setSuccessMsg("Academic profile updated successfully! Python AI recalculated your Student Growth Index.");
+      }
+    } catch (err: any) {
+      setErrorMsg("Failed to save academic profile changes.");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
 
     setTimeout(() => {
       setSuccessMsg("");
@@ -116,13 +161,20 @@ export default function ProfilePage() {
           <div>
             <h1 className="text-3xl font-extrabold text-main-theme flex items-center gap-2">
               <User className="h-8 w-8 text-purple-theme" />
-              <span>Student Profile & Analytics Center</span>
+              <span>Academic Profile & Student Identity</span>
             </h1>
             <p className="text-secondary-theme text-sm mt-1">
-              Manage your academic parameters, view your Student Growth Index (SGI), and trigger live AI recalculations.
+              Primary academic identity powering adaptive diagnostic assessments, AI recommendations, and tutoring.
             </p>
           </div>
         </div>
+
+        {errorMsg && (
+          <div className="p-4 rounded-2xl bg-pink-500/10 border border-pink-500/20 text-pink-300 text-xs flex items-center gap-2">
+            <AlertCircle className="h-5 w-5" />
+            <span className="font-bold">{errorMsg}</span>
+          </div>
+        )}
 
         {successMsg && (
           <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2 animate-bounce">
@@ -142,23 +194,15 @@ export default function ProfilePage() {
           </div>
 
           <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-2">
-            <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Predicted CGPA</span>
-            <div className="text-3xl font-black text-cyan-theme">{predictedCgpa.toFixed(2)}</div>
-            <p className="text-[10px] text-secondary-theme">Random Forest model prediction.</p>
+            <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Current CGPA</span>
+            <div className="text-3xl font-black text-purple-theme">{currentCgpa.toFixed(1)}</div>
+            <p className="text-[10px] text-secondary-theme">Verified academic record.</p>
           </div>
 
           <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-2">
-            <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Academic Risk Level</span>
-            <div className="flex items-center gap-2 pt-1">
-              <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${
-                riskLevel === "LOW" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" :
-                riskLevel === "MEDIUM" ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" :
-                "bg-pink-500/20 text-pink-400 border border-pink-500/30"
-              }`}>
-                {riskLevel} RISK
-              </span>
-            </div>
-            <p className="text-[10px] text-secondary-theme">Automated diagnostic status.</p>
+            <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Target CGPA</span>
+            <div className="text-3xl font-black text-emerald-theme">{targetCgpa.toFixed(1)}</div>
+            <p className="text-[10px] text-secondary-theme">Target GPA goal.</p>
           </div>
 
           <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-2 bg-amber-500/5">
@@ -175,7 +219,7 @@ export default function ProfilePage() {
         <div className="glass-panel p-8 rounded-3xl border border-white/10 space-y-6">
           <div className="border-b border-white/10 pb-4 flex justify-between items-center">
             <div>
-              <h3 className="text-lg font-extrabold tracking-wide text-main-theme">Edit Profile & Academic Parameters</h3>
+              <h3 className="text-lg font-extrabold tracking-wide text-main-theme">Academic Profile Identity Details</h3>
               <p className="text-xs text-secondary-theme mt-0.5">Saving modifications automatically triggers the Python AI microservice to recalculate your SGI.</p>
             </div>
           </div>
@@ -183,9 +227,10 @@ export default function ProfilePage() {
           <form onSubmit={handleSaveProfile} className="space-y-6 text-xs">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="font-bold text-secondary-theme block mb-1">Full Name</label>
+                <label className="font-bold text-secondary-theme block mb-1">Student Full Name *</label>
                 <input 
                   type="text" 
+                  required
                   value={fullName} 
                   onChange={e => setFullName(e.target.value)} 
                   className="w-full p-3 rounded-xl glass-input" 
@@ -203,21 +248,48 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <label className="font-bold text-secondary-theme block mb-1">Engineering Branch / Program</label>
+                <label className="font-bold text-secondary-theme block mb-1">Institution / University Name *</label>
                 <input 
                   type="text" 
-                  value={course} 
-                  onChange={e => setCourse(e.target.value)} 
+                  required
+                  value={institution} 
+                  onChange={e => setInstitution(e.target.value)} 
                   className="w-full p-3 rounded-xl glass-input" 
+                  placeholder="e.g. EduPilot Academy of Technology"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-secondary-theme block mb-1">Current Semester</label>
+                <label className="font-bold text-secondary-theme block mb-1">Degree Program *</label>
+                <input 
+                  type="text" 
+                  required
+                  value={degree} 
+                  onChange={e => setDegree(e.target.value)} 
+                  className="w-full p-3 rounded-xl glass-input" 
+                  placeholder="e.g. B.Tech"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-secondary-theme block mb-1">Branch / Specialization *</label>
+                <input 
+                  type="text" 
+                  required
+                  value={branch} 
+                  onChange={e => setBranch(e.target.value)} 
+                  className="w-full p-3 rounded-xl glass-input" 
+                  placeholder="e.g. Computer Science & Engineering"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-secondary-theme block mb-1">Current Semester (1-12) *</label>
                 <input 
                   type="number" 
                   min="1" 
-                  max="8" 
+                  max="12" 
+                  required
                   value={semester} 
                   onChange={e => setSemester(Number(e.target.value))} 
                   className="w-full p-3 rounded-xl glass-input" 
@@ -225,10 +297,27 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <label className="font-bold text-secondary-theme block mb-1">Target CGPA Goal (0.0 - 10.0)</label>
+                <label className="font-bold text-secondary-theme block mb-1">Current CGPA (0.0 - 10.0) *</label>
                 <input 
                   type="number" 
                   step="0.1" 
+                  min="0" 
+                  max="10" 
+                  required
+                  value={currentCgpa} 
+                  onChange={e => setCurrentCgpa(Number(e.target.value))} 
+                  className="w-full p-3 rounded-xl glass-input" 
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-secondary-theme block mb-1">Target CGPA Goal (0.0 - 10.0) *</label>
+                <input 
+                  type="number" 
+                  step="0.1" 
+                  min="0" 
+                  max="10" 
+                  required
                   value={targetCgpa} 
                   onChange={e => setTargetCgpa(Number(e.target.value))} 
                   className="w-full p-3 rounded-xl glass-input" 
@@ -260,7 +349,7 @@ export default function ProfilePage() {
                 </select>
               </div>
 
-              <div>
+              <div className="md:col-span-2">
                 <label className="font-bold text-secondary-theme block mb-1">Target Career Roles (Comma Separated)</label>
                 <input 
                   type="text" 
@@ -285,7 +374,7 @@ export default function ProfilePage() {
                 ) : (
                   <>
                     <Save className="h-4 w-4" />
-                    <span>Save Profile & Recalculate AI SGI</span>
+                    <span>Save Academic Profile & Recalculate AI SGI</span>
                   </>
                 )}
               </button>

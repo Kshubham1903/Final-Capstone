@@ -18,3 +18,16 @@ spring:
 ai:
   service:
     url: ${AI_SERVICE_URL:http://localhost:8000}
+
+# LLM Provider Configuration
+llm:
+  provider: ${LLM_PROVIDER:gemini} # gemini, openai, or mock
+  openai:
+    api-key: ${OPENAI_API_KEY:mock-key}
+    model: ${OPENAI_MODEL:gpt-4o-mini}
+  gemini:
+    api-key: ${GEMINI_API_KEY:mock-key}
+    model: ${GEMINI_MODEL:gemini-1.5-flash}
+  temperature: 0.7
+  max-tokens: 800
+  timeout-seconds: 15
