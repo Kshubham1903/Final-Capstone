@@ -54,21 +54,21 @@ export default function MarkdownRenderer({ content, className = "" }: MarkdownRe
       // Header check
       if (line.startsWith("### ")) {
         return (
-          <h3 key={idx} className="text-sm font-bold text-purple-300 mt-3 mb-1.5 flex items-center gap-1.5">
+          <h3 key={idx} className="text-sm font-bold text-purple-theme mt-3 mb-1.5 flex items-center gap-1.5">
             {renderInline(line.replace("### ", ""))}
           </h3>
         );
       }
       if (line.startsWith("## ")) {
         return (
-          <h2 key={idx} className="text-base font-extrabold text-purple-200 mt-4 mb-2 flex items-center gap-2 border-b border-purple-500/20 pb-1">
+          <h2 key={idx} className="text-base font-extrabold text-purple-theme mt-4 mb-2 flex items-center gap-2 border-b border-purple-500/20 pb-1">
             {renderInline(line.replace("## ", ""))}
           </h2>
         );
       }
       if (line.startsWith("# ")) {
         return (
-          <h1 key={idx} className="text-lg font-black text-white mt-4 mb-2">
+          <h1 key={idx} className="text-lg font-black text-main-theme mt-4 mb-2">
             {renderInline(line.replace("# ", ""))}
           </h1>
         );
@@ -77,7 +77,7 @@ export default function MarkdownRenderer({ content, className = "" }: MarkdownRe
       if (line.trim().startsWith("- ") || line.trim().startsWith("* ")) {
         const bulletText = line.trim().substring(2);
         return (
-          <li key={idx} className="ml-4 list-disc text-slate-300 my-0.5">
+          <li key={idx} className="ml-4 list-disc text-main-theme my-0.5">
             {renderInline(bulletText)}
           </li>
         );
@@ -86,7 +86,7 @@ export default function MarkdownRenderer({ content, className = "" }: MarkdownRe
       const numMatch = line.trim().match(/^(\d+)\.\s+(.*)/);
       if (numMatch) {
         return (
-          <li key={idx} className="ml-5 list-decimal text-slate-300 my-0.5">
+          <li key={idx} className="ml-5 list-decimal text-main-theme my-0.5">
             {renderInline(numMatch[2])}
           </li>
         );
@@ -94,7 +94,7 @@ export default function MarkdownRenderer({ content, className = "" }: MarkdownRe
       // Blockquote
       if (line.trim().startsWith("> ")) {
         return (
-          <blockquote key={idx} className="border-l-4 border-purple-500/50 bg-purple-500/10 px-3 py-1.5 rounded-r-lg text-slate-300 italic my-2 text-xs">
+          <blockquote key={idx} className="border-l-4 border-purple-500/50 bg-purple-500/10 px-3 py-1.5 rounded-r-lg text-secondary-theme italic my-2 text-xs">
             {renderInline(line.trim().substring(2))}
           </blockquote>
         );
@@ -105,7 +105,7 @@ export default function MarkdownRenderer({ content, className = "" }: MarkdownRe
       }
 
       return (
-        <p key={idx} className="my-1 leading-relaxed text-slate-200">
+        <p key={idx} className="my-1 leading-relaxed text-main-theme">
           {renderInline(line)}
         </p>
       );
@@ -126,13 +126,13 @@ export default function MarkdownRenderer({ content, className = "" }: MarkdownRe
       const token = m[0];
       if (token.startsWith("**") && token.endsWith("**")) {
         parts.push(
-          <strong key={m.index} className="font-extrabold text-white">
+          <strong key={m.index} className="font-extrabold text-main-theme">
             {token.slice(2, -2)}
           </strong>
         );
       } else if (token.startsWith("`") && token.endsWith("`")) {
         parts.push(
-          <code key={m.index} className="px-1.5 py-0.5 rounded bg-purple-950/80 border border-purple-500/30 text-purple-200 font-mono text-[11px]">
+          <code key={m.index} className="px-1.5 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-purple-theme font-mono text-[11px]">
             {token.slice(1, -1)}
           </code>
         );
@@ -153,22 +153,23 @@ export default function MarkdownRenderer({ content, className = "" }: MarkdownRe
         if (block.type === "code") {
           const isCopied = copiedCodeIndex === idx;
           return (
-            <div key={idx} className="my-3 rounded-xl border border-white/10 bg-slate-950 overflow-hidden shadow-xl">
+            // Code blocks intentionally keep dark background for syntax readability in both themes
+            <div key={idx} className="my-3 rounded-xl border border-[var(--glass-border)] bg-slate-950 overflow-hidden shadow-xl">
               {/* Code block header bar */}
-              <div className="flex items-center justify-between px-3 py-1.5 bg-slate-900 border-b border-white/10 text-slate-400 text-[11px] font-mono">
-                <span className="flex items-center gap-1.5 text-purple-300 font-bold">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-slate-900 border-b border-white/10 text-[11px] font-mono">
+                <span className="flex items-center gap-1.5 text-purple-theme font-bold">
                   <Code className="h-3.5 w-3.5" />
                   {block.language || "code"}
                 </span>
                 <button
                   onClick={() => handleCopyCode(block.content, idx)}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-slate-300 transition-colors cursor-pointer"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-secondary-theme transition-colors cursor-pointer"
                   title="Copy code snippet"
                 >
                   {isCopied ? (
                     <>
                       <Check className="h-3 w-3 text-emerald-400" />
-                      <span className="text-emerald-400 font-bold">Copied!</span>
+                      <span className="text-emerald-theme font-bold">Copied!</span>
                     </>
                   ) : (
                     <>
@@ -178,7 +179,7 @@ export default function MarkdownRenderer({ content, className = "" }: MarkdownRe
                   )}
                 </button>
               </div>
-              {/* Code content */}
+              {/* Code content — dark background kept intentionally for syntax highlighting readability */}
               <pre className="p-3.5 text-xs font-mono text-cyan-200 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-800 leading-relaxed bg-[#0B0F19]">
                 <code>{block.content}</code>
               </pre>

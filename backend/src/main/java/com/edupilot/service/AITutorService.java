@@ -88,7 +88,7 @@ public class AITutorService {
             }
         }
 
-        String systemPrompt = promptBuilderService.buildStructuredSystemPrompt(contextDTO, activeMode);
+        String systemPrompt = promptBuilderService.buildStructuredSystemPrompt(contextDTO, activeMode, req.getMessage());
         Map<String, Object> contextMap = Map.of(
             "studentName", contextDTO.getStudentName(),
             "referencedConcept", concept != null ? concept : (contextDTO.getTodayFocusTask() != null ? contextDTO.getTodayFocusTask() : "General Studies"),

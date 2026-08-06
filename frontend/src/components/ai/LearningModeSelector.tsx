@@ -99,7 +99,7 @@ export default function LearningModeSelector({
   onModeChange
 }: LearningModeSelectorProps) {
   return (
-    <div className="bg-slate-950/60 border-b border-white/10 px-4 py-2.5 overflow-x-auto scrollbar-none sticky top-[57px] z-20 backdrop-blur-md">
+    <div className="glass-panel rounded-2xl border border-[var(--glass-border)] px-4 py-2.5 overflow-x-auto shrink-0 backdrop-blur-md">
       <div className="flex items-center gap-2 max-w-7xl mx-auto min-w-max">
         {LEARNING_MODES.map((mode) => {
           const Icon = mode.icon;
@@ -112,7 +112,7 @@ export default function LearningModeSelector({
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer border ${
                 isActive
                   ? `bg-gradient-to-r ${mode.activeColor} shadow-lg border-white/20 font-bold scale-[1.02]`
-                  : "bg-white/5 border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/10 hover:border-white/20"
+                  : "bg-white/5 border-[var(--glass-border)] text-secondary-theme hover:text-main-theme hover:bg-white/10"
               }`}
             >
               <Icon className={`h-4 w-4 ${isActive ? "text-white" : mode.color}`} />

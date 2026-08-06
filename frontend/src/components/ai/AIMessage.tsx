@@ -35,11 +35,11 @@ export default function AIMessage({ message, onRegenerate }: AIMessageProps) {
 
       {/* Message Content Bubble */}
       <div className={`max-w-[85%] sm:max-w-[78%] ${isUser ? "order-1" : "order-2"}`}>
-        <div className="flex items-center gap-2 mb-1 px-1 text-[11px] text-slate-400">
-          <span className="font-bold text-slate-300 flex items-center gap-1">
+        <div className="flex items-center gap-2 mb-1 px-1 text-[11px] text-secondary-theme">
+          <span className="font-bold text-main-theme flex items-center gap-1">
             {isUser ? "You" : "EduPilot AI"}
             {!isUser && (
-              <Sparkles className="h-3 w-3 text-purple-400 inline" />
+              <Sparkles className="h-3 w-3 text-purple-theme inline" />
             )}
           </span>
           <span>•</span>
@@ -50,7 +50,7 @@ export default function AIMessage({ message, onRegenerate }: AIMessageProps) {
           className={`p-4 rounded-2xl border shadow-lg ${
             isUser
               ? "bg-gradient-to-r from-purple-700 to-indigo-700 text-white border-purple-500/30 rounded-tr-xs"
-              : "bg-slate-900/90 text-slate-100 border-white/10 backdrop-blur-xl rounded-tl-xs"
+              : "glass-panel bg-[var(--glass-bg)] text-main-theme border-[var(--glass-border)] rounded-tl-xs"
           }`}
         >
           {isUser ? (

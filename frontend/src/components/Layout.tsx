@@ -16,7 +16,8 @@ import {
   X,
   Sun,
   Moon,
-  User
+  User,
+  Bot
 } from "lucide-react";
 import { getStoredStudentProfile } from "../services/mockData";
 import { fetchProfile } from "../services/api";
@@ -103,6 +104,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       { name: "Pomodoro Focus", href: "/dashboard/pomodoro", icon: Timer },
       { name: "Adaptive Quizzes", href: "/dashboard/quizzes", icon: GraduationCap },
       { name: "Career Guidance", href: "/dashboard/career", icon: Briefcase },
+      { name: "AI Tutor", href: "/dashboard/ai-tutor", icon: Bot },
     ],
     FACULTY: [
       { name: "Class Performance", href: "/faculty", icon: Users },
@@ -196,7 +198,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <header className="hidden md:flex justify-between items-center px-8 py-4 bg-white/5 backdrop-blur-md border-b border-white/5 relative z-30">
           <div className="flex items-center gap-4">
             <h2 className="text-lg font-semibold tracking-wide capitalize text-main-theme">
-              {pathname.split("/").pop() || "Portal"}
+              {pathname === "/dashboard/ai-tutor"
+                ? "AI Tutor"
+                : (pathname.split("/").pop() || "Portal").replace(/-/g, " ")}
             </h2>
             {currentRole === "STUDENT" && (
               <div className="flex items-center gap-1.5 bg-amber-500/10 text-amber-theme border border-amber-500/20 px-3 py-1 rounded-full text-xs font-semibold shadow-inner">
