@@ -101,7 +101,7 @@ export default function AITutorPage() {
     setLoading(true);
     setErrorMessage(null);
     try {
-      const modeObj = LEARNING_MODES.find(m => m.key === activeMode);
+      const modeObj = LEARNING_MODES.find((m: any) => m.key === activeMode);
       const title = concept ? `Study: ${concept}` : `${modeObj?.label || "AI"} Session`;
       const newConv = await createNewConversation(userId, title, undefined, concept, activeMode);
       if (newConv) {
@@ -208,7 +208,7 @@ export default function AITutorPage() {
     }
   };
 
-  const currentModeObj = LEARNING_MODES.find((m) => m.key === activeMode) || LEARNING_MODES[0];
+  const currentModeObj = LEARNING_MODES.find((m: any) => m.key === activeMode) || LEARNING_MODES[0];
 
   return (
     <div className="min-h-screen bg-[#0B0F19] text-slate-100 flex flex-col font-sans selection:bg-purple-500/30">
@@ -276,7 +276,7 @@ export default function AITutorPage() {
         <ConversationSidebar
           conversations={conversations}
           activeConvId={activeConvId}
-          onSelectConv={(id) => setActiveConvId(id)}
+          onSelectConv={(id: string) => setActiveConvId(id)}
           onNewConv={() => handleNewConversation()}
           onDeleteConv={handleDeleteConv}
           onRenameConv={handleRenameConv}
@@ -291,7 +291,7 @@ export default function AITutorPage() {
               <ConversationSidebar
                 conversations={conversations}
                 activeConvId={activeConvId}
-                onSelectConv={(id) => {
+                onSelectConv={(id: string) => {
                   setActiveConvId(id);
                   setShowMobileSidebar(false);
                 }}
@@ -314,7 +314,7 @@ export default function AITutorPage() {
             studentContext={studentContext}
             errorMessage={errorMessage}
             onClearError={() => setErrorMessage(null)}
-            onSelectPrompt={(text) => handleSendMessage(text)}
+            onSelectPrompt={(text: string) => handleSendMessage(text)}
             onRegenerateLast={() => {
               const msgs = currentConv?.messages || [];
               const lastUser = [...msgs].reverse().find((m: any) => m.role === "user");
