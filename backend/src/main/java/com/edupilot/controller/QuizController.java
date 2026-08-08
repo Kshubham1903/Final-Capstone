@@ -42,16 +42,46 @@ public class QuizController {
         }
 
         List<QuizQuestion> questions = questionRepository.findBySubjectAndDifficulty(subject, diff);
-        if (questions.isEmpty()) {
-            // Fallback to fetch by subject only
-            questions = questionRepository.findBySubject(subject);
+        List<QuizQuestion> validQuestions = new ArrayList<>();
+        for (QuizQuestion q : questions) {
+            if (!AiServiceClient.isGenericTemplateQuestion(q.getQuestionText())) {
+                validQuestions.add(q);
+            }
         }
-        if (questions.isEmpty()) {
-            // Fallback to all questions
-            questions = questionRepository.findAll();
+
+        List<QuizQuestion> allStoredForSubject = questionRepository.findBySubject(subject);
+        List<QuizQuestion> validStoredForSubject = new ArrayList<>();
+        List<String> excludeTexts = new ArrayList<>();
+        for (QuizQuestion q : allStoredForSubject) {
+            if (!AiServiceClient.isGenericTemplateQuestion(q.getQuestionText())) {
+                validStoredForSubject.add(q);
+                excludeTexts.add(q.getQuestionText());
+            }
+        }
+
+        if (validQuestions.size() < 4) {
+            List<QuizQuestion> aiGenerated = aiServiceClient.generateQuestionsForSubject(subject, diff, excludeTexts);
+            if (aiGenerated != null && !aiGenerated.isEmpty()) {
+                try {
+                    questionRepository.saveAll(aiGenerated);
+                } catch (Exception ex) {
+                    System.err.println("Failed to persist AI generated questions: " + ex.getMessage());
+                }
+                for (QuizQuestion g : aiGenerated) {
+                    if (!AiServiceClient.isGenericTemplateQuestion(g.getQuestionText())) {
+                        validStoredForSubject.add(g);
+                        validQuestions.add(g);
+                    }
+                }
+            }
+        }
+
+        List<QuizQuestion> pool = !validQuestions.isEmpty() ? validQuestions : validStoredForSubject;
+        if (pool.isEmpty()) {
+            pool = questionRepository.findAll();
         }
         
-        List<QuizQuestion> mutableQuestions = new ArrayList<>(questions);
+        List<QuizQuestion> mutableQuestions = new ArrayList<>(pool);
         Collections.shuffle(mutableQuestions);
         
         int limit = Math.min(mutableQuestions.size(), 4);

@@ -57,6 +57,8 @@ export default function Quizzes() {
     return () => clearInterval(timer);
   }, [quizStarted, isAnswered, quizFinished]);
 
+  const [seenQuestionIds, setSeenQuestionIds] = useState<string[]>([]);
+
   if (!profile) return null;
 
   const startQuiz = async (subj: string) => {
@@ -70,11 +72,17 @@ export default function Quizzes() {
     setIsAnswered(false);
     setSecondsSpent(0);
     setDiagnosticLog([]);
+    setSeenQuestionIds([]);
     
     // Fetch adaptive questions
     const questions = await fetchQuizQuestions(subj, "EASY");
     setQuizQuestions(questions);
-    setActiveQuestion(questions[0] || null);
+    const firstQ = questions[0] || null;
+    setActiveQuestion(firstQ);
+    if (firstQ) {
+      const firstKey = firstQ.id || firstQ.questionText;
+      setSeenQuestionIds([firstKey]);
+    }
   };
 
   const handleSubmitAnswer = async () => {
@@ -122,9 +130,30 @@ export default function Quizzes() {
     } else {
       const nextDiff = currentDiff;
       const nextQuestions = await fetchQuizQuestions(activeSubject, nextDiff);
-      setQuizQuestions(nextQuestions);
-      const selectedQ = nextQuestions[Math.floor(Math.random() * nextQuestions.length)] || nextQuestions[0];
-      setActiveQuestion(selectedQ);
+      
+      // Exclude questions already seen in this session
+      const unseen = nextQuestions.filter((q: any) => {
+        const key = q.id || q.questionText;
+        return !seenQuestionIds.includes(key);
+      });
+
+      let selectedQ: any = null;
+      if (unseen.length > 0) {
+        selectedQ = unseen[0];
+      } else {
+        const fallbackUnseen = quizQuestions.filter((q: any) => {
+          const key = q.id || q.questionText;
+          return !seenQuestionIds.includes(key);
+        });
+        selectedQ = fallbackUnseen.length > 0 ? fallbackUnseen[0] : (nextQuestions[0] || activeQuestion);
+      }
+
+      if (selectedQ) {
+        const key = selectedQ.id || selectedQ.questionText;
+        setSeenQuestionIds(prev => [...prev, key]);
+        setActiveQuestion(selectedQ);
+      }
+
       setSelectedOption(null);
       setIsAnswered(false);
       setSecondsSpent(0);

@@ -18,9 +18,13 @@ import {
   Compass, 
   Building2, 
   Briefcase, 
-  Code 
+  Code,
+  Plus,
+  Trash2,
+  PlusCircle,
+  Check
 } from "lucide-react";
-import { saveOnboardingStep, onboardStudent, fetchOnboardingStatus, postQuestionnaire } from "../../services/api";
+import { saveOnboardingStep, onboardStudent, fetchOnboardingStatus, postQuestionnaire, fetchSubjectsByBranchAndSemester } from "../../services/api";
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -53,6 +57,8 @@ export default function Onboarding() {
   const [currentCgpa, setCurrentCgpa] = useState(8.2);
   const [targetCgpa, setTargetCgpa] = useState(9.2);
   const [currentSubjects, setCurrentSubjects] = useState("Data Structures & Algorithms, Database Management Systems, Artificial Intelligence");
+  const [catalogSubjects, setCatalogSubjects] = useState<any[]>([]);
+  const [customSubjectInput, setCustomSubjectInput] = useState("");
   const [weakSubjects, setWeakSubjects] = useState("Dynamic Programming, Graph Theory");
   const [strongSubjects, setStrongSubjects] = useState("Binary Search Tree, SQL Joins");
   const [careerGoal, setCareerGoal] = useState("Machine Learning Engineer / AI Researcher");
@@ -111,6 +117,32 @@ export default function Onboarding() {
     }
     loadStatus();
   }, [userId]);
+
+  // Load catalog subjects for branch & semester
+  useEffect(() => {
+    async function loadCatalog() {
+      if (step === 2 && engineeringBranch) {
+        const list = await fetchSubjectsByBranchAndSemester(engineeringBranch, currentSemester);
+        setCatalogSubjects(list || []);
+      }
+    }
+    loadCatalog();
+  }, [step, engineeringBranch, currentSemester]);
+
+  const handleAddSubjectName = (name: string) => {
+    const clean = name.trim();
+    if (!clean) return;
+    const list = currentSubjects.split(",").map(s => s.trim()).filter(Boolean);
+    if (!list.some(s => s.toLowerCase() === clean.toLowerCase())) {
+      setCurrentSubjects([...list, clean].join(", "));
+    }
+  };
+
+  const handleRemoveSubjectName = (name: string) => {
+    const list = currentSubjects.split(",").map(s => s.trim()).filter(Boolean);
+    const updated = list.filter(s => s.toLowerCase() !== name.toLowerCase());
+    setCurrentSubjects(updated.join(", "));
+  };
 
   // Auto-save on step progress
   const autoSaveStep = async (nextStep: number) => {
@@ -380,9 +412,98 @@ export default function Onboarding() {
                       <input type="number" step="0.1" value={targetCgpa} onChange={e => setTargetCgpa(Number(e.target.value))} className="w-full p-3 rounded-xl glass-input" />
                     </div>
 
-                    <div className="md:col-span-2">
-                      <label className="font-bold text-secondary-theme block mb-1">Current Semester Subjects (Comma Separated)</label>
-                      <input type="text" value={currentSubjects} onChange={e => setCurrentSubjects(e.target.value)} className="w-full p-3 rounded-xl glass-input" />
+                    <div className="md:col-span-2 space-y-3 p-4 rounded-2xl bg-white/5 border border-white/10">
+                      <div className="flex justify-between items-center">
+                        <label className="font-bold text-main-theme block text-xs flex items-center gap-2">
+                          <BookOpen className="h-4 w-4 text-purple-400" />
+                          <span>Selected Academic Subjects for Adaptive Diagnosis</span>
+                        </label>
+                        <span className="text-[10px] text-purple-400 font-semibold">
+                          {currentSubjects.split(",").map(s => s.trim()).filter(Boolean).length} Subjects Selected
+                        </span>
+                      </div>
+
+                      {/* Selected Subject Chips */}
+                      <div className="flex flex-wrap gap-2 min-h-[40px] p-2.5 rounded-xl glass-input bg-black/20">
+                        {currentSubjects.split(",").map(s => s.trim()).filter(Boolean).map((subj) => (
+                          <span 
+                            key={subj} 
+                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30 shadow-sm"
+                          >
+                            <span>{subj}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSubjectName(subj)}
+                              className="hover:text-pink-400 transition-colors p-0.5"
+                              title="Remove subject"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                        {currentSubjects.split(",").map(s => s.trim()).filter(Boolean).length === 0 && (
+                          <span className="text-xs text-secondary-theme italic">No subjects selected yet. Select from catalog or add a custom subject below.</span>
+                        )}
+                      </div>
+
+                      {/* Add Custom Subject Section */}
+                      <div className="flex gap-2 pt-1">
+                        <input
+                          type="text"
+                          value={customSubjectInput}
+                          onChange={e => setCustomSubjectInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddSubjectName(customSubjectInput);
+                              setCustomSubjectInput("");
+                            }
+                          }}
+                          placeholder="Type custom subject name (e.g. Blockchain Development)..."
+                          className="flex-1 p-2.5 rounded-xl glass-input text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleAddSubjectName(customSubjectInput);
+                            setCustomSubjectInput("");
+                          }}
+                          className="px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md"
+                        >
+                          <Plus className="h-4 w-4" />
+                          <span>Add Custom</span>
+                        </button>
+                      </div>
+
+                      {/* Catalog Suggestions for Current Branch & Semester */}
+                      {catalogSubjects && catalogSubjects.length > 0 && (
+                        <div className="pt-2 space-y-1.5">
+                          <span className="text-[10px] uppercase tracking-wider font-extrabold text-secondary-theme">
+                            Official Academic Catalog ({engineeringBranch} - Sem {currentSemester}):
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {catalogSubjects.map((catSubj: any) => {
+                              const isSelected = currentSubjects.split(",").map(s => s.trim().toLowerCase()).includes(catSubj.subjectName.toLowerCase());
+                              return (
+                                <button
+                                  key={catSubj.id || catSubj.subjectCode}
+                                  type="button"
+                                  disabled={isSelected}
+                                  onClick={() => handleAddSubjectName(catSubj.subjectName)}
+                                  className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1 border ${
+                                    isSelected 
+                                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 opacity-70 cursor-default" 
+                                      : "bg-white/5 hover:bg-white/10 text-main-theme border-white/10 cursor-pointer"
+                                  }`}
+                                >
+                                  {isSelected ? <Check className="h-3 w-3 text-emerald-400" /> : <Plus className="h-3 w-3 text-purple-400" />}
+                                  <span>{catSubj.subjectCode ? `${catSubj.subjectCode}: ` : ""}{catSubj.subjectName}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div>
