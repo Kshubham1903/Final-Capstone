@@ -380,7 +380,190 @@ export async function fetchQuizQuestions(subject: string, difficulty: string): P
   const fullBank = [...QUESTION_BANK, ...localQuestions];
   
   const candidates = fullBank.filter(q => q.subject === subject && q.difficulty === difficulty);
-  return candidates.length > 0 ? candidates.slice(0, 4) : fullBank.filter(q => q.difficulty === difficulty).slice(0, 4);
+  if (candidates.length > 0) return candidates.slice(0, 4);
+
+  const subjectCandidates = fullBank.filter(q => q.subject === subject);
+  if (subjectCandidates.length > 0) return subjectCandidates.slice(0, 4);
+
+  const subjLower = subject.trim().toLowerCase();
+  if (subjLower.includes("blockchain")) {
+    return [
+      {
+        subject: subject,
+        concept: "Consensus Mechanisms",
+        difficulty: difficulty,
+        questionText: "What core problem does a blockchain consensus mechanism solve in a decentralized network?",
+        options: [
+          "Double-spending and Byzantine Generals Problem",
+          "High network latency",
+          "Excessive database storage usage",
+          "Centralized server failure"
+        ],
+        correctOptionIndex: 0,
+        conceptualExplanation: "Consensus mechanisms enable distributed nodes to reach agreement on transaction validity without trusting a central authority."
+      },
+      {
+        subject: subject,
+        concept: "Smart Contracts",
+        difficulty: difficulty,
+        questionText: "What is the primary function of a smart contract on Ethereum?",
+        options: [
+          "Self-executing code deployed on-chain that runs automatically when predetermined conditions are met",
+          "Hardware accelerator for mining validation",
+          "Encrypted email protocol",
+          "Paper legal document scanned into the network"
+        ],
+        correctOptionIndex: 0,
+        conceptualExplanation: "Smart contracts are immutable programs deployed on EVM that execute deterministic logic when triggered by transactions."
+      },
+      {
+        subject: subject,
+        concept: "Proof of Stake",
+        difficulty: difficulty,
+        questionText: "How does Proof of Stake (PoS) differ fundamentally from Proof of Work (PoW)?",
+        options: [
+          "PoS selects block validators based on staked capital rather than hashing power",
+          "PoS requires 100x more electricity than PoW",
+          "PoS eliminates transaction fees entirely",
+          "PoW does not use cryptographic hashing"
+        ],
+        correctOptionIndex: 0,
+        conceptualExplanation: "PoS replaces energy-intensive hash mining with capital commitment (staking) to secure network consensus."
+      },
+      {
+        subject: subject,
+        concept: "Cryptographic Linking",
+        difficulty: difficulty,
+        questionText: "In blockchain data structures, how are consecutive blocks cryptographically linked?",
+        options: [
+          "Each block header contains the cryptographic hash of the preceding block header",
+          "Blocks connect via IP addresses",
+          "Blocks use relational foreign key primary key pairs",
+          "Blocks are merged into a single flat file"
+        ],
+        correctOptionIndex: 0,
+        conceptualExplanation: "Including the previous block's SHA-256/Keccak hash creates an append-only chain where altering past blocks invalidates all subsequent hashes."
+      }
+    ];
+  } else if (subjLower.includes("cloud security") || subjLower.includes("cloud")) {
+    return [
+      {
+        subject: subject,
+        concept: "Identity & Access Management",
+        difficulty: difficulty,
+        questionText: "Which IAM principle ensures users receive only the permissions required for their specific job tasks?",
+        options: [
+          "Principle of Least Privilege",
+          "Role-Based Overdrive",
+          "Implicit Allow Access",
+          "Root Credentials Sharing"
+        ],
+        correctOptionIndex: 0,
+        conceptualExplanation: "The Principle of Least Privilege dictates granting users the minimum necessary access required to complete designated assignments."
+      },
+      {
+        subject: subject,
+        concept: "Shared Responsibility Model",
+        difficulty: difficulty,
+        questionText: "In the Cloud Shared Responsibility Model, which security layer is managed primarily by the cloud provider?",
+        options: [
+          "Physical infrastructure and data center facility security",
+          "User password strength policies",
+          "Customer application code vulnerability patching",
+          "S3 bucket public access settings"
+        ],
+        correctOptionIndex: 0,
+        conceptualExplanation: "Cloud providers manage security 'of' the cloud (hardware, facilities, host OS), while customers secure data 'in' the cloud."
+      },
+      {
+        subject: subject,
+        concept: "Virtual Firewalls",
+        difficulty: difficulty,
+        questionText: "What is the function of an AWS Security Group in cloud networking?",
+        options: [
+          "A stateful virtual firewall controlling inbound and outbound traffic at the instance level",
+          "A customer user directory for web applications",
+          "An automated backup scheduler for EBS volumes",
+          "A DNS routing registrar"
+        ],
+        correctOptionIndex: 0,
+        conceptualExplanation: "Security Groups operate statefully at the ENI/instance level, automatically allowing return traffic for outbound requests."
+      },
+      {
+        subject: subject,
+        concept: "Zero Trust Security",
+        difficulty: difficulty,
+        questionText: "What is the primary architectural pillar behind Zero Trust Security in cloud environments?",
+        options: [
+          "Never trust, always verify every access request regardless of network origin",
+          "Trust all internal network traffic behind a perimeter firewall",
+          "Disable encryption for verified internal microservices",
+          "Grant full root rights to internal IP subnets"
+        ],
+        correctOptionIndex: 0,
+        conceptualExplanation: "Zero Trust assumes threats exist inside and outside the network, enforcing strict authentication, authorization, and continuous validation."
+      }
+    ];
+  }
+
+  return [
+    {
+      subject: subject,
+      concept: `${subject} Architecture`,
+      difficulty: difficulty,
+      questionText: `What is a fundamental design principle when building scalable software modules in ${subject}?`,
+      options: [
+        `Ensuring loose coupling and modular separation of concerns across ${subject} components`,
+        `Tightly coupling all business logic into a single monolithic script`,
+        `Disabling exception handling during high-throughput processing`,
+        `Hardcoding configuration parameters directly into production binaries`
+      ],
+      correctOptionIndex: 0,
+      conceptualExplanation: `Modular separation of concerns ensures maintainability and clean component isolation in ${subject} architectures.`
+    },
+    {
+      subject: subject,
+      concept: `${subject} Performance Optimization`,
+      difficulty: difficulty,
+      questionText: `When optimizing latency and throughput in ${subject}, which approach yields the most reliable performance gains?`,
+      options: [
+        `Identifying performance bottlenecks via profiling and optimizing critical execution paths in ${subject}`,
+        `Unbounded recursive calls without exit criteria`,
+        `Disabling caching layers across all service interfaces`,
+        `Increasing hardware allocation without profiling underlying bottlenecks`
+      ],
+      correctOptionIndex: 0,
+      conceptualExplanation: `Targeted profiling pinpoints exact bottlenecks, allowing data-driven optimization in ${subject} workflows.`
+    },
+    {
+      subject: subject,
+      concept: `${subject} Error Resilience`,
+      difficulty: difficulty,
+      questionText: `How should high-availability systems in ${subject} handle transient fault conditions?`,
+      options: [
+        `Implementing exponential backoff retry strategies with circuit breakers in ${subject}`,
+        `Ignoring errors and returning empty unvalidated payloads`,
+        `Terminating the host process immediately upon receiving a non-fatal warning`,
+        `Bypassing input validation checks during peak traffic`
+      ],
+      correctOptionIndex: 0,
+        conceptualExplanation: `Exponential backoff and circuit breakers prevent cascading failures and handle transient disruptions resiliently in ${subject}.`
+    },
+    {
+      subject: subject,
+      concept: `${subject} Security & Data Integrity`,
+      difficulty: difficulty,
+      questionText: `What practice is critical for protecting data integrity and access control within ${subject} workflows?`,
+      options: [
+        `Validating and sanitizing all inputs at system boundaries before processing in ${subject}`,
+        `Storing API keys in client-side public assets`,
+        `Disabling TLS encryption for internal microservices`,
+        `Granting default administrative permissions to external client tokens`
+      ],
+      correctOptionIndex: 0,
+      conceptualExplanation: `Input validation and boundary sanitization prevent injection vulnerabilities and secure ${subject} operations.`
+    }
+  ];
 }
 
 export async function createQuizQuestion(question: {

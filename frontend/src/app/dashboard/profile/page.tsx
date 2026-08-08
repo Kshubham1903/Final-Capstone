@@ -10,9 +10,13 @@ import {
   RefreshCw, 
   CheckCircle,
   AlertCircle,
-  Building2
+  Building2,
+  BookOpen,
+  Plus,
+  Trash2,
+  Check
 } from "lucide-react";
-import { fetchFullProfile, updateFullProfile } from "../../../services/api";
+import { fetchFullProfile, updateFullProfile, fetchSubjectsByBranchAndSemester } from "../../../services/api";
 
 export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
@@ -34,6 +38,9 @@ export default function ProfilePage() {
   const [preferredStudyHours, setPreferredStudyHours] = useState(4.0);
   const [learningStyle, setLearningStyle] = useState("Visual");
   const [careerGoals, setCareerGoals] = useState("");
+  const [subjects, setSubjects] = useState<string[]>([]);
+  const [catalogSubjects, setCatalogSubjects] = useState<any[]>([]);
+  const [newSubjectInput, setNewSubjectInput] = useState("");
 
   // AI Calculated Metrics
   const [sgi, setSgi] = useState(0.0);
@@ -61,6 +68,7 @@ export default function ProfilePage() {
         setPreferredStudyHours(p.preferredStudyHoursPerDay || 4.0);
         setLearningStyle(p.learningStyle || "Visual");
         setCareerGoals(p.careerGoals ? p.careerGoals.join(", ") : "Software Engineer");
+        setSubjects(p.subjects || ["Data Structures & Algorithms", "Database Management Systems", "Artificial Intelligence"]);
 
         setSgi(p.studentGrowthIndex || 0.0);
         setPredictedCgpa(p.predictedCgpa || 0.0);
@@ -71,6 +79,28 @@ export default function ProfilePage() {
     }
     loadData();
   }, [userId]);
+
+  useEffect(() => {
+    async function loadCatalog() {
+      if (branch && semester) {
+        const list = await fetchSubjectsByBranchAndSemester(branch, semester);
+        setCatalogSubjects(list || []);
+      }
+    }
+    loadCatalog();
+  }, [branch, semester]);
+
+  const handleAddSubject = (name: string) => {
+    const clean = name.trim();
+    if (!clean) return;
+    if (!subjects.some(s => s.toLowerCase() === clean.toLowerCase())) {
+      setSubjects(prev => [...prev, clean]);
+    }
+  };
+
+  const handleRemoveSubject = (name: string) => {
+    setSubjects(prev => prev.filter(s => s.toLowerCase() !== name.toLowerCase()));
+  };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,7 +150,8 @@ export default function ProfilePage() {
       targetCgpa: Number(targetCgpa),
       preferredStudyHoursPerDay: Number(preferredStudyHours),
       learningStyle,
-      careerGoals: careerGoals.split(",").map(s => s.trim())
+      careerGoals: careerGoals.split(",").map(s => s.trim()),
+      subjects: subjects
     };
 
     try {
@@ -357,6 +388,106 @@ export default function ProfilePage() {
                   onChange={e => setCareerGoals(e.target.value)} 
                   className="w-full p-3 rounded-xl glass-input" 
                 />
+              </div>
+
+              {/* My Subjects / Enrolled & Custom Subjects Section */}
+              <div className="md:col-span-2 space-y-4 p-5 rounded-2xl bg-white/5 border border-white/10 mt-2">
+                <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                  <div>
+                    <h4 className="font-extrabold text-main-theme text-sm flex items-center gap-2">
+                      <BookOpen className="h-4 w-4 text-purple-theme" />
+                      <span>My Enrolled & Custom Subjects</span>
+                    </h4>
+                    <p className="text-[11px] text-secondary-theme mt-0.5">
+                      Subjects saved here automatically appear in your Adaptive Quiz & Diagnostic Hub.
+                    </p>
+                  </div>
+                  <span className="text-xs font-extrabold text-purple-400 bg-purple-500/10 px-3 py-1 rounded-full border border-purple-500/20">
+                    {subjects.length} Active Subjects
+                  </span>
+                </div>
+
+                {/* Active Subject Chips */}
+                <div className="flex flex-wrap gap-2 min-h-[44px] p-3 rounded-xl glass-input bg-black/20">
+                  {subjects.map((subj) => (
+                    <span 
+                      key={subj} 
+                      className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-200 border border-purple-500/30 shadow-sm"
+                    >
+                      <span>{subj}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSubject(subj)}
+                        className="hover:text-pink-400 text-secondary-theme transition-colors p-0.5"
+                        title="Remove subject from profile"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                  {subjects.length === 0 && (
+                    <span className="text-xs text-secondary-theme italic">No subjects added. Add catalog or custom subjects below.</span>
+                  )}
+                </div>
+
+                {/* Add Custom Subject Input */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newSubjectInput}
+                    onChange={e => setNewSubjectInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddSubject(newSubjectInput);
+                        setNewSubjectInput("");
+                      }
+                    }}
+                    placeholder="Enter custom subject (e.g. Blockchain Development)..."
+                    className="flex-1 p-3 rounded-xl glass-input text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleAddSubject(newSubjectInput);
+                      setNewSubjectInput("");
+                    }}
+                    className="px-5 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md cursor-pointer transition-all"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Add Custom Subject</span>
+                  </button>
+                </div>
+
+                {/* Academic Catalog Suggestions */}
+                {catalogSubjects && catalogSubjects.length > 0 && (
+                  <div className="pt-2 space-y-2 border-t border-white/5">
+                    <span className="text-[10px] uppercase tracking-wider font-extrabold text-secondary-theme">
+                      Select from Academic Catalog ({branch} - Sem {semester}):
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {catalogSubjects.map((catSubj: any) => {
+                        const isEnrolled = subjects.some(s => s.toLowerCase() === catSubj.subjectName.toLowerCase());
+                        return (
+                          <button
+                            key={catSubj.id || catSubj.subjectCode}
+                            type="button"
+                            disabled={isEnrolled}
+                            onClick={() => handleAddSubject(catSubj.subjectName)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 border ${
+                              isEnrolled 
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 opacity-75 cursor-default" 
+                                : "bg-white/5 hover:bg-white/10 text-main-theme border-white/10 cursor-pointer"
+                            }`}
+                          >
+                            {isEnrolled ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Plus className="h-3.5 w-3.5 text-purple-400" />}
+                            <span>{catSubj.subjectCode ? `${catSubj.subjectCode}: ` : ""}{catSubj.subjectName}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
