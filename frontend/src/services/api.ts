@@ -360,11 +360,18 @@ export async function getRecommendations(profileId: string): Promise<any> {
   };
 }
 
-export async function fetchQuizQuestions(subject: string, difficulty: string): Promise<any[]> {
+export async function fetchQuizQuestions(subject: string, difficulty: string, excludeIds?: string[]): Promise<any[]> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/quizzes/questions?subject=${encodeURIComponent(subject)}&difficulty=${difficulty}`, {
+      const params = new URLSearchParams({
+        subject: subject,
+        difficulty: difficulty
+      });
+      if (excludeIds && excludeIds.length > 0) {
+        params.append("exclude", excludeIds.join(","));
+      }
+      const res = await fetch(`${BACKEND_URL}/api/quizzes/questions?${params.toString()}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -380,24 +387,25 @@ export async function fetchQuizQuestions(subject: string, difficulty: string): P
   const fullBank = [...QUESTION_BANK, ...localQuestions];
   
   const candidates = fullBank.filter(q => q.subject === subject && q.difficulty === difficulty);
-  if (candidates.length > 0) return candidates.slice(0, 4);
+  if (candidates.length > 0) return candidates.slice(0, 10);
 
   const subjectCandidates = fullBank.filter(q => q.subject === subject);
-  if (subjectCandidates.length > 0) return subjectCandidates.slice(0, 4);
+  if (subjectCandidates.length > 0) return subjectCandidates.slice(0, 10);
 
   const subjLower = subject.trim().toLowerCase();
+  let rawFallback: any[] = [];
   if (subjLower.includes("blockchain")) {
-    return [
+    rawFallback = [
       {
         subject: subject,
         concept: "Consensus Mechanisms",
         difficulty: difficulty,
         questionText: "What core problem does a blockchain consensus mechanism solve in a decentralized network?",
         options: [
-          "Double-spending and Byzantine Generals Problem",
-          "High network latency",
-          "Excessive database storage usage",
-          "Centralized server failure"
+          "Double-spending prevention and Byzantine fault tolerance agreement",
+          "High physical network latency reduction",
+          "Relational database storage capacity expansion",
+          "Centralized server cluster hardware recovery"
         ],
         correctOptionIndex: 0,
         conceptualExplanation: "Consensus mechanisms enable distributed nodes to reach agreement on transaction validity without trusting a central authority."
@@ -408,12 +416,12 @@ export async function fetchQuizQuestions(subject: string, difficulty: string): P
         difficulty: difficulty,
         questionText: "What is the primary function of a smart contract on Ethereum?",
         options: [
-          "Self-executing code deployed on-chain that runs automatically when predetermined conditions are met",
-          "Hardware accelerator for mining validation",
-          "Encrypted email protocol",
-          "Paper legal document scanned into the network"
+          "Hardware accelerator for cryptographic mining validation",
+          "Self-executing on-chain code that runs when conditions are met",
+          "Encrypted peer-to-peer instant messaging protocol client",
+          "Scanned physical paper contract stored in network storage"
         ],
-        correctOptionIndex: 0,
+        correctOptionIndex: 1,
         conceptualExplanation: "Smart contracts are immutable programs deployed on EVM that execute deterministic logic when triggered by transactions."
       },
       {
@@ -422,12 +430,12 @@ export async function fetchQuizQuestions(subject: string, difficulty: string): P
         difficulty: difficulty,
         questionText: "How does Proof of Stake (PoS) differ fundamentally from Proof of Work (PoW)?",
         options: [
-          "PoS selects block validators based on staked capital rather than hashing power",
-          "PoS requires 100x more electricity than PoW",
-          "PoS eliminates transaction fees entirely",
-          "PoW does not use cryptographic hashing"
+          "PoS requires higher hardware electricity consumption than PoW",
+          "PoS eliminates all transaction gas fees across the network",
+          "PoS selects validators based on staked capital instead of hash power",
+          "PoW does not utilize any cryptographic hash calculations"
         ],
-        correctOptionIndex: 0,
+        correctOptionIndex: 2,
         conceptualExplanation: "PoS replaces energy-intensive hash mining with capital commitment (staking) to secure network consensus."
       },
       {
@@ -436,27 +444,27 @@ export async function fetchQuizQuestions(subject: string, difficulty: string): P
         difficulty: difficulty,
         questionText: "In blockchain data structures, how are consecutive blocks cryptographically linked?",
         options: [
-          "Each block header contains the cryptographic hash of the preceding block header",
-          "Blocks connect via IP addresses",
-          "Blocks use relational foreign key primary key pairs",
-          "Blocks are merged into a single flat file"
+          "Blocks connect via static IP address routing tables",
+          "Blocks use relational database primary key foreign key links",
+          "Blocks merge into a single centralized flat log file",
+          "Each block header contains the hash of the preceding block header"
         ],
-        correctOptionIndex: 0,
+        correctOptionIndex: 3,
         conceptualExplanation: "Including the previous block's SHA-256/Keccak hash creates an append-only chain where altering past blocks invalidates all subsequent hashes."
       }
     ];
   } else if (subjLower.includes("cloud security") || subjLower.includes("cloud")) {
-    return [
+    rawFallback = [
       {
         subject: subject,
         concept: "Identity & Access Management",
         difficulty: difficulty,
         questionText: "Which IAM principle ensures users receive only the permissions required for their specific job tasks?",
         options: [
-          "Principle of Least Privilege",
-          "Role-Based Overdrive",
-          "Implicit Allow Access",
-          "Root Credentials Sharing"
+          "Principle of Least Privilege access control policy",
+          "Role-Based Overdrive execution privileges scheme",
+          "Implicit Allow Access default authorization mode",
+          "Shared Root Credentials administrative delegation"
         ],
         correctOptionIndex: 0,
         conceptualExplanation: "The Principle of Least Privilege dictates granting users the minimum necessary access required to complete designated assignments."
@@ -467,12 +475,12 @@ export async function fetchQuizQuestions(subject: string, difficulty: string): P
         difficulty: difficulty,
         questionText: "In the Cloud Shared Responsibility Model, which security layer is managed primarily by the cloud provider?",
         options: [
-          "Physical infrastructure and data center facility security",
-          "User password strength policies",
-          "Customer application code vulnerability patching",
-          "S3 bucket public access settings"
+          "Customer application source code security vulnerability fixes",
+          "Physical data center infrastructure and host facility hardware security",
+          "User password complexity policies and rotation schedules",
+          "S3 storage bucket public access permission configuration flags"
         ],
-        correctOptionIndex: 0,
+        correctOptionIndex: 1,
         conceptualExplanation: "Cloud providers manage security 'of' the cloud (hardware, facilities, host OS), while customers secure data 'in' the cloud."
       },
       {
@@ -481,12 +489,12 @@ export async function fetchQuizQuestions(subject: string, difficulty: string): P
         difficulty: difficulty,
         questionText: "What is the function of an AWS Security Group in cloud networking?",
         options: [
-          "A stateful virtual firewall controlling inbound and outbound traffic at the instance level",
-          "A customer user directory for web applications",
-          "An automated backup scheduler for EBS volumes",
-          "A DNS routing registrar"
+          "Customer database management server for user records",
+          "Automated backup scheduler for Elastic Block Storage volumes",
+          "Stateful virtual firewall controlling instance inbound and outbound traffic",
+          "Domain Name System registrar and public routing manager"
         ],
-        correctOptionIndex: 0,
+        correctOptionIndex: 2,
         conceptualExplanation: "Security Groups operate statefully at the ENI/instance level, automatically allowing return traffic for outbound requests."
       },
       {
@@ -495,75 +503,96 @@ export async function fetchQuizQuestions(subject: string, difficulty: string): P
         difficulty: difficulty,
         questionText: "What is the primary architectural pillar behind Zero Trust Security in cloud environments?",
         options: [
-          "Never trust, always verify every access request regardless of network origin",
-          "Trust all internal network traffic behind a perimeter firewall",
-          "Disable encryption for verified internal microservices",
-          "Grant full root rights to internal IP subnets"
+          "Trusting all internal network traffic behind perimeter firewalls",
+          "Disabling TLS encryption protocols for internal service calls",
+          "Granting root permissions to all internal subnet IP ranges",
+          "Never trust, always verify every request regardless of origin"
+        ],
+        correctOptionIndex: 3,
+        conceptualExplanation: "Zero Trust assumes threats exist inside and outside the network, enforcing strict authentication, authorization, and continuous validation."
+      }
+    ];
+  } else {
+    rawFallback = [
+      {
+        subject: subject,
+        concept: `${subject} Architecture`,
+        difficulty: difficulty,
+        questionText: `What is a fundamental design principle when building scalable software modules in ${subject}?`,
+        options: [
+          `Ensuring loose coupling and modular separation of concerns across components`,
+          `Tightly coupling business logic and data persistence into a single file`,
+          `Disabling error handling and input validation during execution cycles`,
+          `Hardcoding production system parameters into public binary files`
         ],
         correctOptionIndex: 0,
-        conceptualExplanation: "Zero Trust assumes threats exist inside and outside the network, enforcing strict authentication, authorization, and continuous validation."
+        conceptualExplanation: `Modular separation of concerns ensures maintainability and clean component isolation in ${subject} architectures.`
+      },
+      {
+        subject: subject,
+        concept: `${subject} Performance Optimization`,
+        difficulty: difficulty,
+        questionText: `When optimizing latency and throughput in ${subject}, which approach yields the most reliable performance gains?`,
+        options: [
+          `Executing unbounded recursive loops without defined termination criteria`,
+          `Profiling execution bottlenecks and optimizing critical execution paths`,
+          `Disabling caching layers across all service API interface endpoints`,
+          `Increasing server hardware specs without profiling underlying bottlenecks`
+        ],
+        correctOptionIndex: 1,
+        conceptualExplanation: `Targeted profiling pinpoints exact bottlenecks, allowing data-driven optimization in ${subject} workflows.`
+      },
+      {
+        subject: subject,
+        concept: `${subject} Error Resilience`,
+        difficulty: difficulty,
+        questionText: `How should high-availability systems in ${subject} handle transient fault conditions?`,
+        options: [
+          `Ignoring system errors and returning empty unvalidated response payloads`,
+          `Terminating host server processes upon encountering non-fatal warnings`,
+          `Implementing exponential backoff retry strategies with circuit breakers`,
+          `Bypassing input validation and boundary security checks under heavy load`
+        ],
+        correctOptionIndex: 2,
+        conceptualExplanation: `Exponential backoff and circuit breakers prevent cascading failures and handle transient disruptions resiliently in ${subject}.`
+      },
+      {
+        subject: subject,
+        concept: `${subject} Security & Data Integrity`,
+        difficulty: difficulty,
+        questionText: `What practice is critical for protecting data integrity and access control within ${subject} workflows?`,
+        options: [
+          `Storing API secret credentials in client-side open source assets`,
+          `Disabling TLS encryption protocols across internal microservices`,
+          `Granting full admin permissions to all default user access tokens`,
+          `Validating and sanitizing all inputs at system boundaries before processing`
+        ],
+        correctOptionIndex: 3,
+        conceptualExplanation: `Input validation and boundary sanitization prevent injection vulnerabilities and secure ${subject} operations.`
       }
     ];
   }
 
-  return [
-    {
-      subject: subject,
-      concept: `${subject} Architecture`,
-      difficulty: difficulty,
-      questionText: `What is a fundamental design principle when building scalable software modules in ${subject}?`,
-      options: [
-        `Ensuring loose coupling and modular separation of concerns across ${subject} components`,
-        `Tightly coupling all business logic into a single monolithic script`,
-        `Disabling exception handling during high-throughput processing`,
-        `Hardcoding configuration parameters directly into production binaries`
-      ],
-      correctOptionIndex: 0,
-      conceptualExplanation: `Modular separation of concerns ensures maintainability and clean component isolation in ${subject} architectures.`
-    },
-    {
-      subject: subject,
-      concept: `${subject} Performance Optimization`,
-      difficulty: difficulty,
-      questionText: `When optimizing latency and throughput in ${subject}, which approach yields the most reliable performance gains?`,
-      options: [
-        `Identifying performance bottlenecks via profiling and optimizing critical execution paths in ${subject}`,
-        `Unbounded recursive calls without exit criteria`,
-        `Disabling caching layers across all service interfaces`,
-        `Increasing hardware allocation without profiling underlying bottlenecks`
-      ],
-      correctOptionIndex: 0,
-      conceptualExplanation: `Targeted profiling pinpoints exact bottlenecks, allowing data-driven optimization in ${subject} workflows.`
-    },
-    {
-      subject: subject,
-      concept: `${subject} Error Resilience`,
-      difficulty: difficulty,
-      questionText: `How should high-availability systems in ${subject} handle transient fault conditions?`,
-      options: [
-        `Implementing exponential backoff retry strategies with circuit breakers in ${subject}`,
-        `Ignoring errors and returning empty unvalidated payloads`,
-        `Terminating the host process immediately upon receiving a non-fatal warning`,
-        `Bypassing input validation checks during peak traffic`
-      ],
-      correctOptionIndex: 0,
-        conceptualExplanation: `Exponential backoff and circuit breakers prevent cascading failures and handle transient disruptions resiliently in ${subject}.`
-    },
-    {
-      subject: subject,
-      concept: `${subject} Security & Data Integrity`,
-      difficulty: difficulty,
-      questionText: `What practice is critical for protecting data integrity and access control within ${subject} workflows?`,
-      options: [
-        `Validating and sanitizing all inputs at system boundaries before processing in ${subject}`,
-        `Storing API keys in client-side public assets`,
-        `Disabling TLS encryption for internal microservices`,
-        `Granting default administrative permissions to external client tokens`
-      ],
-      correctOptionIndex: 0,
-      conceptualExplanation: `Input validation and boundary sanitization prevent injection vulnerabilities and secure ${subject} operations.`
+  // Shuffle options and update correctOptionIndex for frontend fallback safety
+  return rawFallback.map(item => {
+    const originalOptions = [...item.options];
+    const origIdx = item.correctOptionIndex;
+    const correctText = originalOptions[origIdx];
+    
+    // Simple deterministic/random shuffle
+    const paired = originalOptions.map((opt, idx) => ({ opt, isCorrect: idx === origIdx }));
+    for (let i = paired.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [paired[i], paired[j]] = [paired[j], paired[i]];
     }
-  ];
+    const newOptions = paired.map(p => p.opt);
+    const newCorrectIdx = paired.findIndex(p => p.isCorrect);
+    return {
+      ...item,
+      options: newOptions,
+      correctOptionIndex: newCorrectIdx
+    };
+  });
 }
 
 export async function createQuizQuestion(question: {

@@ -58,8 +58,38 @@ export default function Quizzes() {
   }, [quizStarted, isAnswered, quizFinished]);
 
   const [seenQuestionIds, setSeenQuestionIds] = useState<string[]>([]);
+  const [isExhausted, setIsExhausted] = useState(false);
 
   if (!profile) return null;
+
+  const getStorageKey = (subj: string) => {
+    const studentId = profile ? (profile.id || "default_student") : "default_student";
+    return `quiz_seen_${studentId}_${subj}`;
+  };
+
+  const getPersistedSeenIds = (subj: string): string[] => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = localStorage.getItem(getStorageKey(subj));
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const savePersistedSeenId = (subj: string, questionKey: string) => {
+    if (typeof window === "undefined" || !questionKey) return;
+    try {
+      const current = getPersistedSeenIds(subj);
+      if (!current.includes(questionKey)) {
+        const updated = [...current, questionKey];
+        const trimmed = updated.length > 60 ? updated.slice(updated.length - 40) : updated;
+        localStorage.setItem(getStorageKey(subj), JSON.stringify(trimmed));
+      }
+    } catch (e) {
+      console.warn("Could not persist seen question ID", e);
+    }
+  };
 
   const startQuiz = async (subj: string) => {
     setActiveSubject(subj);
@@ -68,21 +98,54 @@ export default function Quizzes() {
     setQuestionCount(0);
     setCorrectAnswers(0);
     setQuizFinished(false);
+    setIsExhausted(false);
     setSelectedOption(null);
     setIsAnswered(false);
     setSecondsSpent(0);
     setDiagnosticLog([]);
-    setSeenQuestionIds([]);
+
+    const persistedSeen = getPersistedSeenIds(subj);
+    const cumulativeExclusions = [...persistedSeen];
     
-    // Fetch adaptive questions
-    const questions = await fetchQuizQuestions(subj, "EASY");
-    setQuizQuestions(questions);
-    const firstQ = questions[0] || null;
-    setActiveQuestion(firstQ);
-    if (firstQ) {
-      const firstKey = firstQ.id || firstQ.questionText;
-      setSeenQuestionIds([firstKey]);
+    // Fetch initial 10-question session pool from backend
+    let sessionPool: any[] = [];
+    const easyBatch = await fetchQuizQuestions(subj, "EASY", cumulativeExclusions);
+    for (const q of easyBatch || []) {
+      const key = q.id || q.questionText;
+      if (!cumulativeExclusions.includes(key)) {
+        cumulativeExclusions.push(key);
+        sessionPool.push(q);
+      }
     }
+
+    // If initial fetch returned fewer than 10, fetch additional difficulties to ensure 10 unique session items
+    if (sessionPool.length < 10) {
+      for (const d of ["MEDIUM", "HARD", "EASY"]) {
+        if (sessionPool.length >= 10) break;
+        const extraBatch = await fetchQuizQuestions(subj, d, cumulativeExclusions);
+        for (const q of extraBatch || []) {
+          if (sessionPool.length >= 10) break;
+          const key = q.id || q.questionText;
+          if (!cumulativeExclusions.includes(key)) {
+            cumulativeExclusions.push(key);
+            sessionPool.push(q);
+          }
+        }
+      }
+    }
+
+    if (sessionPool.length === 0) {
+      setIsExhausted(true);
+      return;
+    }
+
+    setQuizQuestions(sessionPool);
+    setSeenQuestionIds(cumulativeExclusions);
+    
+    const firstQ = sessionPool[0];
+    setActiveQuestion(firstQ);
+    const firstKey = firstQ.id || firstQ.questionText;
+    savePersistedSeenId(subj, firstKey);
   };
 
   const handleSubmitAnswer = async () => {
@@ -117,7 +180,7 @@ export default function Quizzes() {
   };
 
   const handleNextStep = async () => {
-    if (questionCount >= 4) {
+    if (questionCount >= 10) {
       setQuizFinished(true);
       
       const conn = await checkBackendConnection();
@@ -128,31 +191,32 @@ export default function Quizzes() {
         applyResultsToProfileLocal();
       }
     } else {
-      const nextDiff = currentDiff;
-      const nextQuestions = await fetchQuizQuestions(activeSubject, nextDiff);
-      
-      // Exclude questions already seen in this session
-      const unseen = nextQuestions.filter((q: any) => {
-        const key = q.id || q.questionText;
-        return !seenQuestionIds.includes(key);
-      });
+      const nextIndex = questionCount; // questionCount is now 1 for Q2, 2 for Q3... 9 for Q10
+      let nextQ = quizQuestions[nextIndex];
 
-      let selectedQ: any = null;
-      if (unseen.length > 0) {
-        selectedQ = unseen[0];
-      } else {
-        const fallbackUnseen = quizQuestions.filter((q: any) => {
+      if (!nextQ) {
+        // Fallback fetch if pool was shorter than 10
+        const extraQuestions = await fetchQuizQuestions(activeSubject, currentDiff, seenQuestionIds);
+        const unseen = (extraQuestions || []).filter((q: any) => {
           const key = q.id || q.questionText;
           return !seenQuestionIds.includes(key);
         });
-        selectedQ = fallbackUnseen.length > 0 ? fallbackUnseen[0] : (nextQuestions[0] || activeQuestion);
+        if (unseen.length > 0) {
+          nextQ = unseen[0];
+          const key = nextQ.id || nextQ.questionText;
+          setSeenQuestionIds(prev => [...prev, key]);
+          setQuizQuestions(prev => [...prev, nextQ]);
+        }
       }
 
-      if (selectedQ) {
-        const key = selectedQ.id || selectedQ.questionText;
-        setSeenQuestionIds(prev => [...prev, key]);
-        setActiveQuestion(selectedQ);
+      if (!nextQ) {
+        setIsExhausted(true);
+        return;
       }
+
+      const key = nextQ.id || nextQ.questionText;
+      savePersistedSeenId(activeSubject, key);
+      setActiveQuestion(nextQ);
 
       setSelectedOption(null);
       setIsAnswered(false);
@@ -161,7 +225,7 @@ export default function Quizzes() {
   };
 
   const applyResultsToProfileLocal = () => {
-    const accuracy = correctAnswers / 4;
+    const accuracy = correctAnswers / 10;
     const masteryChange = accuracy >= 0.75 ? 8.0 : accuracy >= 0.5 ? 4.0 : -2.0;
     
     const updatedMastery = { ...profile.conceptMastery };
@@ -210,7 +274,7 @@ export default function Quizzes() {
             <span>Adaptive Diagnostic Hub</span>
           </h1>
           <p className="text-secondary-theme text-sm mt-1">
-            EduPilot quizzes scale question difficulty in real-time based on conceptual accuracy and speed to bypass rote memorization testing.
+            EduPilot quizzes scale question difficulty in real-time based on conceptual accuracy and speed across 10-question diagnostic sessions.
           </p>
         </div>
 
@@ -233,7 +297,7 @@ export default function Quizzes() {
                   onClick={() => startQuiz(subj)}
                   className="w-full py-3 bg-white/5 hover:bg-purple-600/20 border border-white/5 hover:border-purple-500/30 rounded-xl text-xs font-bold text-main-theme hover:text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <span>Launch Diagnostic Set</span>
+                  <span>Launch 10-Q Diagnostic Set</span>
                   <ArrowRight className="h-4 w-4" />
                 </button>
               </div>
@@ -241,8 +305,45 @@ export default function Quizzes() {
           </div>
         )}
 
+        {/* EXHAUSTED POOL PANEL */}
+        {quizStarted && isExhausted && (
+          <div className="glass-panel p-8 rounded-2xl border border-white/10 space-y-6 text-center max-w-xl mx-auto">
+            <div className="h-12 w-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/20 mx-auto">
+              <AlertCircle className="h-6 w-6 text-amber-400" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold text-main-theme">No New Questions Available</h3>
+              <p className="text-xs text-secondary-theme leading-relaxed">
+                No new questions are available for this topic right now. You can restart the quiz or choose another topic.
+              </p>
+            </div>
+            <div className="flex gap-4 justify-center pt-2">
+              <button
+                onClick={() => {
+                  if (typeof window !== "undefined") {
+                    localStorage.removeItem(getStorageKey(activeSubject));
+                  }
+                  startQuiz(activeSubject);
+                }}
+                className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                Reset Topic History & Restart
+              </button>
+              <button
+                onClick={() => {
+                  setQuizStarted(false);
+                  setIsExhausted(false);
+                }}
+                className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-main-theme border border-white/10 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                Choose Another Subject
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* IN QUIZ PANEL */}
-        {quizStarted && !quizFinished && activeQuestion && (
+        {quizStarted && !quizFinished && !isExhausted && activeQuestion && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
             
             {/* Left Column: Active Question Form (2/3 width) */}
@@ -251,7 +352,7 @@ export default function Quizzes() {
               {/* Question Header Status */}
               <div className="flex justify-between items-center border-b border-white/5 pb-4">
                 <span className="text-[10px] font-bold text-secondary-theme uppercase tracking-widest">
-                  Question {questionCount + 1} of 4
+                  Question {questionCount + 1} of 10
                 </span>
                 
                 <div className="flex items-center gap-3">
@@ -266,6 +367,14 @@ export default function Quizzes() {
                     <span>{secondsSpent}s</span>
                   </span>
                 </div>
+              </div>
+
+              {/* Progress Bar (1-10) */}
+              <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
+                <div 
+                  className="bg-gradient-to-r from-purple-500 to-pink-500 h-full transition-all duration-300"
+                  style={{ width: `${((questionCount + 1) / 10) * 100}%` }}
+                />
               </div>
 
               {/* Question Text */}
@@ -338,7 +447,7 @@ export default function Quizzes() {
                     onClick={handleNextStep}
                     className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-purple-500/20 flex items-center gap-1 cursor-pointer"
                   >
-                    <span>{questionCount >= 4 ? "Complete Profile Update" : "Advance Question"}</span>
+                    <span>{questionCount >= 10 ? "Complete Profile Update" : "Advance Question"}</span>
                     <ArrowRight className="h-4 w-4" />
                   </button>
                 )}
@@ -352,16 +461,16 @@ export default function Quizzes() {
                 <h3 className="text-xs font-bold uppercase tracking-wider text-main-theme">AI Adaptive Tracer</h3>
               </div>
 
-              <div className="space-y-3">
+              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                 {diagnosticLog.length === 0 ? (
                   <p className="text-[10px] text-secondary-theme text-center py-4 leading-relaxed">
-                    Submit answers to monitor real-time difficulty adaptation triggers.
+                    Submit answers to monitor real-time difficulty adaptation triggers across all 10 questions.
                   </p>
                 ) : (
                   diagnosticLog.map((log, index) => (
                     <div key={index} className="p-3 bg-white/5 border border-white/5 rounded-xl space-y-1.5">
                       <div className="flex justify-between text-[10px] font-bold">
-                        <span className="text-secondary-theme">Step {index + 1}: {log.difficulty}</span>
+                        <span className="text-secondary-theme">Q{index + 1}: {log.difficulty}</span>
                         <span className={log.correct ? "text-emerald-theme" : "text-pink-theme"}>
                           {log.correct ? "CORRECT" : "INCORRECT"}
                         </span>
@@ -376,35 +485,57 @@ export default function Quizzes() {
           </div>
         )}
 
-        {/* QUIZ COMPLETION SUMMARY */}
+        {/* QUIZ COMPLETION SUMMARY & FULL 10-QUESTION REVIEW */}
         {quizStarted && quizFinished && (
-          <div className="w-full max-w-xl mx-auto glass-panel p-8 rounded-2xl border border-white/10 text-center space-y-6">
+          <div className="w-full max-w-3xl mx-auto glass-panel p-8 rounded-2xl border border-white/10 space-y-6 text-center">
             <div className="h-16 w-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
               <CheckCircle2 className="h-8 w-8 text-emerald-theme" />
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-xl font-bold tracking-wider text-gradient-purple">Diagnostic Complete</h2>
+              <h2 className="text-2xl font-bold tracking-wider text-gradient-purple">10-Question Diagnostic Complete</h2>
               <p className="text-xs text-secondary-theme">
-                You correctly answered {correctAnswers} out of 4 questions for:
+                You correctly answered <strong className="text-purple-theme font-bold">{correctAnswers} out of 10 questions</strong> for:
               </p>
-              <p className="text-sm font-bold text-main-theme">{activeSubject}</p>
+              <p className="text-base font-bold text-main-theme">{activeSubject}</p>
             </div>
 
             {/* Diagnostic Indicators */}
             <div className="grid grid-cols-2 gap-4 pt-2">
               <div className="p-4 bg-white/5 rounded-xl border border-white/5">
                 <span className="text-[10px] text-secondary-theme block uppercase">Diagnostics SGI</span>
-                <span className="text-lg font-bold text-purple-theme">+{correctAnswers >= 3 ? "0.4" : "0.1"} Growth</span>
+                <span className="text-lg font-bold text-purple-theme">+{correctAnswers >= 7 ? "0.4" : "0.1"} Growth</span>
               </div>
               <div className="p-4 bg-white/5 rounded-xl border border-white/5">
                 <span className="text-[10px] text-secondary-theme block uppercase">Accuracy Rate</span>
-                <span className="text-lg font-bold text-cyan-theme">{((correctAnswers / 4) * 100).toFixed(0)}%</span>
+                <span className="text-lg font-bold text-cyan-theme">{((correctAnswers / 10) * 100).toFixed(0)}%</span>
+              </div>
+            </div>
+
+            {/* Full 10-Question Results Breakdown */}
+            <div className="space-y-4 text-left pt-4 border-t border-white/10">
+              <h3 className="text-sm font-bold text-main-theme uppercase tracking-wider flex items-center gap-2">
+                <BrainCircuit className="h-4 w-4 text-purple-theme" />
+                <span>All 10 Questions Session Results</span>
+              </h3>
+
+              <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                {diagnosticLog.map((item, idx) => (
+                  <div key={idx} className="p-4 bg-white/5 border border-white/5 rounded-xl space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-purple-theme">Question {idx + 1} of 10 ({item.difficulty})</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${item.correct ? "bg-emerald-500/10 text-emerald-theme border border-emerald-500/20" : "bg-pink-500/10 text-pink-theme border border-pink-500/20"}`}>
+                        {item.correct ? "CORRECT" : "INCORRECT"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-secondary-theme leading-relaxed">{item.reason}</p>
+                  </div>
+                ))}
               </div>
             </div>
 
             <div className="p-3.5 bg-purple-500/5 border border-purple-500/15 rounded-xl text-xs text-secondary-theme leading-relaxed">
-              **Knowledge Tracing Map:** The recommender engine has noted your conceptual masteries and updated your dashboard recommendations list accordingly.
+              **Knowledge Tracing Map:** The recommender engine has noted your conceptual masteries across all 10 questions and updated your dashboard recommendations list accordingly.
             </div>
 
             <button

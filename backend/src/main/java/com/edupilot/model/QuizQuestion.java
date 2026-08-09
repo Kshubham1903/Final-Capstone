@@ -17,6 +17,14 @@ public class QuizQuestion {
     private int correctOptionIndex;
     private String conceptualExplanation;
 
+    private int generationVersion = 2;
+    private String questionSource = "DYNAMIC_V2";
+    private String conceptId;
+    private String templateFamilyId;
+    private String questionFingerprint;
+    private boolean qualityValidated = true;
+    private java.time.LocalDateTime createdAt = java.time.LocalDateTime.now();
+
     public enum Difficulty {
         EASY,
         MEDIUM,
@@ -35,6 +43,62 @@ public class QuizQuestion {
         this.options = options;
         this.correctOptionIndex = correctOptionIndex;
         this.conceptualExplanation = conceptualExplanation;
+    }
+
+    public int getGenerationVersion() {
+        return generationVersion;
+    }
+
+    public void setGenerationVersion(int generationVersion) {
+        this.generationVersion = generationVersion;
+    }
+
+    public String getQuestionSource() {
+        return questionSource;
+    }
+
+    public void setQuestionSource(String questionSource) {
+        this.questionSource = questionSource;
+    }
+
+    public String getConceptId() {
+        return conceptId;
+    }
+
+    public void setConceptId(String conceptId) {
+        this.conceptId = conceptId;
+    }
+
+    public String getTemplateFamilyId() {
+        return templateFamilyId;
+    }
+
+    public void setTemplateFamilyId(String templateFamilyId) {
+        this.templateFamilyId = templateFamilyId;
+    }
+
+    public String getQuestionFingerprint() {
+        return questionFingerprint;
+    }
+
+    public void setQuestionFingerprint(String questionFingerprint) {
+        this.questionFingerprint = questionFingerprint;
+    }
+
+    public boolean isQualityValidated() {
+        return qualityValidated;
+    }
+
+    public void setQualityValidated(boolean qualityValidated) {
+        this.qualityValidated = qualityValidated;
+    }
+
+    public java.time.LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(java.time.LocalDateTime createdAt) {
+        this.createdAt = createdAt;
     }
 
     public String getId() {
