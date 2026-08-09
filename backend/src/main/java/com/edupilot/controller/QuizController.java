@@ -32,7 +32,8 @@ public class QuizController {
     @GetMapping("/questions")
     public ResponseEntity<?> getQuestions(
             @RequestParam String subject,
-            @RequestParam String difficulty) {
+            @RequestParam String difficulty,
+            @RequestParam(required = false) String exclude) {
         
         QuizQuestion.Difficulty diff;
         try {
@@ -41,51 +42,99 @@ public class QuizController {
             diff = QuizQuestion.Difficulty.EASY;
         }
 
-        List<QuizQuestion> questions = questionRepository.findBySubjectAndDifficulty(subject, diff);
-        List<QuizQuestion> validQuestions = new ArrayList<>();
-        for (QuizQuestion q : questions) {
-            if (!AiServiceClient.isGenericTemplateQuestion(q.getQuestionText())) {
-                validQuestions.add(q);
-            }
-        }
-
-        List<QuizQuestion> allStoredForSubject = questionRepository.findBySubject(subject);
-        List<QuizQuestion> validStoredForSubject = new ArrayList<>();
-        List<String> excludeTexts = new ArrayList<>();
-        for (QuizQuestion q : allStoredForSubject) {
-            if (!AiServiceClient.isGenericTemplateQuestion(q.getQuestionText())) {
-                validStoredForSubject.add(q);
-                excludeTexts.add(q.getQuestionText());
-            }
-        }
-
-        if (validQuestions.size() < 4) {
-            List<QuizQuestion> aiGenerated = aiServiceClient.generateQuestionsForSubject(subject, diff, excludeTexts);
-            if (aiGenerated != null && !aiGenerated.isEmpty()) {
-                try {
-                    questionRepository.saveAll(aiGenerated);
-                } catch (Exception ex) {
-                    System.err.println("Failed to persist AI generated questions: " + ex.getMessage());
+        Set<String> excludedSet = new HashSet<>();
+        if (exclude != null && !exclude.isBlank()) {
+            for (String raw : exclude.split(",")) {
+                String trimmed = raw.trim();
+                if (!trimmed.isEmpty()) {
+                    excludedSet.add(trimmed);
+                    excludedSet.add(AiServiceClient.normalizeText(trimmed));
                 }
-                for (QuizQuestion g : aiGenerated) {
-                    if (!AiServiceClient.isGenericTemplateQuestion(g.getQuestionText())) {
-                        validStoredForSubject.add(g);
-                        validQuestions.add(g);
+            }
+        }
+
+        List<QuizQuestion> dbQuestions = questionRepository.findBySubjectAndDifficulty(subject, diff);
+        List<QuizQuestion> validUnseen = new ArrayList<>();
+        List<String> allSubjectExcludeTexts = new ArrayList<>();
+
+        List<QuizQuestion> legacyToClean = new ArrayList<>();
+        for (QuizQuestion q : dbQuestions) {
+            boolean isLegacy = q.getGenerationVersion() < 3 ||
+                               (q.getConcept() != null && q.getConcept().contains("#")) ||
+                               (q.getQuestionText() != null && q.getQuestionText().startsWith("Regarding fundamental principles"));
+            if (isLegacy) {
+                legacyToClean.add(q);
+                continue;
+            }
+
+            if (!AiServiceClient.isGenericTemplateQuestion(q.getQuestionText())) {
+                allSubjectExcludeTexts.add(q.getQuestionText());
+                String qId = q.getId();
+                String normText = AiServiceClient.normalizeText(q.getQuestionText());
+                boolean isExcluded = (qId != null && excludedSet.contains(qId)) || excludedSet.contains(normText);
+                if (!isExcluded) {
+                    validUnseen.add(q);
+                }
+            }
+        }
+
+        if (!legacyToClean.isEmpty()) {
+            try {
+                questionRepository.deleteAll(legacyToClean);
+            } catch (Exception ex) {
+                System.err.println("Note: Could not purge legacy questions: " + ex.getMessage());
+            }
+        }
+
+        if (validUnseen.size() < 10) {
+            List<String> combinedExclusions = new ArrayList<>(allSubjectExcludeTexts);
+            combinedExclusions.addAll(excludedSet);
+
+            int maxAttempts = 2;
+            for (int attempt = 0; attempt < maxAttempts && validUnseen.size() < 10; attempt++) {
+                List<QuizQuestion> aiGenerated = aiServiceClient.generateQuestionsForSubject(subject, diff, combinedExclusions);
+                if (aiGenerated != null && !aiGenerated.isEmpty()) {
+                    List<QuizQuestion> toSave = new ArrayList<>();
+                    for (QuizQuestion g : aiGenerated) {
+                        if (!AiServiceClient.isGenericTemplateQuestion(g.getQuestionText())) {
+                            String normText = AiServiceClient.normalizeText(g.getQuestionText());
+                            boolean isDup = combinedExclusions.stream().anyMatch(e -> AiServiceClient.isDuplicateQuestion(g.getQuestionText(), e));
+                            if (!isDup) {
+                                toSave.add(g);
+                                validUnseen.add(g);
+                                combinedExclusions.add(g.getQuestionText());
+                            }
+                        }
+                    }
+                    if (!toSave.isEmpty()) {
+                        try {
+                            questionRepository.saveAll(toSave);
+                        } catch (Exception ex) {
+                            System.err.println("Failed to persist AI generated questions: " + ex.getMessage());
+                        }
                     }
                 }
             }
         }
 
-        List<QuizQuestion> pool = !validQuestions.isEmpty() ? validQuestions : validStoredForSubject;
-        if (pool.isEmpty()) {
-            pool = questionRepository.findAll();
+        List<QuizQuestion> finalPool = new ArrayList<>();
+        Set<String> seenInPool = new HashSet<>();
+        for (QuizQuestion q : validUnseen) {
+            String normText = AiServiceClient.normalizeText(q.getQuestionText());
+            if (!seenInPool.contains(normText)) {
+                seenInPool.add(normText);
+                finalPool.add(q);
+            }
         }
-        
-        List<QuizQuestion> mutableQuestions = new ArrayList<>(pool);
-        Collections.shuffle(mutableQuestions);
-        
-        int limit = Math.min(mutableQuestions.size(), 4);
-        return ResponseEntity.ok(mutableQuestions.subList(0, limit));
+
+        Collections.shuffle(finalPool);
+        int limit = Math.min(finalPool.size(), 10);
+        List<QuizQuestion> selected = finalPool.subList(0, limit);
+        List<QuizQuestion> randomizedResponse = new ArrayList<>();
+        for (QuizQuestion q : selected) {
+            randomizedResponse.add(AiServiceClient.shuffleQuestionOptions(q));
+        }
+        return ResponseEntity.ok(randomizedResponse);
     }
 
     @PostMapping("/submit")

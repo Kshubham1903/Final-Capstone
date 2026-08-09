@@ -336,21 +336,25 @@ class QuestionGenRequest(BaseModel):
     subject: str
     difficulty: str
     exclude_questions: Optional[List[str]] = []
-    count: Optional[int] = 4
+    count: Optional[int] = 8
 
 class QuestionItem(BaseModel):
     subject: str
     concept: str
+    conceptId: Optional[str] = None
     difficulty: str
     questionText: str
     options: List[str]
     correctOptionIndex: int
     conceptualExplanation: str
+    questionType: Optional[str] = "Conceptual Understanding"
+    templateFamilyId: Optional[str] = None
+    questionFingerprint: Optional[str] = None
 
 @app.post("/api/ai/adaptive-quiz", response_model=QuizAdaptiveResponse)
 def adaptive_quiz(req: QuizPerformanceRequest):
     levels = ["EASY", "MEDIUM", "HARD"]
-    current_idx = levels.index(req.current_difficulty)
+    current_idx = levels.index(req.current_difficulty) if req.current_difficulty in levels else 0
     
     if req.is_correct:
         if req.response_time_seconds < 15 and current_idx < 2:
@@ -384,20 +388,36 @@ def normalize_text(text: str) -> str:
     clean = "".join([c.lower() if c.isalnum() else " " for c in text])
     return " ".join(clean.split())
 
-def is_duplicate(q_text: str, exclude_list: List[str]) -> bool:
+STOP_WORDS = {"what", "is", "the", "a", "an", "in", "of", "to", "and", "or", "for", "with", "by", "how", "which", "does", "do", "when", "why", "where", "are"}
+
+def generate_question_fingerprint(q_text: str, subject: str = "") -> str:
+    if not q_text:
+        return ""
+    norm = normalize_text(q_text)
+    if subject:
+        subj_norm = normalize_text(subject)
+        norm = norm.replace(subj_norm, "")
+    words = [w for w in norm.split() if len(w) > 2 and w not in STOP_WORDS]
+    if not words:
+        words = [w for w in norm.split() if len(w) > 2]
+    return "fp_" + "_".join(words[:6])
+
+def is_duplicate(q_text: str, exclude_list: List[str], subject: str = "") -> bool:
     norm_q = normalize_text(q_text)
+    fp_q = generate_question_fingerprint(q_text, subject)
     words_q = set(norm_q.split())
     if not norm_q or not words_q:
         return False
     for exc in exclude_list:
         norm_e = normalize_text(exc)
-        if norm_q == norm_e:
+        fp_e = generate_question_fingerprint(exc, subject)
+        if norm_q == norm_e or (fp_q and fp_q == fp_e):
             return True
         words_e = set(norm_e.split())
         if words_e:
             intersection = words_q.intersection(words_e)
             union = words_q.union(words_e)
-            if len(intersection) / len(union) > 0.80:
+            if len(intersection) / len(union) > 0.75:
                 return True
     return False
 
@@ -411,363 +431,130 @@ GENERIC_TEMPLATE_PATTERNS = [
     "verification standards in",
     "performance metrics during",
     "what is an important concept in",
-    "what is the main goal of"
+    "what is the main goal of",
+    "fundamental design principle when building scalable modules in",
+    "optimizing latency and throughput in",
+    "how should high-availability systems in",
+    "protecting data integrity and access control within",
+    "automated unit and integration test suites vital when iterating on",
+    "maintains deterministic state transitions across complex workflows in"
 ]
 
 def is_generic(q_text: str) -> bool:
     low = q_text.lower()
     return any(pat in low for pat in GENERIC_TEMPLATE_PATTERNS)
 
-# Rich Domain Knowledge Repositories
-DOMAIN_KNOWLEDGE_BANKS = {
-    "blockchain development": {
-        "EASY": [
-            {
-                "concept": "Consensus Mechanisms",
-                "questionText": "What core problem does a blockchain consensus mechanism solve in a decentralized network?",
-                "options": ["Double-spending and Byzantine Generals Problem", "High network latency", "Excessive database storage usage", "Centralized server failure"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Consensus mechanisms enable distributed nodes to reach agreement on transaction validity without trusting a central authority, preventing double-spending."
-            },
-            {
-                "concept": "Smart Contracts",
-                "questionText": "What is the purpose of a smart contract on a blockchain platform like Ethereum?",
-                "options": ["Self-executing code stored on-chain that runs automatically when predetermined conditions are met", "Hardware accelerator for node validation", "Encrypted email protocol", "A human-signed legal document scanned into the network"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Smart contracts are immutable programs deployed on a blockchain that execute deterministic logic when triggered by transactions."
-            },
-            {
-                "concept": "Proof of Stake",
-                "questionText": "How does Proof of Stake (PoS) differ fundamentally from Proof of Work (PoW)?",
-                "options": ["PoS selects block validators based on staked tokens rather than computational hash power", "PoS requires significantly more electricity than PoW", "PoS eliminates transaction fees entirely", "PoW does not use cryptographic hashing"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "PoS replaces energy-intensive mining hardware with capital commitment (staking) to secure the network consensus."
-            },
-            {
-                "concept": "Cryptographic Hash Functions",
-                "questionText": "In blockchain data structures, how are blocks cryptographically linked together?",
-                "options": ["Each block header includes the cryptographic hash of the preceding block", "Blocks are linked via IP addresses", "Blocks use relational foreign key primary key pairs", "Blocks are merged into a single flat file"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Including the previous block's SHA-256/Keccak hash creates an append-only chain where altering past blocks invalidates all subsequent hashes."
-            }
-        ],
-        "MEDIUM": [
-            {
-                "concept": "Merkle Trees",
-                "questionText": "What is the function of a Merkle Tree root in a blockchain block header?",
-                "options": ["Allows efficient and secure verification of transaction inclusion via a single root hash", "Encrypts private keys of network nodes", "Generates random gas prices for smart contracts", "Schedules background cron tasks"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Merkle trees summarize all block transactions into a 32-byte root hash, enabling lightweight client (SPV) verification in O(log N) time."
-            },
-            {
-                "concept": "51% Attack Vectors",
-                "questionText": "What vulnerability occurs during a 51% attack on a Proof-of-Work blockchain?",
-                "options": ["An entity controlling majority hash power can reverse recent transactions and double-spend", "The attacker steals all user private keys", "The network permanently deletes historical blocks", "The blockchain switches automatically to Proof of Stake"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Controlling >50% hash power allows an attacker to outpace the rest of the network in building a secret longer chain, enabling transaction reversal."
-            },
-            {
-                "concept": "UTXO vs Account Model",
-                "questionText": "What distinguishes the Unspent Transaction Output (UTXO) model from an Account/Balance model?",
-                "options": ["UTXO tracks discrete coin outputs consumed by new transactions, while Account models update global account balances", "UTXO model requires centralized bank validation", "Account model cannot execute smart contracts", "UTXO model eliminates transaction digital signatures"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Bitcoin uses UTXOs where transactions consume old outputs and create new ones. Ethereum uses an Account model similar to a bank ledger."
-            },
-            {
-                "concept": "EVM Gas Mechanics",
-                "questionText": "What is gas in the context of the Ethereum Virtual Machine (EVM)?",
-                "options": ["A computational fee unit required to execute operations and prevent infinite loops", "A physical fuel used in mining rigs", "A network bandwidth measurement", "A security vulnerability in Solidity"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Gas measures computational effort. Every EVM instruction costs a set amount of gas, protecting the network from Turing-complete infinite loops."
-            }
-        ],
-        "HARD": [
-            {
-                "concept": "Layer 2 Zero-Knowledge Rollups",
-                "questionText": "How do Zero-Knowledge Rollups (ZK-Rollups) enhance Layer 2 blockchain scaling?",
-                "options": ["By bundling off-chain transactions into a single cryptographic validity proof verified on-chain", "By increasing the block size limit on Layer 1 by 100x", "By disabling cryptographic signatures for speed", "By storing all transaction data in a central SQL database"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "ZK-Rollups execute transactions off-chain and post a succinct validity proof (SNARK/STARK) to Layer 1, drastically reducing on-chain gas costs."
-            },
-            {
-                "concept": "Smart Contract Reentrancy",
-                "questionText": "What is a Reentrancy Attack in Solidity smart contract development?",
-                "options": ["An attack where an external contract recursively calls back into a vulnerable function before state changes complete", "A brute-force attack on user private keys", "A denial of service attack on RPC endpoints", "An unauthorized modification of EVM bytecode"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Reentrancy occurs when an external call is made before updating state balances, allowing the fallback function to drain funds recursively."
-            },
-            {
-                "concept": "Blockchain Oracles",
-                "questionText": "What vital role does a Decentralized Oracle Network (like Chainlink) play in smart contract execution?",
-                "options": ["Bridges off-chain real-world data (such as market prices or weather) deterministically into smart contracts", "Compiles Solidity code into EVM bytecode", "Generates public/private key pairs for users", "Encrypts transaction payloads"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Blockchains cannot natively make HTTP requests. Oracles query external web APIs and push validated data onto the blockchain."
-            },
-            {
-                "concept": "Hard vs Soft Forks",
-                "questionText": "What is the difference between a Hard Fork and a Soft Fork in protocol upgrades?",
-                "options": ["A Hard Fork is non-backwards-compatible requiring all nodes to upgrade, while a Soft Fork is backwards-compatible", "A Soft Fork splits the network permanently into two separate cryptocurrencies", "Hard Forks do not require node operator consensus", "Soft Forks require changing the hashing algorithm"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Hard forks relax or change rules so older nodes reject new blocks. Soft forks tighten rules so older nodes still accept new blocks."
-            }
-        ]
-    },
-    "cloud security": {
-        "EASY": [
-            {
-                "concept": "Identity & Access Management",
-                "questionText": "Which IAM principle ensures users receive only the permissions required for their specific job tasks?",
-                "options": ["Principle of Least Privilege", "Role-Based Overdrive", "Implicit Allow Access", "Root Credentials Sharing"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "The Principle of Least Privilege dictates granting users the minimum necessary access required to complete designated assignments."
-            },
-            {
-                "concept": "Shared Responsibility Model",
-                "questionText": "In the Cloud Shared Responsibility Model, which security layer is managed primarily by the cloud provider?",
-                "options": ["Physical infrastructure and data center facility security", "User password strength policies", "Customer application code vulnerability patching", "S3 bucket public access settings"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Cloud providers manage security 'of' the cloud (hardware, facilities, host OS), while customers secure data 'in' the cloud."
-            },
-            {
-                "concept": "Virtual Network Firewalls",
-                "questionText": "What is the function of an AWS Security Group in cloud networking?",
-                "options": ["A stateful virtual firewall controlling inbound and outbound traffic at the instance level", "A customer user directory for web applications", "An automated backup scheduler for EBS volumes", "A DNS routing registrar"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Security Groups operate statefully at the ENI/instance level, automatically allowing return traffic for outbound requests."
-            }
-        ],
-        "MEDIUM": [
-            {
-                "concept": "Zero Trust Architecture",
-                "questionText": "What is the primary architectural pillar behind Zero Trust Security in cloud environments?",
-                "options": ["Never trust, always verify every access request regardless of network origin", "Trust all internal network traffic behind a perimeter firewall", "Disable encryption for verified internal microservices", "Grant full root rights to internal IP subnets"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Zero Trust assumes threats exist inside and outside the network, enforcing strict authentication, authorization, and continuous validation."
-            },
-            {
-                "concept": "Envelope Encryption",
-                "questionText": "How does an Envelope Encryption model protect sensitive cloud data using AWS KMS?",
-                "options": ["Data is encrypted with a Data Encryption Key (DEK), which is itself encrypted under a KMS Key Encryption Key (KEK)", "Data is sent unencrypted over HTTP to KMS for storage", "Data encryption keys are hardcoded into source repositories", "KMS stores unencrypted plaintext in temporary cache"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Envelope encryption uses a plaintext Data Key to encrypt data locally, then encrypts the Data Key with a master KMS Key."
-            },
-            {
-                "concept": "Security Groups vs NACLs",
-                "questionText": "What is the key difference between AWS Security Groups and Network Access Control Lists (NACLs)?",
-                "options": ["Security Groups are stateful at the instance level; NACLs are stateless at the subnet level", "Security Groups apply to VPC routers while NACLs apply to IAM roles", "NACLs are stateful while Security Groups are stateless", "Security Groups block outbound traffic by default"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Security Groups are stateful and evaluate rules per instance. NACLs are stateless subnet boundaries requiring explicit inbound/outbound rules."
-            }
-        ],
-        "HARD": [
-            {
-                "concept": "Cloud Transit Gateways",
-                "questionText": "How does a Cloud Transit Gateway simplify multi-VPC security monitoring?",
-                "options": ["Acts as a central hub routing traffic across VPCs with consolidated firewall inspection", "Automatically generates SSL certificates for all endpoints", "Replaces load balancers with static DNS records", "Stores database encryption keys in memory"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Transit Gateways eliminate complex mesh VPC peering by acting as a central router with centralized traffic logging and inspection."
-            },
-            {
-                "concept": "IMDSv2 SSRF Mitigation",
-                "questionText": "What security control in AWS Instance Metadata Service Version 2 (IMDSv2) mitigates SSRF attacks?",
-                "options": ["Requiring a session token via an HTTP PUT request prior to retrieving metadata", "Disabling HTTP access to all public endpoints", "Using static IP addresses for container pods", "Encrypting S3 bucket policies"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "IMDSv2 mandates a session token via HTTP PUT, preventing simple WAF/SSRF bypasses that cannot execute multi-header PUT calls."
-            }
-        ]
-    },
-    "digital marketing": {
-        "EASY": [
-            {
-                "concept": "SEO Optimization",
-                "questionText": "What is the primary function of a canonical URL tag (`rel='canonical'`) in Search Engine Optimization?",
-                "options": ["Prevents duplicate content penalties by specifying the preferred master URL", "Increases page load speed on mobile devices", "Hides website content from search engine indexers", "Generates pay-per-click ad headlines automatically"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Canonical tags tell search engine crawlers which version of a URL represents the main copy when multiple pages have similar content."
-            },
-            {
-                "concept": "PPC Metrics",
-                "questionText": "In digital pay-per-click (PPC) advertising, how is Click-Through Rate (CTR) calculated?",
-                "options": ["Total Clicks divided by Total Impressions multiplied by 100", "Total Conversions divided by Total Clicks", "Total Cost divided by Total Sales", "Total Impressions divided by Bounce Rate"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "CTR measures ad engagement ratio: `(Clicks / Impressions) * 100`."
-            },
-            {
-                "concept": "Customer Acquisition",
-                "questionText": "What metric measures the average marketing expense incurred to acquire a single paying customer?",
-                "options": ["Customer Acquisition Cost (CAC)", "Return on Ad Spend (ROAS)", "Lifetime Value (LTV)", "Cost Per Mille (CPM)"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "CAC equals total marketing and sales expenditure over a period divided by total new customers acquired."
-            }
-        ],
-        "MEDIUM": [
-            {
-                "concept": "A/B Split Testing",
-                "questionText": "When conducting an A/B split test on a landing page, what is a fundamental rule for valid statistical results?",
-                "options": ["Test only one single variable change (such as headline or CTA button color) at a time", "Change the headline, offer, and layout simultaneously", "Stop the test as soon as 10 visitors convert", "Run Variant A on weekdays and Variant B on weekends"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Isolating a single variable ensures that observed conversion rate differences can be confidently attributed to that specific element."
-            },
-            {
-                "concept": "Google Ads Quality Score",
-                "questionText": "Which three core factors determine the Google Ads Quality Score for a keyword?",
-                "options": ["Expected CTR, Ad Relevance, and Landing Page Experience", "Daily Budget, Account Age, and Competitor Count", "Social Media Shares, Domain Age, and Image Size", "Keyword Length, CPC Bid, and Time of Day"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "Quality Score (1-10) is calculated from Expected CTR, Ad Relevance to user intent, and Landing Page Experience."
-            }
-        ],
-        "HARD": [
-            {
-                "concept": "LTV to CAC Ratio Analysis",
-                "questionText": "Why is a Customer Lifetime Value to Customer Acquisition Cost ratio (LTV:CAC) of 3:1 considered optimal for SaaS growth?",
-                "options": ["It indicates sustainable profitability while maintaining healthy reinvestment capital for expansion", "It means the company is losing money on every acquired customer", "It proves that sales cycles take more than 12 months", "It requires zero spend on organic search acquisition"],
-                "correctOptionIndex": 0,
-                "conceptualExplanation": "An LTV:CAC ratio of 3:1 balances high customer return with effective sales acquisition spend without under-investing in growth."
-            }
-        ]
-    }
+from domain_banks import DOMAIN_KNOWLEDGE_BANKS
+
+def shuffle_options_and_update_index(item: dict) -> dict:
+    original_options = list(item["options"])
+    original_idx = item.get("correctOptionIndex", 0)
+    if original_idx < 0 or original_idx >= len(original_options):
+        original_idx = 0
+    correct_text = original_options[original_idx]
+    
+    paired = [(opt, i == original_idx) for i, opt in enumerate(original_options)]
+    random.shuffle(paired)
+    
+    shuffled_options = [p[0] for p in paired]
+    new_correct_idx = next(i for i, p in enumerate(paired) if p[1])
+    
+    result = dict(item)
+    result["options"] = shuffled_options
+    result["correctOptionIndex"] = new_correct_idx
+    return result
+
+SUBJECT_ALIASES: Dict[str, str] = {
+    "data structures & algorithms": "data structures",
+    "data structures and algorithms": "data structures",
+    "dsa": "data structures",
+    "data structures": "data structures",
+    "database management systems": "database management systems",
+    "dbms": "database management systems",
+    "operating systems": "operating systems",
+    "os": "operating systems",
+    "computer networks": "computer networks",
+    "cn": "computer networks",
+    "software testing": "software testing",
+    "machine learning": "machine learning",
+    "ml": "machine learning",
+    "blockchain development": "blockchain development",
+    "blockchain": "blockchain development",
+    "cloud security": "cloud security",
+    "digital marketing": "digital marketing",
+    "quantum computing": "quantum computing",
+    "artificial intelligence": "artificial intelligence",
+    "ai": "artificial intelligence",
+    "discrete mathematical structures": "discrete mathematical structures",
+    "discrete mathematics": "discrete mathematical structures",
+    "discrete math": "discrete mathematical structures",
+    "dms": "discrete mathematical structures"
 }
 
-def generate_dynamic_subject_questions(subject: str, difficulty: str, count: int = 4) -> List[QuestionItem]:
-    items = []
-    subj_clean = subject.strip()
-    diff = difficulty.upper()
-    
-    templates_pool = [
-        {
-            "concept": f"{subj_clean} Architecture",
-            "q_text": f"What is a fundamental design principle when building scalable modules in {subj_clean}?",
-            "opts": [
-                f"Ensuring loose coupling and modular separation of concerns across {subj_clean} components",
-                f"Tightly coupling all business logic into a single monolithic script",
-                f"Disabling exception handling during high-throughput processing",
-                f"Hardcoding configuration parameters directly into production binaries"
-            ],
-            "idx": 0,
-            "exp": f"Modular separation of concerns ensures maintainability and clean component isolation in {subj_clean} architectures."
-        },
-        {
-            "concept": f"{subj_clean} Performance Optimization",
-            "q_text": f"When optimizing latency and throughput in {subj_clean}, which approach yields the most reliable performance gains?",
-            "opts": [
-                f"Unbounded recursive iteration without memoization",
-                f"Identifying performance bottlenecks via profiling and optimizing critical execution paths in {subj_clean}",
-                f"Disabling caching layers across all service interfaces",
-                f"Increasing hardware allocation without profiling underlying bottlenecks"
-            ],
-            "idx": 1,
-            "exp": f"Targeted profiling pinpoints exact bottlenecks, allowing data-driven optimization in {subj_clean} workflows."
-        },
-        {
-            "concept": f"{subj_clean} Error Handling & Resilience",
-            "q_text": f"How should high-availability systems in {subj_clean} handle transient fault conditions?",
-            "opts": [
-                f"Ignoring errors and returning empty unvalidated payloads",
-                f"Implementing exponential backoff retry strategies with circuit breakers in {subj_clean}",
-                f"Terminating the host process immediately upon receiving a non-fatal warning",
-                f"Bypassing input validation checks during peak traffic"
-            ],
-            "idx": 1,
-            "exp": f"Exponential backoff and circuit breakers prevent cascading failures and handle transient disruptions resiliently in {subj_clean}."
-        },
-        {
-            "concept": f"{subj_clean} Security & Data Integrity",
-            "q_text": f"What practice is critical for protecting data integrity and access control within {subj_clean} workflows?",
-            "opts": [
-                f"Validating and sanitizing all inputs at system boundaries before processing in {subj_clean}",
-                f"Storing API keys in client-side public assets",
-                f"Disabling TLS encryption for internal microservices",
-                f"Granting default administrative permissions to external client tokens"
-            ],
-            "idx": 0,
-            "exp": f"Input validation and boundary sanitization prevent injection vulnerabilities and secure {subj_clean} operations."
-        },
-        {
-            "concept": f"{subj_clean} Testing & Quality Assurance",
-            "q_text": f"Why are automated unit and integration test suites vital when iterating on {subj_clean} codebases?",
-            "opts": [
-                f"They catch regression bugs early and verify that refactored code meets functional specifications in {subj_clean}",
-                f"They slow down production deployment pipelines unnecessarily",
-                f"They replace the need for code review and documentation",
-                f"They increase memory usage of compiled production binaries"
-            ],
-            "idx": 0,
-            "exp": f"Automated test suites provide rapid feedback, preventing regressions when adding features to {subj_clean} codebases."
-        },
-        {
-            "concept": f"{subj_clean} State Management",
-            "q_text": f"Which strategy maintains deterministic state transitions across complex workflows in {subj_clean}?",
-            "opts": [
-                f"Mutating global shared state concurrently without synchronization locks",
-                f"Enforcing immutable data models and explicit state transition handlers in {subj_clean}",
-                f"Persisting transient draft states directly to global production storage",
-                f"Bypassing state validation checks during async dispatches"
-            ],
-            "idx": 1,
-            "exp": f"Immutable state models and explicit transitions prevent race conditions and ensure predictable behavior in {subj_clean}."
-        }
-    ]
-
-    for t in templates_pool:
-        if not is_generic(t["q_text"]):
-            items.append(QuestionItem(
-                subject=subj_clean,
-                concept=t["concept"],
-                difficulty=diff,
-                questionText=t["q_text"],
-                options=t["opts"],
-                correctOptionIndex=t["idx"],
-                conceptualExplanation=t["exp"]
-            ))
-
-    return items[:count]
+def normalize_subject_key(raw_subj: str) -> str:
+    if not raw_subj:
+        return ""
+    clean = raw_subj.strip().lower()
+    if clean in SUBJECT_ALIASES:
+        return SUBJECT_ALIASES[clean]
+    for key, canonical in SUBJECT_ALIASES.items():
+        if key in clean or clean in key:
+            return canonical
+    return clean
 
 @app.post("/api/ai/generate-questions", response_model=List[QuestionItem])
 def generate_questions(req: QuestionGenRequest):
     subj = req.subject.strip()
     diff = req.difficulty.upper() if req.difficulty else "EASY"
     excluded = req.exclude_questions or []
-    count = req.count if req.count and req.count > 0 else 4
+    count = req.count if req.count and req.count > 0 else 20
     
-    subj_key = subj.lower()
+    subj_key = normalize_subject_key(subj)
     candidate_pool = []
     
-    # 1. Lookup in curated domain knowledge banks
+    # Extensible lookup in domain knowledge banks
     if subj_key in DOMAIN_KNOWLEDGE_BANKS:
         domain_bank = DOMAIN_KNOWLEDGE_BANKS[subj_key]
         raw_items = domain_bank.get(diff, [])
-        if not raw_items and "EASY" in domain_bank:
-            raw_items = domain_bank["EASY"]
-        if not raw_items and "MEDIUM" in domain_bank:
-            raw_items = domain_bank["MEDIUM"]
+        if not raw_items:
+            for fallback_diff in ["EASY", "MEDIUM", "HARD"]:
+                if fallback_diff in domain_bank and domain_bank[fallback_diff]:
+                    raw_items.extend(domain_bank[fallback_diff])
             
         for r in raw_items:
+            r_shuffled = shuffle_options_and_update_index(r)
+            fp = r_shuffled.get("questionFingerprint") or generate_question_fingerprint(r_shuffled["questionText"], subj)
             candidate_pool.append(QuestionItem(
                 subject=subj,
-                concept=r["concept"],
+                concept=r_shuffled["concept"],
+                conceptId=r_shuffled.get("conceptId", f"{subj_key[:4]}_{normalize_text(r_shuffled['concept'])[:10]}"),
                 difficulty=diff,
-                questionText=r["questionText"],
-                options=r["options"],
-                correctOptionIndex=r["correctOptionIndex"],
-                conceptualExplanation=r["conceptualExplanation"]
+                questionText=r_shuffled["questionText"],
+                options=r_shuffled["options"],
+                correctOptionIndex=r_shuffled["correctOptionIndex"],
+                conceptualExplanation=r_shuffled["conceptualExplanation"],
+                questionType=r_shuffled.get("questionType", "Conceptual Understanding"),
+                templateFamilyId=r_shuffled.get("templateFamilyId", f"tf_{subj_key[:4]}"),
+                questionFingerprint=fp
             ))
+    else:
+        # Unsupported / unconfigured subject: return empty candidate pool safely without generic template fallback
+        print(f"AI Service Warning: Requested subject '{subj}' (key: '{subj_key}') is not present in DOMAIN_KNOWLEDGE_BANKS. Returning empty pool.")
+        return []
             
-    # 2. Filter out duplicates or generic template matches
+    # Filter out duplicates or generic template matches
     filtered_items = []
+    seen_fp = set()
     for item in candidate_pool:
-        if not is_generic(item.questionText) and not is_duplicate(item.questionText, excluded):
-            filtered_items.append(item)
-            
-    # 3. If candidate pool is insufficient, generate dynamic subject-relevant questions
-    if len(filtered_items) < count:
-        dynamic_items = generate_dynamic_subject_questions(subj, diff, count * 2)
-        for dyn in dynamic_items:
-            if not is_generic(dyn.questionText) and not is_duplicate(dyn.questionText, excluded) and not any(f.questionText == dyn.questionText for f in filtered_items):
-                filtered_items.append(dyn)
-                if len(filtered_items) >= count:
-                    break
+        if not is_generic(item.questionText) and not is_duplicate(item.questionText, excluded, subj):
+            if item.questionFingerprint not in seen_fp:
+                seen_fp.add(item.questionFingerprint)
+                filtered_items.append(item)
 
     return filtered_items[:count]
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
