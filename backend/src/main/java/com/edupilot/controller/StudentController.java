@@ -79,6 +79,7 @@ public class StudentController {
     @GetMapping("/profile/{userId}")
     public ResponseEntity<?> getProfile(@PathVariable String userId) {
         try {
+            studentService.updateStreak(userId);
             StudentProfile profile = studentService.getProfileByUserId(userId);
             return ResponseEntity.ok(profile);
         } catch (Exception ex) {
@@ -89,6 +90,7 @@ public class StudentController {
     @GetMapping("/profile-full/{userId}")
     public ResponseEntity<?> getFullProfile(@PathVariable String userId) {
         try {
+            studentService.updateStreak(userId);
             Map<String, Object> fullProfile = studentService.getFullProfileByUserId(userId);
             return ResponseEntity.ok(fullProfile);
         } catch (Exception ex) {

@@ -35,6 +35,7 @@ public class StudentProfile {
     private String learningStyle; // Visual, Auditory, Reading, Kinesthetic
     private int currentStreakCount;
     private double studentGrowthIndex; // SGI: 0.0 - 10.0
+    private java.time.LocalDate lastStreakUpdate;
 
     // Mastery Map: e.g. "Math" -> 85.5, "Algorithms" -> 62.0
     private Map<String, Double> conceptMastery;
@@ -285,6 +286,14 @@ public class StudentProfile {
 
     public void setCurrentStreakCount(int currentStreakCount) {
         this.currentStreakCount = currentStreakCount;
+    }
+
+    public java.time.LocalDate getLastStreakUpdate() {
+        return lastStreakUpdate;
+    }
+
+    public void setLastStreakUpdate(java.time.LocalDate lastStreakUpdate) {
+        this.lastStreakUpdate = lastStreakUpdate;
     }
 
     public double getStudentGrowthIndex() {

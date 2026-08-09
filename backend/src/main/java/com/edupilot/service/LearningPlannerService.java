@@ -27,6 +27,9 @@ public class LearningPlannerService {
     @Autowired
     private RecommendationRepository recommendationRepository;
 
+    @Autowired
+    private StudentService studentService;
+
     /**
      * Generate adaptive Learning Plan dynamically derived from Recommendation Engine outputs.
      */
@@ -123,6 +126,7 @@ public class LearningPlannerService {
     }
 
     public LearningPlanResponse completeTask(String userId, String taskId) {
+        studentService.updateStreak(userId);
         LocalDate today = LocalDate.now();
         LearningPlan plan = planRepository.findByUserIdAndPlanDate(userId, today)
                 .orElseGet(() -> planRepository.findByUserIdOrderByPlanDateDesc(userId).stream().findFirst()
@@ -146,6 +150,7 @@ public class LearningPlannerService {
     }
 
     public StudySessionResponse startStudySession(StudySessionStartRequest req) {
+        studentService.updateStreak(req.getUserId());
         StudySession s = new StudySession();
         s.setUserId(req.getUserId());
         s.setTaskId(req.getTaskId());
@@ -161,6 +166,8 @@ public class LearningPlannerService {
     public StudySessionResponse endStudySession(StudySessionEndRequest req) {
         StudySession s = sessionRepository.findById(req.getSessionId())
                 .orElseThrow(() -> new IllegalArgumentException("Study session ID not found: " + req.getSessionId()));
+
+        studentService.updateStreak(s.getUserId());
 
         s.setEndTime(LocalDateTime.now());
         s.setActualDurationMinutes(req.getActualDurationMinutes() > 0 ? req.getActualDurationMinutes() : 15);

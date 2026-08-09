@@ -119,7 +119,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const activeItems = navItems[currentRole] || navItems.STUDENT;
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row text-main-theme">
+    <div className="min-h-screen flex flex-col text-main-theme">
       
       {/* Mobile Top Navbar */}
       <div className="md:hidden flex justify-between items-center px-4 py-3 glass-panel border-b border-white/5 sticky top-0 z-50">
@@ -132,13 +132,25 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </button>
       </div>
 
+      {/* Mobile Overlay Drawer Backdrop */}
+      {mobileOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden transition-opacity duration-300"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
       {/* Sidebar Navigation */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 glass-panel border-r border-white/5 flex flex-col justify-between transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside 
+        className={`fixed inset-y-0 left-0 z-40 w-[240px] h-screen glass-panel border-r border-white/5 flex flex-col justify-between transform transition-transform duration-300 ease-in-out md:translate-x-0 ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         
         {/* Upper Sidebar */}
         <div>
           {/* Logo Section */}
-          <div className="hidden md:flex items-center gap-3 px-6 py-6">
+          <div className="flex items-center gap-3 px-6 py-6 border-b border-white/5">
             <div className="h-10 w-10 rounded-xl bg-purple-600/20 flex items-center justify-center border border-purple-500/30 shadow-lg shadow-purple-500/10">
               <BrainCircuit className="h-6 w-6 text-purple-theme" />
             </div>
@@ -192,7 +204,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 md:ml-[240px]">
         
         {/* Header Bar */}
         <header className="hidden md:flex justify-between items-center px-8 py-4 bg-white/5 backdrop-blur-md border-b border-white/5 relative z-30">

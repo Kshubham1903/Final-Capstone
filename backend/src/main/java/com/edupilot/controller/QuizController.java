@@ -153,6 +153,7 @@ public class QuizController {
             String reason = (String) aiResult.get("reason");
 
             // 2. Fetch and update student profile
+            studentService.updateStreak(profileId);
             StudentProfile profile = studentService.findOrCreateProfile(profileId);
             if (profile != null) {
                 

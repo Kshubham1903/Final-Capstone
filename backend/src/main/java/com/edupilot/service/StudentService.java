@@ -77,6 +77,39 @@ public class StudentService {
     }
 
     /**
+     * Updates and validates the user's daily streak.
+     * Increments if active exactly one day after the last activity.
+     * Remains unchanged if already updated on the same day.
+     * Resets to 1 if there is a gap of more than one day.
+     */
+    public synchronized StudentProfile updateStreak(String userId) {
+        if (userId == null || userId.trim().isEmpty() || "anonymous_student".equals(userId)) {
+            return null;
+        }
+        StudentProfile profile = findOrCreateProfile(userId);
+        LocalDate today = LocalDate.now();
+
+        LocalDate lastUpdate = profile.getLastStreakUpdate();
+        if (lastUpdate == null) {
+            profile.setCurrentStreakCount(1);
+            profile.setLastStreakUpdate(today);
+            profileRepository.save(profile);
+        } else {
+            long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(lastUpdate, today);
+            if (daysBetween == 1) {
+                profile.setCurrentStreakCount(profile.getCurrentStreakCount() + 1);
+                profile.setLastStreakUpdate(today);
+                profileRepository.save(profile);
+            } else if (daysBetween > 1) {
+                profile.setCurrentStreakCount(1);
+                profile.setLastStreakUpdate(today);
+                profileRepository.save(profile);
+            }
+        }
+        return profile;
+    }
+
+    /**
      * Backend Source of Truth: Check if student has completed onboarding.
      */
     public Map<String, Object> checkOnboardingStatus(String userId) {
