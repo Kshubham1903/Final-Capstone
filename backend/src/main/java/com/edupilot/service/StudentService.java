@@ -34,6 +34,28 @@ public class StudentService {
     private AiServiceClient aiServiceClient;
 
     /**
+     * Helper to resolve canonical student userId from user ID or email address.
+     */
+    public String resolveUserId(String emailOrId) {
+        if (emailOrId == null || emailOrId.trim().isEmpty() || "anonymous_student".equalsIgnoreCase(emailOrId)) {
+            return "anonymous_student";
+        }
+        Optional<StudentProfile> opt = profileRepository.findByUserId(emailOrId);
+        if (opt.isPresent() && opt.get().getUserId() != null) {
+            return opt.get().getUserId();
+        }
+        opt = profileRepository.findByEmail(emailOrId);
+        if (opt.isPresent()) {
+            return opt.get().getUserId() != null ? opt.get().getUserId() : opt.get().getId();
+        }
+        opt = profileRepository.findById(emailOrId);
+        if (opt.isPresent()) {
+            return opt.get().getUserId() != null ? opt.get().getUserId() : opt.get().getId();
+        }
+        return emailOrId;
+    }
+
+    /**
      * Defensive helper to find profile by MongoDB document ID or User ID, or auto-create if missing.
      */
     public StudentProfile findOrCreateProfile(String idOrUserId) {

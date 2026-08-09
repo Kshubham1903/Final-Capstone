@@ -121,6 +121,9 @@ public class KnowledgeService {
                 strongList.add(cm.getConceptName());
             } else if (cm.getMasteryLevel() == ConceptMastery.MasteryLevel.INTERMEDIATE) {
                 intermediate++;
+                if (cm.getAccuracy() < 70.0) {
+                    weakList.add(cm.getConceptName());
+                }
             } else {
                 beginner++;
                 weakList.add(cm.getConceptName());

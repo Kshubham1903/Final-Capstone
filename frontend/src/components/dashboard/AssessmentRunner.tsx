@@ -47,10 +47,15 @@ export default function AssessmentRunner({
     loadCatalogSubjects();
   }, [branch, semester]);
 
+  // Helper to resolve student identity
+  const getStudentUserId = () => {
+    return localStorage.getItem("edupilot_user_id") || localStorage.getItem("edupilot_profile_id") || "";
+  };
+
   // Start assessment session
   const handleStartSession = async (subjCode: string) => {
     setStartingTest(true);
-    const userId = localStorage.getItem("edupilot_user_id") || "anonymous_student";
+    const userId = getStudentUserId();
     
     try {
       const sess = await startDiagnosticAssessment({
@@ -112,7 +117,7 @@ export default function AssessmentRunner({
     if (!session || submitting) return;
     setSubmitting(true);
 
-    const userId = localStorage.getItem("edupilot_user_id") || "anonymous_student";
+    const userId = getStudentUserId();
     const answersList = (session.questions || []).map((q: any) => ({
       questionId: q.questionId,
       selectedOption: userAnswers[q.questionId] !== undefined ? userAnswers[q.questionId] : -1
@@ -130,6 +135,13 @@ export default function AssessmentRunner({
 
       setAssessmentResult(res);
       setStep("RESULT");
+
+      // Dispatch real-time event for dashboard component auto-refresh
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("edupilot:assessment-completed", {
+          detail: { userId, sessionId: session.sessionId, result: res }
+        }));
+      }
     } catch (err) {
       console.error("Error submitting assessment:", err);
     } finally {

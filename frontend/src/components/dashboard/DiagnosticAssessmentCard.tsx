@@ -10,7 +10,7 @@ export default function DiagnosticAssessmentCard({ profile }: DiagnosticAssessme
 
   useEffect(() => {
     async function loadLatestResult() {
-      const userId = profile?.id || localStorage.getItem("edupilot_user_id") || "";
+      const userId = profile?.userId || profile?.id || localStorage.getItem("edupilot_user_id") || "";
       if (userId) {
         const res = await fetchLatestDiagnosticResult(userId);
         if (res) {
@@ -19,10 +19,24 @@ export default function DiagnosticAssessmentCard({ profile }: DiagnosticAssessme
       }
     }
     loadLatestResult();
+
+    const handleAssessmentCompleted = () => {
+      loadLatestResult();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("edupilot:assessment-completed", handleAssessmentCompleted);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("edupilot:assessment-completed", handleAssessmentCompleted);
+      }
+    };
   }, [profile]);
 
   const activeBranch = profile?.branch || profile?.course || "Computer Science & Engineering";
   const activeSemester = profile?.semester || 3;
+  const initialSubjectCode = (profile?.subjects && profile.subjects.length > 0) ? undefined : "CS301";
 
   return (
     <div className="space-y-4">
@@ -80,10 +94,9 @@ export default function DiagnosticAssessmentCard({ profile }: DiagnosticAssessme
         <AssessmentRunner
           branch={activeBranch}
           semester={activeSemester}
-          initialSubjectCode="CS301"
+          initialSubjectCode={initialSubjectCode}
           onClose={() => {
             setShowRunner(false);
-            window.location.reload(); // Refresh state after completing test
           }}
         />
       )}

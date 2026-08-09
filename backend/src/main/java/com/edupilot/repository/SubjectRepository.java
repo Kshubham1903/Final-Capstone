@@ -13,4 +13,5 @@ public interface SubjectRepository extends MongoRepository<Subject, String> {
     List<Subject> findByBranchAndIsActiveTrue(String branch);
     List<Subject> findByBranchAndSemesterAndIsActiveTrue(String branch, int semester);
     Optional<Subject> findBySubjectCode(String subjectCode);
+    Optional<Subject> findBySubjectName(String subjectName);
 }

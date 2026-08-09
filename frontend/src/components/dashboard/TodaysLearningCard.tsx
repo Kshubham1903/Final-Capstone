@@ -12,7 +12,7 @@ export default function TodaysLearningCard({ profile }: TodaysLearningCardProps)
   const [regenerating, setRegenerating] = useState(false);
   const [activeSession, setActiveSession] = useState<any>(null);
 
-  const userId = profile?.id || localStorage.getItem("edupilot_user_id") || "";
+  const userId = profile?.userId || profile?.id || localStorage.getItem("edupilot_user_id") || "";
 
   const loadPlan = async () => {
     setLoading(true);
@@ -25,7 +25,21 @@ export default function TodaysLearningCard({ profile }: TodaysLearningCardProps)
 
   useEffect(() => {
     loadPlan();
-  }, [profile]);
+
+    const handleAssessmentCompleted = () => {
+      console.log("[TodaysLearningCard] Assessment completed event detected. Reloading plan...");
+      loadPlan();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("edupilot:assessment-completed", handleAssessmentCompleted);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("edupilot:assessment-completed", handleAssessmentCompleted);
+      }
+    };
+  }, [profile, userId]);
 
   const handleRegenerate = async () => {
     setRegenerating(true);

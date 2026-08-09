@@ -3,10 +3,14 @@ package com.edupilot.service;
 import com.edupilot.dto.*;
 import com.edupilot.model.LearningPlan;
 import com.edupilot.model.Recommendation;
+import com.edupilot.model.StudentProfile;
 import com.edupilot.model.StudySession;
+import com.edupilot.model.Subject;
 import com.edupilot.repository.LearningPlanRepository;
 import com.edupilot.repository.RecommendationRepository;
+import com.edupilot.repository.StudentProfileRepository;
 import com.edupilot.repository.StudySessionRepository;
+import com.edupilot.repository.SubjectRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -28,7 +32,24 @@ public class LearningPlannerService {
     private RecommendationRepository recommendationRepository;
 
     @Autowired
+    private StudentProfileRepository studentProfileRepository;
+
+    @Autowired
+    private SubjectRepository subjectRepository;
+
+    @Autowired
     private StudentService studentService;
+
+    private int getPriorityWeight(Recommendation.Priority priority) {
+        if (priority == null) return 3;
+        switch (priority) {
+            case CRITICAL: return 1;
+            case HIGH: return 2;
+            case MEDIUM: return 3;
+            case LOW: return 4;
+            default: return 3;
+        }
+    }
 
     /**
      * Generate adaptive Learning Plan dynamically derived from Recommendation Engine outputs.
@@ -41,6 +62,9 @@ public class LearningPlannerService {
         LocalDate today = LocalDate.now();
 
         List<Recommendation> recs = recommendationRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, Recommendation.Status.ACTIVE);
+        
+        // Sort recommendations by priority (CRITICAL -> HIGH -> MEDIUM -> LOW)
+        recs.sort(Comparator.comparingInt(r -> getPriorityWeight(r.getPriority())));
 
         List<LearningPlan.LearningTask> todayTasks = new ArrayList<>();
         int order = 1;
@@ -67,19 +91,43 @@ public class LearningPlannerService {
             totalMinutes += task.getEstimatedStudyTimeMinutes();
         }
 
-        // Fallback default task if no recommendations available
+        // Fallback default task derived from student's actual enrolled subjects
         if (todayTasks.isEmpty()) {
+            String targetSubjCode = "CS301";
+            String targetSubjName = "Data Structures & Algorithms";
+
+            Optional<StudentProfile> profOpt = studentProfileRepository.findByUserId(userId);
+            if (profOpt.isEmpty()) {
+                profOpt = studentProfileRepository.findById(userId);
+            }
+            if (profOpt.isPresent()) {
+                StudentProfile prof = profOpt.get();
+                if (prof.getSubjects() != null && !prof.getSubjects().isEmpty()) {
+                    targetSubjName = prof.getSubjects().get(0);
+                    Optional<Subject> catOpt = subjectRepository.findBySubjectName(targetSubjName);
+                    if (catOpt.isPresent()) {
+                        targetSubjCode = catOpt.get().getSubjectCode();
+                    }
+                } else if (prof.getBranch() != null) {
+                    List<Subject> catalogSubjs = subjectRepository.findByBranchAndIsActiveTrue(prof.getBranch());
+                    if (!catalogSubjs.isEmpty()) {
+                        targetSubjCode = catalogSubjs.get(0).getSubjectCode();
+                        targetSubjName = catalogSubjs.get(0).getSubjectName();
+                    }
+                }
+            }
+
             LearningPlan.LearningTask defaultTask = new LearningPlan.LearningTask();
-            defaultTask.setTaskId("task_def_1");
-            defaultTask.setSubjectCode("CS301");
-            defaultTask.setSubjectName("Data Structures & Algorithms");
-            defaultTask.setTopic("Binary Search Trees");
-            defaultTask.setConceptName("Binary Search Trees");
+            defaultTask.setTaskId("task_def_" + targetSubjCode.toLowerCase());
+            defaultTask.setSubjectCode(targetSubjCode);
+            defaultTask.setSubjectName(targetSubjName);
+            defaultTask.setTopic("Initial Diagnostic");
+            defaultTask.setConceptName(targetSubjName + " Diagnostic");
             defaultTask.setPriority(Recommendation.Priority.HIGH);
             defaultTask.setEstimatedStudyTimeMinutes(20);
             defaultTask.setRecommendedOrder(1);
-            defaultTask.setReason("Baseline diagnostic evaluation required to map conceptual mastery.");
-            defaultTask.setRecommendedAction("Attempt 5-minute diagnostic assessment for Data Structures.");
+            defaultTask.setReason("Baseline diagnostic evaluation required to map conceptual mastery for " + targetSubjName + ".");
+            defaultTask.setRecommendedAction("Attempt 5-minute diagnostic assessment for " + targetSubjName + ".");
             defaultTask.setStatus(LearningPlan.LearningTask.TaskStatus.PENDING);
             todayTasks.add(defaultTask);
             totalMinutes = 20;
@@ -108,10 +156,17 @@ public class LearningPlannerService {
     public LearningPlanResponse getTodayPlan(String userId) {
         LocalDate today = LocalDate.now();
         Optional<LearningPlan> planOpt = planRepository.findByUserIdAndPlanDate(userId, today);
-        if (planOpt.isEmpty()) {
-            return generateLearningPlan(userId);
+        if (planOpt.isPresent()) {
+            LearningPlan plan = planOpt.get();
+            // Automatically regenerate legacy hardcoded fallback plans ("task_def_1")
+            boolean isLegacyFallback = plan.getTasks() != null && plan.getTasks().stream()
+                    .anyMatch(t -> "task_def_1".equals(t.getTaskId()) || "Binary Search Trees".equalsIgnoreCase(t.getConceptName()));
+            if (isLegacyFallback) {
+                return generateLearningPlan(userId);
+            }
+            return new LearningPlanResponse(plan);
         }
-        return new LearningPlanResponse(planOpt.get());
+        return generateLearningPlan(userId);
     }
 
     public List<LearningPlanResponse> getWeekPlan(String userId) {

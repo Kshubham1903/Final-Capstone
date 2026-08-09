@@ -11,7 +11,7 @@ export default function KnowledgeProgressCard({ profile }: KnowledgeProgressCard
   useEffect(() => {
     async function loadKnowledgeEngineData() {
       setLoading(true);
-      const userId = profile?.id || localStorage.getItem("edupilot_user_id") || "";
+      const userId = profile?.userId || profile?.id || localStorage.getItem("edupilot_user_id") || "";
       if (userId) {
         const kp = await fetchKnowledgeProfile(userId);
         if (kp) {
@@ -21,6 +21,19 @@ export default function KnowledgeProgressCard({ profile }: KnowledgeProgressCard
       setLoading(false);
     }
     loadKnowledgeEngineData();
+
+    const handleAssessmentCompleted = () => {
+      loadKnowledgeEngineData();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("edupilot:assessment-completed", handleAssessmentCompleted);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("edupilot:assessment-completed", handleAssessmentCompleted);
+      }
+    };
   }, [profile]);
 
   const strongConceptsList = knowledgeData?.strongConcepts || [];

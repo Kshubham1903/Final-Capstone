@@ -32,6 +32,9 @@ public class AssessmentService {
     @Autowired
     private KnowledgeService knowledgeService;
 
+    @Autowired
+    private ConceptMasteryRepository conceptRepository;
+
     @PostConstruct
     public void initDefaultQuestionBank() {
         if (questionRepository.count() == 0) {
@@ -87,6 +90,7 @@ public class AssessmentService {
         int semester = req.getSemester() > 0 ? req.getSemester() : 3;
         String subjectCode = req.getSubjectCode() != null ? req.getSubjectCode().trim().toUpperCase() : "CS301";
         int count = req.getQuestionCount() > 0 ? req.getQuestionCount() : 5;
+        String userId = req.getUserId() != null ? req.getUserId() : "anonymous_student";
 
         List<AssessmentQuestion> questions = questionRepository.findByBranchAndSemesterAndSubjectCodeAndIsActiveTrue(branch, semester, subjectCode);
         if (questions.isEmpty()) {
@@ -96,9 +100,68 @@ public class AssessmentService {
             questions = questionRepository.findAll().stream().filter(AssessmentQuestion::isActive).collect(Collectors.toList());
         }
 
-        // Randomize questions
-        Collections.shuffle(questions);
-        List<AssessmentQuestion> selected = questions.stream().limit(count).collect(Collectors.toList());
+        // Fetch concept mastery for this student to perform Adaptive Question Selection
+        List<ConceptMastery> userMasteries = conceptRepository.findByUserId(userId);
+        Map<String, ConceptMastery> masteryMap = new HashMap<>();
+        if (userMasteries != null) {
+            for (ConceptMastery cm : userMasteries) {
+                if (cm.getTopic() != null) {
+                    masteryMap.put(cm.getTopic().trim().toLowerCase(), cm);
+                }
+                if (cm.getConceptName() != null) {
+                    masteryMap.put(cm.getConceptName().trim().toLowerCase(), cm);
+                }
+            }
+        }
+
+        // Categorize questions into adaptive priority buckets:
+        // Bucket 1: Critical Weak Concepts (< 50% accuracy or BEGINNER)
+        // Bucket 2: Needs Practice Concepts (50-69% accuracy or INTERMEDIATE)
+        // Bucket 3: Unassessed Concepts (No prior attempt)
+        // Bucket 4: Proficient/Mastered Concepts (>= 70% accuracy)
+        List<AssessmentQuestion> bucketCritical = new ArrayList<>();
+        List<AssessmentQuestion> bucketPractice = new ArrayList<>();
+        List<AssessmentQuestion> bucketUnassessed = new ArrayList<>();
+        List<AssessmentQuestion> bucketMastered = new ArrayList<>();
+
+        for (AssessmentQuestion q : questions) {
+            String topicKey = q.getTopic() != null ? q.getTopic().trim().toLowerCase() : "general";
+            ConceptMastery cm = masteryMap.get(topicKey);
+
+            if (cm == null) {
+                bucketUnassessed.add(q);
+            } else if (cm.getAccuracy() < 50.0 || cm.getMasteryLevel() == ConceptMastery.MasteryLevel.BEGINNER) {
+                bucketCritical.add(q);
+            } else if (cm.getAccuracy() < 70.0 || cm.getMasteryLevel() == ConceptMastery.MasteryLevel.INTERMEDIATE) {
+                bucketPractice.add(q);
+            } else {
+                bucketMastered.add(q);
+            }
+        }
+
+        Collections.shuffle(bucketCritical);
+        Collections.shuffle(bucketPractice);
+        Collections.shuffle(bucketUnassessed);
+        Collections.shuffle(bucketMastered);
+
+        List<AssessmentQuestion> selected = new ArrayList<>();
+        for (AssessmentQuestion q : bucketCritical) {
+            if (selected.size() < count) selected.add(q);
+        }
+        for (AssessmentQuestion q : bucketPractice) {
+            if (selected.size() < count) selected.add(q);
+        }
+        for (AssessmentQuestion q : bucketUnassessed) {
+            if (selected.size() < count) selected.add(q);
+        }
+        for (AssessmentQuestion q : bucketMastered) {
+            if (selected.size() < count) selected.add(q);
+        }
+
+        if (selected.isEmpty()) {
+            Collections.shuffle(questions);
+            selected = questions.stream().limit(count).collect(Collectors.toList());
+        }
 
         List<String> questionIds = selected.stream().map(AssessmentQuestion::getId).collect(Collectors.toList());
         int totalMarks = selected.stream().mapToInt(AssessmentQuestion::getMarks).sum();
@@ -106,8 +169,8 @@ public class AssessmentService {
         String subjectName = selected.isEmpty() ? "General Computer Science" : selected.get(0).getSubjectName();
 
         AssessmentSession session = new AssessmentSession();
-        session.setUserId(req.getUserId() != null ? req.getUserId() : "anonymous_student");
-        session.setStudentProfileId(req.getUserId());
+        session.setUserId(userId);
+        session.setStudentProfileId(userId);
         session.setBranch(branch);
         session.setSemester(semester);
         session.setSubjectCode(subjectCode);
@@ -153,9 +216,15 @@ public class AssessmentService {
 
         Map<String, Map<String, Object>> topicBreakdown = new HashMap<>();
         List<AssessmentResult.UserAnswer> userAnswersList = new ArrayList<>();
+        Set<String> processedQuestionIds = new HashSet<>();
 
         if (req.getAnswers() != null) {
             for (AssessmentSubmissionRequest.AnswerItem ansItem : req.getAnswers()) {
+                if (ansItem.getQuestionId() == null || processedQuestionIds.contains(ansItem.getQuestionId())) {
+                    continue; // Skip duplicate question submission
+                }
+                processedQuestionIds.add(ansItem.getQuestionId());
+
                 AssessmentQuestion q = questionMap.get(ansItem.getQuestionId());
                 if (q == null) continue;
 

@@ -22,6 +22,7 @@ export interface QuizQuestion {
 
 export interface StudentProfile {
   id: string;
+  userId?: string;
   fullName: string;
   email: string;
   isCompleted?: boolean;

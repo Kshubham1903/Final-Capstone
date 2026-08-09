@@ -1,12 +1,8 @@
 package com.edupilot.service;
 
-import com.edupilot.dto.RecommendationResponse;
-import com.edupilot.model.ConceptMastery;
-import com.edupilot.model.KnowledgeProfile;
-import com.edupilot.model.Recommendation;
-import com.edupilot.repository.ConceptMasteryRepository;
-import com.edupilot.repository.KnowledgeProfileRepository;
-import com.edupilot.repository.RecommendationRepository;
+import com.edupilot.dto.*;
+import com.edupilot.model.*;
+import com.edupilot.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +23,12 @@ public class RecommendationService {
     private KnowledgeProfileRepository knowledgeProfileRepository;
 
     @Autowired
+    private StudentProfileRepository studentProfileRepository;
+
+    @Autowired
+    private SubjectRepository subjectRepository;
+
+    @Autowired
     private LearningPlannerService plannerService;
 
     /**
@@ -42,7 +44,7 @@ public class RecommendationService {
 
         List<Recommendation> generatedList = new ArrayList<>();
 
-        // Rule 1 & Rule 2: Evaluate individual concept mastery entries
+        // Rule 1, 2, 4: Evaluate individual concept mastery entries
         for (ConceptMastery cm : concepts) {
             String subjectCode = cm.getSubjectCode();
             String subjectName = cm.getSubjectName();
@@ -80,12 +82,26 @@ public class RecommendationService {
                 generatedList.add(recommendationRepository.save(rec));
 
             } else if (accuracy >= 50.0 && accuracy < 70.0) {
-                // Rule 2: MEDIUM Practice Set
+                // Rule 2: HIGH Priority Practice Set (Needs Practice)
                 rec.setRecommendationType(Recommendation.RecommendationType.PRACTICE_SET);
-                rec.setPriority(Recommendation.Priority.MEDIUM);
+                rec.setPriority(Recommendation.Priority.HIGH);
                 rec.setReason("Concept accuracy for " + conceptName + " is " + accuracy + "%. Practice intermediate diagnostic sets to reach proficiency.");
                 rec.setRecommendedAction("Solve 4 medium-difficulty practice questions on " + conceptName + ".");
                 rec.setEstimatedStudyTimeMinutes(20);
+                rec.setDifficulty("MEDIUM");
+                rec.setConfidenceScore(accuracy);
+                rec.setStatus(Recommendation.Status.ACTIVE);
+                rec.setCreatedAt(LocalDateTime.now());
+                rec.setExpiresAt(LocalDateTime.now().plusDays(7));
+                generatedList.add(recommendationRepository.save(rec));
+
+            } else if (accuracy >= 70.0 && accuracy < 85.0) {
+                // Rule 3: MEDIUM Priority Maintenance
+                rec.setRecommendationType(Recommendation.RecommendationType.PRACTICE_SET);
+                rec.setPriority(Recommendation.Priority.MEDIUM);
+                rec.setReason("Concept accuracy for " + conceptName + " is " + accuracy + "%. Maintain velocity with periodic revision.");
+                rec.setRecommendedAction("Attempt 3 review questions on " + conceptName + ".");
+                rec.setEstimatedStudyTimeMinutes(15);
                 rec.setDifficulty("MEDIUM");
                 rec.setConfidenceScore(accuracy);
                 rec.setStatus(Recommendation.Status.ACTIVE);
@@ -140,18 +156,43 @@ public class RecommendationService {
             }
         }
 
-        // Fallback default recommendation if no custom recommendations generated
+        // Fallback: Initial diagnostic recommendation derived from student's actual enrolled subjects
         if (generatedList.isEmpty()) {
+            String targetSubjCode = "CS301";
+            String targetSubjName = "Data Structures & Algorithms";
+
+            Optional<StudentProfile> profOpt = studentProfileRepository.findByUserId(userId);
+            if (profOpt.isEmpty()) {
+                profOpt = studentProfileRepository.findById(userId);
+            }
+            if (profOpt.isPresent()) {
+                StudentProfile prof = profOpt.get();
+                if (prof.getSubjects() != null && !prof.getSubjects().isEmpty()) {
+                    targetSubjName = prof.getSubjects().get(0);
+                    // Match code in subject catalog
+                    Optional<Subject> catOpt = subjectRepository.findBySubjectName(targetSubjName);
+                    if (catOpt.isPresent()) {
+                        targetSubjCode = catOpt.get().getSubjectCode();
+                    }
+                } else if (prof.getBranch() != null) {
+                    List<Subject> catalogSubjs = subjectRepository.findByBranchAndIsActiveTrue(prof.getBranch());
+                    if (!catalogSubjs.isEmpty()) {
+                        targetSubjCode = catalogSubjs.get(0).getSubjectCode();
+                        targetSubjName = catalogSubjs.get(0).getSubjectName();
+                    }
+                }
+            }
+
             Recommendation defaultRec = new Recommendation();
             defaultRec.setUserId(userId);
             defaultRec.setRecommendationType(Recommendation.RecommendationType.DIAGNOSTIC_RETEST);
             defaultRec.setPriority(Recommendation.Priority.HIGH);
-            defaultRec.setSubjectCode("CS301");
-            defaultRec.setSubjectName("Data Structures & Algorithms");
-            defaultRec.setTopic("Binary Search Trees");
-            defaultRec.setConceptName("Binary Search Trees");
-            defaultRec.setReason("Initial diagnostic evaluation recommended to generate your personalized SGI and knowledge map.");
-            defaultRec.setRecommendedAction("Take your first 5-minute diagnostic assessment for Data Structures.");
+            defaultRec.setSubjectCode(targetSubjCode);
+            defaultRec.setSubjectName(targetSubjName);
+            defaultRec.setTopic("Initial Diagnostic");
+            defaultRec.setConceptName(targetSubjName + " Foundations");
+            defaultRec.setReason("Initial diagnostic evaluation recommended for " + targetSubjName + " to map your conceptual mastery.");
+            defaultRec.setRecommendedAction("Take your first 5-minute diagnostic assessment for " + targetSubjName + ".");
             defaultRec.setEstimatedStudyTimeMinutes(15);
             defaultRec.setDifficulty("MEDIUM");
             defaultRec.setConfidenceScore(50.0);
