@@ -182,6 +182,10 @@ export default function Quizzes() {
   const handleNextStep = async () => {
     if (questionCount >= 10) {
       setQuizFinished(true);
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("edupilot:assessment-completed"));
+      }
       
       const conn = await checkBackendConnection();
       if (conn) {

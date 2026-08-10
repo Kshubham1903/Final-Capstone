@@ -35,10 +35,16 @@ public class LearningPlannerService {
     private StudentProfileRepository studentProfileRepository;
 
     @Autowired
+    private StudentService studentService;
+
+    @Autowired
     private SubjectRepository subjectRepository;
 
     @Autowired
-    private StudentService studentService;
+    private com.edupilot.repository.ConceptMasteryRepository conceptMasteryRepository;
+
+    @Autowired
+    private com.edupilot.repository.QuizSessionRepository quizSessionRepository;
 
     private int getPriorityWeight(Recommendation.Priority priority) {
         if (priority == null) return 3;
@@ -63,14 +69,19 @@ public class LearningPlannerService {
 
         List<Recommendation> recs = recommendationRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, Recommendation.Status.ACTIVE);
         
+        // Filter for weak/revision recommendations (CRITICAL and HIGH priority)
+        List<Recommendation> weakRecs = recs.stream()
+                .filter(r -> r.getPriority() == Recommendation.Priority.CRITICAL || r.getPriority() == Recommendation.Priority.HIGH)
+                .collect(Collectors.toList());
+
         // Sort recommendations by priority (CRITICAL -> HIGH -> MEDIUM -> LOW)
-        recs.sort(Comparator.comparingInt(r -> getPriorityWeight(r.getPriority())));
+        weakRecs.sort(Comparator.comparingInt(r -> getPriorityWeight(r.getPriority())));
 
         List<LearningPlan.LearningTask> todayTasks = new ArrayList<>();
         int order = 1;
         int totalMinutes = 0;
 
-        for (Recommendation rec : recs) {
+        for (Recommendation rec : weakRecs) {
             String taskId = "task_" + (rec.getId() != null ? rec.getId() : UUID.randomUUID().toString());
             
             LearningPlan.LearningTask task = new LearningPlan.LearningTask();
@@ -91,46 +102,68 @@ public class LearningPlannerService {
             totalMinutes += task.getEstimatedStudyTimeMinutes();
         }
 
-        // Fallback default task derived from student's actual enrolled subjects
+        // If no weak concept recommendations exist, check if student has concept mastery records (i.e. completed quiz with 0 mistakes)
         if (todayTasks.isEmpty()) {
-            String targetSubjCode = "CS301";
-            String targetSubjName = "Data Structures & Algorithms";
+            boolean hasQuizHistory = !quizSessionRepository.findByUserIdOrderByLastAnswerTimeDesc(userId).isEmpty()
+                                  || !conceptMasteryRepository.findByUserId(userId).isEmpty();
+            
+            if (hasQuizHistory) {
+                // Student has completed quiz/assessments with 0 weak concepts identified
+                LearningPlan.LearningTask successTask = new LearningPlan.LearningTask();
+                successTask.setTaskId("task_no_weak_" + System.currentTimeMillis());
+                successTask.setSubjectCode("ALL");
+                successTask.setSubjectName("Quiz Assessment");
+                successTask.setTopic("Quiz Proficiency Achieved");
+                successTask.setConceptName("No Weak Concepts Identified");
+                successTask.setPriority(Recommendation.Priority.LOW);
+                successTask.setEstimatedStudyTimeMinutes(0);
+                successTask.setRecommendedOrder(1);
+                successTask.setReason("Great work! No weak concepts were identified from your latest quiz.");
+                successTask.setRecommendedAction("All concepts answered correctly. Continue to maintain your strong performance!");
+                successTask.setStatus(LearningPlan.LearningTask.TaskStatus.COMPLETED);
+                todayTasks.add(successTask);
+                totalMinutes = 0;
+            } else {
+                // Default task for brand new user who has never taken any quiz/assessment
+                String targetSubjCode = "CS301";
+                String targetSubjName = "Data Structures & Algorithms";
 
-            Optional<StudentProfile> profOpt = studentProfileRepository.findByUserId(userId);
-            if (profOpt.isEmpty()) {
-                profOpt = studentProfileRepository.findById(userId);
-            }
-            if (profOpt.isPresent()) {
-                StudentProfile prof = profOpt.get();
-                if (prof.getSubjects() != null && !prof.getSubjects().isEmpty()) {
-                    targetSubjName = prof.getSubjects().get(0);
-                    Optional<Subject> catOpt = subjectRepository.findBySubjectName(targetSubjName);
-                    if (catOpt.isPresent()) {
-                        targetSubjCode = catOpt.get().getSubjectCode();
-                    }
-                } else if (prof.getBranch() != null) {
-                    List<Subject> catalogSubjs = subjectRepository.findByBranchAndIsActiveTrue(prof.getBranch());
-                    if (!catalogSubjs.isEmpty()) {
-                        targetSubjCode = catalogSubjs.get(0).getSubjectCode();
-                        targetSubjName = catalogSubjs.get(0).getSubjectName();
+                Optional<StudentProfile> profOpt = studentProfileRepository.findByUserId(userId);
+                if (profOpt.isEmpty()) {
+                    profOpt = studentProfileRepository.findById(userId);
+                }
+                if (profOpt.isPresent()) {
+                    StudentProfile prof = profOpt.get();
+                    if (prof.getSubjects() != null && !prof.getSubjects().isEmpty()) {
+                        targetSubjName = prof.getSubjects().get(0);
+                        Optional<Subject> catOpt = subjectRepository.findBySubjectName(targetSubjName);
+                        if (catOpt.isPresent()) {
+                            targetSubjCode = catOpt.get().getSubjectCode();
+                        }
+                    } else if (prof.getBranch() != null) {
+                        List<Subject> catalogSubjs = subjectRepository.findByBranchAndIsActiveTrue(prof.getBranch());
+                        if (!catalogSubjs.isEmpty()) {
+                            targetSubjCode = catalogSubjs.get(0).getSubjectCode();
+                            targetSubjName = catalogSubjs.get(0).getSubjectName();
+                        }
                     }
                 }
-            }
 
-            LearningPlan.LearningTask defaultTask = new LearningPlan.LearningTask();
-            defaultTask.setTaskId("task_def_" + targetSubjCode.toLowerCase());
-            defaultTask.setSubjectCode(targetSubjCode);
-            defaultTask.setSubjectName(targetSubjName);
-            defaultTask.setTopic("Initial Diagnostic");
-            defaultTask.setConceptName(targetSubjName + " Diagnostic");
-            defaultTask.setPriority(Recommendation.Priority.HIGH);
-            defaultTask.setEstimatedStudyTimeMinutes(20);
-            defaultTask.setRecommendedOrder(1);
-            defaultTask.setReason("Baseline diagnostic evaluation required to map conceptual mastery for " + targetSubjName + ".");
-            defaultTask.setRecommendedAction("Attempt 5-minute diagnostic assessment for " + targetSubjName + ".");
-            defaultTask.setStatus(LearningPlan.LearningTask.TaskStatus.PENDING);
-            todayTasks.add(defaultTask);
-            totalMinutes = 20;
+                LearningPlan.LearningTask defaultTask = new LearningPlan.LearningTask();
+                defaultTask.setTaskId("task_def_" + targetSubjCode.toLowerCase());
+                defaultTask.setSubjectCode(targetSubjCode);
+                defaultTask.setSubjectName(targetSubjName);
+                defaultTask.setTopic("Initial Diagnostic");
+                defaultTask.setConceptName(targetSubjName + " Diagnostic");
+                defaultTask.setPriority(Recommendation.Priority.HIGH);
+                defaultTask.setEstimatedStudyTimeMinutes(20);
+                defaultTask.setRecommendedOrder(1);
+                defaultTask.setReason("Baseline diagnostic evaluation required to map conceptual mastery for " + targetSubjName + ".");
+                defaultTask.setRecommendedAction("Attempt 5-minute diagnostic assessment for " + targetSubjName + ".");
+                defaultTask.setStatus(LearningPlan.LearningTask.TaskStatus.PENDING);
+                todayTasks.add(defaultTask);
+                totalMinutes = 20;
+            }
         }
 
         Optional<LearningPlan> existingOpt = planRepository.findByUserIdAndPlanDate(userId, today);
@@ -160,7 +193,7 @@ public class LearningPlannerService {
             LearningPlan plan = planOpt.get();
             // Automatically regenerate legacy hardcoded fallback plans ("task_def_1")
             boolean isLegacyFallback = plan.getTasks() != null && plan.getTasks().stream()
-                    .anyMatch(t -> "task_def_1".equals(t.getTaskId()) || "Binary Search Trees".equalsIgnoreCase(t.getConceptName()));
+                    .anyMatch(t -> (t.getTaskId() != null && t.getTaskId().startsWith("task_def_")) || "Binary Search Trees".equalsIgnoreCase(t.getConceptName()));
             if (isLegacyFallback) {
                 return generateLearningPlan(userId);
             }

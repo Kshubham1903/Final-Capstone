@@ -360,19 +360,19 @@ public class AiServiceClient {
                     3, "Isolating a single variable ensures observed conversion rate differences are attributed accurately."));
         } else {
             list.add(new QuizQuestion(null, subject, subject + " Architecture", diff,
-                    "What is a fundamental design principle when building scalable software modules in " + subject + "?",
+                    "How does software architecture maintain clean modular isolation in " + subject + "?",
                     List.of("Ensuring loose coupling and modular separation of concerns across components", "Tightly coupling business logic and data persistence into a single file", "Disabling error handling and input validation during execution cycles", "Hardcoding production system parameters into public binary files"),
                     0, "Modular separation of concerns ensures maintainability and clean component isolation in " + subject + "."));
             list.add(new QuizQuestion(null, subject, subject + " Performance Optimization", diff,
-                    "When optimizing latency and throughput in " + subject + ", which approach yields the most reliable performance gains?",
+                    "What performance optimization technique yields high throughput in " + subject + "?",
                     List.of("Executing unbounded recursive loops without defined termination criteria", "Profiling execution bottlenecks and optimizing critical execution paths", "Disabling caching layers across all service API interface endpoints", "Increasing server hardware specs without profiling underlying bottlenecks"),
                     1, "Targeted profiling pinpoints exact bottlenecks, allowing data-driven optimization in " + subject + "."));
             list.add(new QuizQuestion(null, subject, subject + " Error Resilience", diff,
-                    "How should high-availability systems in " + subject + " handle transient fault conditions?",
+                    "Which pattern handles fault tolerance and system recovery in " + subject + "?",
                     List.of("Ignoring system errors and returning empty unvalidated response payloads", "Terminating host server processes upon encountering non-fatal warnings", "Implementing exponential backoff retry strategies with circuit breakers", "Bypassing input validation and boundary security checks under heavy load"),
                     2, "Exponential backoff and circuit breakers prevent cascading failures in " + subject + "."));
             list.add(new QuizQuestion(null, subject, subject + " Security & Data Integrity", diff,
-                    "What practice is critical for protecting data integrity and access control within " + subject + " workflows?",
+                    "How are data integrity and authorization enforced across " + subject + " components?",
                     List.of("Storing API secret credentials in client-side open source assets", "Disabling TLS encryption protocols across internal microservices", "Granting full admin permissions to all default user access tokens", "Validating and sanitizing all inputs at system boundaries before processing"),
                     3, "Input validation and boundary sanitization prevent injection vulnerabilities in " + subject + "."));
         }

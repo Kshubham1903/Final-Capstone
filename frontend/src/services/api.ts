@@ -952,24 +952,7 @@ export async function fetchStudentRecommendations(userId: string): Promise<any[]
       console.warn("Error fetching recommendations from backend:", err);
     }
   }
-  return [
-    {
-      id: "rec_fallback_1",
-      userId,
-      recommendationType: "CONCEPT_REVISION",
-      priority: "CRITICAL",
-      subjectCode: "CS301",
-      subjectName: "Data Structures & Algorithms",
-      topic: "Binary Search Trees",
-      conceptName: "Binary Search Trees",
-      reason: "Your concept mastery for Binary Search Trees is 40.0%, which is below the 50% threshold after 2 attempts.",
-      recommendedAction: "Review BST balancing rules and attempt 5 practice questions.",
-      estimatedStudyTimeMinutes: 25,
-      difficulty: "MEDIUM",
-      confidenceScore: 40.0,
-      status: "ACTIVE"
-    }
-  ];
+  return [];
 }
 
 export async function fetchHighPriorityRecommendations(userId: string): Promise<any[]> {
