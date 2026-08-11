@@ -25,7 +25,7 @@ export function handleAuthError(res: Response): void {
 export async function checkBackendConnection(): Promise<boolean> {
   try {
     const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 1000);
+    const id = setTimeout(() => controller.abort(), 3000);
     const res = await fetch(`${BACKEND_URL}/api/students/health`, {
       method: "GET",
       signal: controller.signal
@@ -360,9 +360,12 @@ export async function getRecommendations(profileId: string): Promise<any> {
   };
 }
 
-export async function fetchQuizQuestions(subject: string, difficulty: string, excludeIds?: string[]): Promise<any[]> {
+export async function fetchQuizQuestions(subject: string, difficulty: string, excludeIds?: string[], targetConcept?: string): Promise<any[]> {
+  const isVerificationRequest = !!(targetConcept && targetConcept.trim().length > 0);
   const online = await checkBackendConnection();
-  if (online) {
+  if (online || typeof window !== "undefined") {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
     try {
       const params = new URLSearchParams({
         subject: subject,
@@ -371,17 +374,51 @@ export async function fetchQuizQuestions(subject: string, difficulty: string, ex
       if (excludeIds && excludeIds.length > 0) {
         params.append("exclude", excludeIds.join(","));
       }
-      const res = await fetch(`${BACKEND_URL}/api/quizzes/questions?${params.toString()}`, {
-        headers: getAuthHeaders()
-      });
-      if (res.ok) {
-        return await res.json();
+      if (isVerificationRequest) {
+        params.append("targetConcept", targetConcept);
       }
-    } catch (err) {
+      const fetchUrl = `${BACKEND_URL}/api/quizzes/questions?${params.toString()}`;
+      const authHeaders = getAuthHeaders();
+      const res = await fetch(fetchUrl, {
+        headers: authHeaders,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        isBackendOnline = true;
+        const data = await res.json();
+        return data;
+      }
+
+      // Explicit Auth Error Handling: Do NOT silently hide 401/403 auth errors
+      if (res.status === 401 || res.status === 403) {
+        handleAuthError(res);
+        throw new Error("AUTH_ERROR: Authentication required or invalid session token. Please log in again.");
+      }
+
+      if (isVerificationRequest) {
+        throw new Error(`SERVER_ERROR: Backend server returned HTTP ${res.status}`);
+      }
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        throw new Error("TIMEOUT_ERROR: Verification quiz loading timed out.");
+      }
+      if (err.message && (err.message.includes("AUTH_ERROR") || err.message.includes("SERVER_ERROR"))) {
+        throw err;
+      }
+      if (isVerificationRequest) {
+        throw new Error(`NETWORK_ERROR: ${err.message || "Failed to reach backend server"}`);
+      }
       console.warn("Error fetching quiz questions from backend:", err);
     }
   }
   
+  if (isVerificationRequest) {
+    throw new Error("NO_QUESTIONS: Targeted verification questions unavailable in local bank.");
+  }
+
   const localBankRaw = typeof window !== "undefined" ? localStorage.getItem("edupilot_custom_questions") : null;
   const localQuestions = localBankRaw ? JSON.parse(localBankRaw) : [];
   const fullBank = [...QUESTION_BANK, ...localQuestions];
@@ -636,6 +673,8 @@ export async function submitQuizAnswer(payload: {
   difficulty: string;
   isCorrect: boolean;
   responseTimeSeconds: number;
+  isVerification?: boolean;
+  targetConcept?: string;
 }): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
@@ -952,24 +991,7 @@ export async function fetchStudentRecommendations(userId: string): Promise<any[]
       console.warn("Error fetching recommendations from backend:", err);
     }
   }
-  return [
-    {
-      id: "rec_fallback_1",
-      userId,
-      recommendationType: "CONCEPT_REVISION",
-      priority: "CRITICAL",
-      subjectCode: "CS301",
-      subjectName: "Data Structures & Algorithms",
-      topic: "Binary Search Trees",
-      conceptName: "Binary Search Trees",
-      reason: "Your concept mastery for Binary Search Trees is 40.0%, which is below the 50% threshold after 2 attempts.",
-      recommendedAction: "Review BST balancing rules and attempt 5 practice questions.",
-      estimatedStudyTimeMinutes: 25,
-      difficulty: "MEDIUM",
-      confidenceScore: 40.0,
-      status: "ACTIVE"
-    }
-  ];
+  return [];
 }
 
 export async function fetchHighPriorityRecommendations(userId: string): Promise<any[]> {

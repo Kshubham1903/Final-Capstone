@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { 
-  Sparkles, CheckCircle, Clock, ArrowRight, RefreshCw, CheckCircle2, Play, Calendar, ListTodo 
+  Sparkles, CheckCircle, Clock, ArrowRight, RefreshCw, CheckCircle2, Play, Calendar, ListTodo, ChevronDown
 } from "lucide-react";
 import { TodaysLearningCardProps } from "./types";
 import { fetchTodayPlan, completePlannerTask, startStudySession, regeneratePlan } from "../../services/api";
@@ -11,6 +11,7 @@ export default function TodaysLearningCard({ profile }: TodaysLearningCardProps)
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [activeSession, setActiveSession] = useState<any>(null);
+  const [showAllTasks, setShowAllTasks] = useState(false);
 
   const userId = profile?.userId || profile?.id || localStorage.getItem("edupilot_user_id") || "";
 
@@ -85,6 +86,8 @@ export default function TodaysLearningCard({ profile }: TodaysLearningCardProps)
   const completedTasks = planData?.completedTasks || 0;
   const completionPercentage = planData?.completionPercentage || (totalTasks > 0 ? (completedTasks * 100) / totalTasks : 0);
 
+  const displayedTasks = showAllTasks ? tasks : tasks.slice(0, 4);
+
   const getPriorityBadge = (priority: string) => {
     switch (priority) {
       case "CRITICAL":
@@ -109,7 +112,10 @@ export default function TodaysLearningCard({ profile }: TodaysLearningCardProps)
           </div>
           <div>
             <h3 className="text-base font-extrabold tracking-wide text-main-theme">Today's Personalized Learning Plan</h3>
-            <p className="text-[11px] text-secondary-theme">Adaptive study roadmap generated from Recommendation Engine outputs</p>
+            <p className="text-[11px] text-secondary-theme">
+              Adaptive study roadmap generated from Recommendation Engine outputs
+              {tasks.length > 0 && <strong className="text-purple-theme ml-1">({tasks.length} item{tasks.length === 1 ? "" : "s"} needing attention)</strong>}
+            </p>
           </div>
         </div>
 
@@ -148,79 +154,107 @@ export default function TodaysLearningCard({ profile }: TodaysLearningCardProps)
         </div>
       ) : tasks.length > 0 ? (
         <div className="space-y-3">
-          {tasks.map((task: any, index: number) => {
-            const isCompleted = task.status === "COMPLETED";
-            return (
-              <div
-                key={task.taskId || index}
-                className={`p-4 rounded-xl glass-panel border transition-all space-y-2.5 ${
-                  isCompleted 
-                    ? "bg-emerald-500/5 border-emerald-500/20 opacity-75" 
-                    : "border-white/5 hover:border-purple-500/30"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase border ${getPriorityBadge(task.priority)}`}>
-                      {task.priority || "MEDIUM"}
-                    </span>
-                    <span className="text-[10px] font-bold text-secondary-theme bg-white/5 px-2 py-0.5 rounded border border-white/10">
-                      {task.subjectCode || "CS301"}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-secondary-theme font-bold flex items-center gap-1">
-                      <Clock className="h-3 w-3 text-purple-theme" />
-                      {task.estimatedStudyTimeMinutes || 20} mins
-                    </span>
-
-                    {!isCompleted ? (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => handleStartSession(task)}
-                          className="px-2.5 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 text-[10px] font-bold border border-purple-500/30 flex items-center gap-1 transition-all cursor-pointer"
-                        >
-                          <Play className="h-3 w-3 fill-current" />
-                          <span>Start Study</span>
-                        </button>
-                        <button
-                          onClick={() => handleTaskComplete(task.taskId)}
-                          className="p-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-all cursor-pointer"
-                          title="Mark Task Complete"
-                        >
-                          <CheckCircle className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
-                        <CheckCircle2 className="h-3 w-3" />
-                        <span>Completed</span>
+          <div className={`space-y-3 ${showAllTasks ? "max-h-[480px] overflow-y-auto pr-1" : ""}`}>
+            {displayedTasks.map((task: any, index: number) => {
+              const isCompleted = task.status === "COMPLETED";
+              const isPendingVerification = task.status === "VERIFICATION_PENDING";
+              return (
+                <div
+                  key={task.taskId || index}
+                  className={`p-4 rounded-xl glass-panel border transition-all space-y-2.5 ${
+                    isCompleted 
+                      ? "bg-emerald-500/5 border-emerald-500/20 opacity-75" 
+                      : isPendingVerification
+                      ? "bg-amber-500/10 border-amber-500/30"
+                      : "border-white/5 hover:border-purple-500/30"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase border ${getPriorityBadge(task.priority)}`}>
+                        {task.priority || "MEDIUM"}
                       </span>
-                    )}
-                  </div>
-                </div>
+                      <span className="text-[10px] font-bold text-secondary-theme bg-white/5 px-2 py-0.5 rounded border border-white/10">
+                        {task.subjectCode || "CS301"}
+                      </span>
+                      {isPendingVerification && (
+                        <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 animate-pulse">
+                          Verification Required
+                        </span>
+                      )}
+                    </div>
 
-                {/* Content */}
-                <div>
-                  <h4 className={`text-sm font-extrabold ${isCompleted ? "line-through text-secondary-theme" : "text-main-theme"}`}>
-                    {task.conceptName || task.topic || "Core Concept Study"}
-                  </h4>
-                  <p className="text-xs text-emerald-400 font-medium flex items-center gap-1 mt-0.5">
-                    <ArrowRight className="h-3.5 w-3.5 shrink-0" />
-                    <span>{task.recommendedAction}</span>
-                  </p>
-                </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-secondary-theme font-bold flex items-center gap-1">
+                        <Clock className="h-3 w-3 text-purple-theme" />
+                        {task.estimatedStudyTimeMinutes || 20} mins
+                      </span>
 
-                {/* Explainability Reason */}
-                {task.reason && (
-                  <div className="p-2 rounded-lg bg-white/3 border border-white/5 text-[11px] text-secondary-theme italic">
-                    {task.reason}
+                      {isPendingVerification ? (
+                        <a
+                          href={`/dashboard/quizzes?subject=${encodeURIComponent(task.subjectName || task.subject || "")}&targetConcept=${encodeURIComponent(task.conceptName || task.topic || "")}&isVerification=true`}
+                          className="px-3 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-purple-600 text-white text-[10px] font-extrabold border border-amber-400/40 shadow-md hover:scale-105 transition-all flex items-center gap-1 cursor-pointer"
+                        >
+                          <Sparkles className="h-3 w-3 fill-current text-amber-200" />
+                          <span>Start Verification Quiz</span>
+                        </a>
+                      ) : !isCompleted ? (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleStartSession(task)}
+                            className="px-2.5 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 text-[10px] font-bold border border-purple-500/30 flex items-center gap-1 transition-all cursor-pointer"
+                          >
+                            <Play className="h-3 w-3 fill-current" />
+                            <span>Start Study</span>
+                          </button>
+                          <button
+                            onClick={() => handleTaskComplete(task.taskId)}
+                            className="p-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 transition-all cursor-pointer"
+                            title="Mark Task Complete"
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
+                          <CheckCircle2 className="h-3 w-3" />
+                          <span>Completed</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
-            );
-          })}
+
+                  {/* Content */}
+                  <div>
+                    <h4 className={`text-sm font-extrabold ${isCompleted ? "line-through text-secondary-theme" : "text-main-theme"}`}>
+                      {task.conceptName || task.topic || "Core Concept Study"}
+                    </h4>
+                    <p className="text-xs text-emerald-400 font-medium flex items-center gap-1 mt-0.5">
+                      <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+                      <span>{task.recommendedAction}</span>
+                    </p>
+                  </div>
+
+                  {/* Explainability Reason */}
+                  {task.reason && (
+                    <div className="p-2 rounded-lg bg-white/3 border border-white/5 text-[11px] text-secondary-theme italic">
+                      {task.reason}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {tasks.length > 4 && (
+            <button
+              onClick={() => setShowAllTasks(!showAllTasks)}
+              className="w-full py-2 bg-white/5 hover:bg-white/10 text-xs font-bold text-purple-theme rounded-xl border border-white/10 transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-3"
+            >
+              <span>{showAllTasks ? "Show Top 4 Priority Items" : `View All (${tasks.length} items needing attention)`}</span>
+              <ChevronDown className={`h-4 w-4 transition-transform ${showAllTasks ? "rotate-180" : ""}`} />
+            </button>
+          )}
         </div>
       ) : (
         <div className="p-6 bg-emerald-500/5 border border-emerald-500/15 rounded-xl text-center space-y-2">
