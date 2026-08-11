@@ -388,7 +388,7 @@ def normalize_text(text: str) -> str:
     clean = "".join([c.lower() if c.isalnum() else " " for c in text])
     return " ".join(clean.split())
 
-STOP_WORDS = {"what", "is", "the", "a", "an", "in", "of", "to", "and", "or", "for", "with", "by", "how", "which", "does", "do", "when", "why", "where", "are"}
+STOP_WORDS = {"regarding", "fundamental", "principles", "what", "is", "the", "a", "an", "in", "of", "to", "and", "or", "for", "with", "by", "how", "which", "does", "do", "when", "why", "where", "are"}
 
 def generate_question_fingerprint(q_text: str, subject: str = "") -> str:
     if not q_text:
@@ -405,7 +405,7 @@ def generate_question_fingerprint(q_text: str, subject: str = "") -> str:
 def is_duplicate(q_text: str, exclude_list: List[str], subject: str = "") -> bool:
     norm_q = normalize_text(q_text)
     fp_q = generate_question_fingerprint(q_text, subject)
-    words_q = set(norm_q.split())
+    words_q = set(w for w in norm_q.split() if w not in STOP_WORDS)
     if not norm_q or not words_q:
         return False
     for exc in exclude_list:
@@ -413,7 +413,7 @@ def is_duplicate(q_text: str, exclude_list: List[str], subject: str = "") -> boo
         fp_e = generate_question_fingerprint(exc, subject)
         if norm_q == norm_e or (fp_q and fp_q == fp_e):
             return True
-        words_e = set(norm_e.split())
+        words_e = set(w for w in norm_e.split() if w not in STOP_WORDS)
         if words_e:
             intersection = words_q.intersection(words_e)
             union = words_q.union(words_e)

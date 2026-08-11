@@ -18,6 +18,8 @@ public class QuizSession {
     private LocalDateTime startTime = LocalDateTime.now();
     private LocalDateTime lastAnswerTime = LocalDateTime.now();
     private Status status = Status.IN_PROGRESS;
+    private boolean isVerificationQuiz = false;
+    private String targetConcept;
 
     private int totalQuestions = 0;
     private int correctCount = 0;
@@ -31,6 +33,8 @@ public class QuizSession {
     }
 
     public static class QuizAnswerRecord {
+        private String questionId;
+        private String questionText;
         private String concept;
         private String difficulty;
         private boolean correct;
@@ -46,6 +50,22 @@ public class QuizSession {
             this.correct = correct;
             this.responseTimeSeconds = responseTimeSeconds;
             this.timestamp = LocalDateTime.now();
+        }
+
+        public String getQuestionId() {
+            return questionId;
+        }
+
+        public void setQuestionId(String questionId) {
+            this.questionId = questionId;
+        }
+
+        public String getQuestionText() {
+            return questionText;
+        }
+
+        public void setQuestionText(String questionText) {
+            this.questionText = questionText;
         }
 
         public String getConcept() {
@@ -186,5 +206,21 @@ public class QuizSession {
 
     public void setAnswers(List<QuizAnswerRecord> answers) {
         this.answers = answers;
+    }
+
+    public boolean isVerificationQuiz() {
+        return isVerificationQuiz;
+    }
+
+    public void setVerificationQuiz(boolean verificationQuiz) {
+        isVerificationQuiz = verificationQuiz;
+    }
+
+    public String getTargetConcept() {
+        return targetConcept;
+    }
+
+    public void setTargetConcept(String targetConcept) {
+        this.targetConcept = targetConcept;
     }
 }

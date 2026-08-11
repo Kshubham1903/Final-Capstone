@@ -67,7 +67,10 @@ public class LearningPlannerService {
 
         LocalDate today = LocalDate.now();
 
-        List<Recommendation> recs = recommendationRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, Recommendation.Status.ACTIVE);
+        List<Recommendation> activeRecs = recommendationRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, Recommendation.Status.ACTIVE);
+        List<Recommendation> pendingRecs = recommendationRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, Recommendation.Status.VERIFICATION_PENDING);
+        List<Recommendation> recs = new ArrayList<>(activeRecs);
+        recs.addAll(pendingRecs);
         
         // Filter for weak/revision recommendations (CRITICAL and HIGH priority)
         List<Recommendation> weakRecs = recs.stream()
@@ -78,10 +81,18 @@ public class LearningPlannerService {
         weakRecs.sort(Comparator.comparingInt(r -> getPriorityWeight(r.getPriority())));
 
         List<LearningPlan.LearningTask> todayTasks = new ArrayList<>();
+        Set<String> seenConceptKeys = new HashSet<>();
         int order = 1;
         int totalMinutes = 0;
 
         for (Recommendation rec : weakRecs) {
+            String conceptKey = (rec.getSubjectName() != null ? rec.getSubjectName().trim().toLowerCase() : "") + "::" + (rec.getConceptName() != null ? rec.getConceptName().trim().toLowerCase() : "");
+
+            if (seenConceptKeys.contains(conceptKey)) {
+                continue; // Enforce defensive concept-level task uniqueness per subject
+            }
+            seenConceptKeys.add(conceptKey);
+
             String taskId = "task_" + (rec.getId() != null ? rec.getId() : UUID.randomUUID().toString());
             
             LearningPlan.LearningTask task = new LearningPlan.LearningTask();
@@ -95,7 +106,11 @@ public class LearningPlannerService {
             task.setRecommendedOrder(order++);
             task.setReason(rec.getReason());
             task.setRecommendedAction(rec.getRecommendedAction());
-            task.setStatus(LearningPlan.LearningTask.TaskStatus.PENDING);
+            if (rec.getStatus() == Recommendation.Status.VERIFICATION_PENDING) {
+                task.setStatus(LearningPlan.LearningTask.TaskStatus.VERIFICATION_PENDING);
+            } else {
+                task.setStatus(LearningPlan.LearningTask.TaskStatus.PENDING);
+            }
             task.setGeneratedFromRecommendationId(rec.getId());
 
             todayTasks.add(task);
@@ -223,7 +238,26 @@ public class LearningPlannerService {
         if (plan.getTasks() != null) {
             for (LearningPlan.LearningTask task : plan.getTasks()) {
                 if (taskId.equals(task.getTaskId())) {
-                    task.setStatus(LearningPlan.LearningTask.TaskStatus.COMPLETED);
+                    task.setStatus(LearningPlan.LearningTask.TaskStatus.VERIFICATION_PENDING);
+                    task.setRecommendedAction("Attempt verification quiz for " + task.getConceptName() + " to verify mastery.");
+                    task.setReason("Verification quiz pending for " + task.getConceptName() + ".");
+                    
+                    if (task.getGeneratedFromRecommendationId() != null) {
+                        recommendationRepository.findById(task.getGeneratedFromRecommendationId()).ifPresent(rec -> {
+                            rec.setStatus(Recommendation.Status.VERIFICATION_PENDING);
+                            recommendationRepository.save(rec);
+                        });
+                    }
+                    if (task.getConceptName() != null) {
+                        String norm = RecommendationService.normalizeConceptName(task.getConceptName(), task.getSubjectName());
+                        List<Recommendation> userRecs = recommendationRepository.findByUserId(userId);
+                        for (Recommendation r : userRecs) {
+                            if (norm.equalsIgnoreCase(RecommendationService.normalizeConceptName(r.getConceptName(), r.getSubjectName()))) {
+                                r.setStatus(Recommendation.Status.VERIFICATION_PENDING);
+                                recommendationRepository.save(r);
+                            }
+                        }
+                    }
                     break;
                 }
             }
@@ -235,6 +269,35 @@ public class LearningPlannerService {
         }
 
         return new LearningPlanResponse(plan);
+    }
+
+    public LearningPlanResponse forceCompleteTask(String userId, String taskId) {
+        studentService.updateStreak(userId);
+        LocalDate today = LocalDate.now();
+        Optional<LearningPlan> planOpt = planRepository.findByUserIdAndPlanDate(userId, today);
+        if (planOpt.isEmpty()) {
+            List<LearningPlan> list = planRepository.findByUserIdOrderByPlanDateDesc(userId);
+            if (!list.isEmpty()) planOpt = Optional.of(list.get(0));
+        }
+
+        if (planOpt.isPresent()) {
+            LearningPlan plan = planOpt.get();
+            if (plan.getTasks() != null) {
+                for (LearningPlan.LearningTask task : plan.getTasks()) {
+                    if (taskId.equals(task.getTaskId()) || (task.getGeneratedFromRecommendationId() != null && task.getGeneratedFromRecommendationId().equals(taskId))) {
+                        task.setStatus(LearningPlan.LearningTask.TaskStatus.COMPLETED);
+                        break;
+                    }
+                }
+                int completed = (int) plan.getTasks().stream().filter(t -> t.getStatus() == LearningPlan.LearningTask.TaskStatus.COMPLETED).count();
+                plan.setCompletedTasks(completed);
+                plan.setCompletionPercentage(plan.getTotalTasks() > 0 ? Math.round((completed * 100.0 / plan.getTotalTasks()) * 10.0) / 10.0 : 0.0);
+                plan.setUpdatedAt(LocalDateTime.now());
+                planRepository.save(plan);
+                return new LearningPlanResponse(plan);
+            }
+        }
+        return null;
     }
 
     public StudySessionResponse startStudySession(StudySessionStartRequest req) {

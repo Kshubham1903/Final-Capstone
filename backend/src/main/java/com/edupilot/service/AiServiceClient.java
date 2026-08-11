@@ -39,7 +39,7 @@ public class AiServiceClient {
         String norm2 = normalizeText(q2);
         if (norm1.equals(norm2)) return true;
 
-        Set<String> stopWords = new HashSet<>(Arrays.asList("what", "is", "the", "a", "an", "in", "of", "to", "and", "or", "for", "with", "by", "how", "which", "does", "do", "when", "why", "where", "are"));
+        Set<String> stopWords = new HashSet<>(Arrays.asList("regarding", "fundamental", "principles", "what", "is", "the", "a", "an", "in", "of", "to", "and", "or", "for", "with", "by", "how", "which", "does", "do", "when", "why", "where", "are"));
         Set<String> words1 = new HashSet<>();
         for (String w : norm1.split(" ")) {
             if (!w.isBlank() && !stopWords.contains(w)) words1.add(w);

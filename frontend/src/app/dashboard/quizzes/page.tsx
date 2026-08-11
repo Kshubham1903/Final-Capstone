@@ -19,8 +19,15 @@ import { fetchQuizQuestions, submitQuizAnswer, fetchProfile, checkBackendConnect
 export default function Quizzes() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   
+  // Synchronous URL search parameter parsing as source of truth for initialization
+  const urlSearch = typeof window !== "undefined" ? window.location.search : "";
+  const urlParams = new URLSearchParams(urlSearch);
+  const urlSubject = urlParams.get("subject") || "";
+  const urlTargetConcept = urlParams.get("targetConcept") || urlParams.get("concept") || "";
+  const urlIsVerification = urlParams.get("isVerification") === "true" || !!urlTargetConcept;
+
   // State Management
-  const [activeSubject, setActiveSubject] = useState("");
+  const [activeSubject, setActiveSubject] = useState(urlSubject);
   const [quizStarted, setQuizStarted] = useState(false);
   const [currentDiff, setCurrentDiff] = useState<"EASY" | "MEDIUM" | "HARD">("EASY");
   const [questionCount, setQuestionCount] = useState(0);
@@ -37,30 +44,16 @@ export default function Quizzes() {
   // Diagnostic log
   const [diagnosticLog, setDiagnosticLog] = useState<{ difficulty: string; correct: boolean; reason: string }[]>([]);
 
-  useEffect(() => {
-    async function load() {
-      const activeUserId = typeof window !== "undefined" ? (localStorage.getItem("edupilot_user_id") || "") : "";
-      const active = await fetchProfile(activeUserId);
-      setProfile(active);
-    }
-    load();
-  }, []);
+  const [targetConcept, setTargetConcept] = useState(urlTargetConcept);
+  const [isVerification, setIsVerification] = useState(urlIsVerification);
 
-  // Timer loop when quiz is active
-  useEffect(() => {
-    let timer: any;
-    if (quizStarted && !isAnswered && !quizFinished) {
-      timer = setInterval(() => {
-        setSecondsSpent(prev => prev + 1);
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [quizStarted, isAnswered, quizFinished]);
+  const displayTargetConcept = targetConcept || urlTargetConcept;
+  const isVerificationMode = isVerification || urlIsVerification || !!displayTargetConcept;
 
+  const [verificationLoading, setVerificationLoading] = useState(urlIsVerification);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
   const [seenQuestionIds, setSeenQuestionIds] = useState<string[]>([]);
   const [isExhausted, setIsExhausted] = useState(false);
-
-  if (!profile) return null;
 
   const getStorageKey = (subj: string) => {
     const studentId = profile ? (profile.id || "default_student") : "default_student";
@@ -91,10 +84,18 @@ export default function Quizzes() {
     }
   };
 
-  const startQuiz = async (subj: string) => {
+  // ISOLATED VERIFICATION QUIZ FLOW
+  const startVerificationQuiz = async (subject: string, concept: string) => {
+    const subj = subject || activeSubject || urlSubject;
+    const conc = concept || targetConcept || urlTargetConcept;
+
     setActiveSubject(subj);
+    setTargetConcept(conc);
+    setIsVerification(true);
     setQuizStarted(true);
-    setCurrentDiff("EASY");
+    setVerificationLoading(true);
+    setVerificationError(null);
+
     setQuestionCount(0);
     setCorrectAnswers(0);
     setQuizFinished(false);
@@ -104,34 +105,99 @@ export default function Quizzes() {
     setSecondsSpent(0);
     setDiagnosticLog([]);
 
+    if (!subj || !conc) {
+      setVerificationError("Missing subject or target concept in verification parameters.");
+      setVerificationLoading(false);
+      return;
+    }
+
+    try {
+      const questions = await fetchQuizQuestions(subj, "EASY", [], conc);
+      if (!questions || !Array.isArray(questions) || questions.length === 0) {
+        setVerificationError("No verification questions available for this concept.");
+        setVerificationLoading(false);
+        return;
+      }
+      setQuizQuestions(questions);
+      setActiveQuestion(questions[0]);
+      setVerificationLoading(false);
+    } catch (err: any) {
+      console.error("[startVerificationQuiz] Error fetching verification questions:", err);
+      const errMsg = err?.message || String(err);
+      if (errMsg.includes("AUTH_ERROR")) {
+        setVerificationError("Authentication error: Please log in again to attempt verification.");
+      } else if (errMsg.includes("TIMEOUT_ERROR")) {
+        setVerificationError("Timeout error: Verification quiz loading timed out.");
+      } else if (errMsg.includes("SERVER_ERROR") || errMsg.includes("NETWORK_ERROR")) {
+        setVerificationError("Backend / Network error: Unable to connect to verification quiz service.");
+      } else if (errMsg.includes("NO_QUESTIONS")) {
+        setVerificationError("No verification questions available for this concept.");
+      } else {
+        setVerificationError(`Unable to load Verification Quiz: ${errMsg}`);
+      }
+      setVerificationLoading(false);
+    }
+  };
+
+  // NORMAL ADAPTIVE QUIZ FLOW (UNCHANGED)
+  const startQuiz = async (subj: string) => {
+    setActiveSubject(subj);
+    setIsVerification(false);
+    setTargetConcept("");
+    setQuizStarted(true);
+    setCurrentDiff("EASY");
+    setQuestionCount(0);
+    setCorrectAnswers(0);
+    setQuizFinished(false);
+    setIsExhausted(false);
+    setVerificationError(null);
+    setVerificationLoading(false);
+    setSelectedOption(null);
+    setIsAnswered(false);
+    setSecondsSpent(0);
+    setDiagnosticLog([]);
+
     const persistedSeen = getPersistedSeenIds(subj);
     const cumulativeExclusions = [...persistedSeen];
     
-    // Fetch initial 10-question session pool from backend
+    // Fetch initial targeted question pool from backend
     let sessionPool: any[] = [];
-    const easyBatch = await fetchQuizQuestions(subj, "EASY", cumulativeExclusions);
-    for (const q of easyBatch || []) {
-      const key = q.id || q.questionText;
-      if (!cumulativeExclusions.includes(key)) {
-        cumulativeExclusions.push(key);
-        sessionPool.push(q);
+    try {
+      const easyBatch = await fetchQuizQuestions(subj, "EASY", cumulativeExclusions);
+      for (const q of easyBatch || []) {
+        const key = q?.id || q?.questionText;
+        if (key && !cumulativeExclusions.includes(key)) {
+          cumulativeExclusions.push(key);
+          sessionPool.push(q);
+        }
       }
-    }
 
-    // If initial fetch returned fewer than 10, fetch additional difficulties to ensure 10 unique session items
-    if (sessionPool.length < 10) {
-      for (const d of ["MEDIUM", "HARD", "EASY"]) {
-        if (sessionPool.length >= 10) break;
-        const extraBatch = await fetchQuizQuestions(subj, d, cumulativeExclusions);
-        for (const q of extraBatch || []) {
+      if (sessionPool.length < 10) {
+        for (const d of ["MEDIUM", "HARD", "EASY"]) {
           if (sessionPool.length >= 10) break;
-          const key = q.id || q.questionText;
-          if (!cumulativeExclusions.includes(key)) {
-            cumulativeExclusions.push(key);
-            sessionPool.push(q);
+          try {
+            const extraBatch = await fetchQuizQuestions(subj, d, cumulativeExclusions);
+            let addedNew = false;
+            for (const q of extraBatch || []) {
+              if (sessionPool.length >= 10) break;
+              const key = q?.id || q?.questionText;
+              if (key && !cumulativeExclusions.includes(key)) {
+                cumulativeExclusions.push(key);
+                sessionPool.push(q);
+                addedNew = true;
+              }
+            }
+            if (!addedNew) break;
+          } catch (loopErr) {
+            console.warn("Extra difficulty fetch loop warning:", loopErr);
+            break;
           }
         }
       }
+    } catch (err: any) {
+      console.error("Error fetching adaptive quiz questions:", err);
+      setIsExhausted(true);
+      return;
     }
 
     if (sessionPool.length === 0) {
@@ -148,6 +214,44 @@ export default function Quizzes() {
     savePersistedSeenId(subj, firstKey);
   };
 
+  useEffect(() => {
+    async function load() {
+      const activeUserId = typeof window !== "undefined" ? (localStorage.getItem("edupilot_user_id") || "") : "";
+      const active = await fetchProfile(activeUserId);
+      setProfile(active);
+
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const subjParam = params.get("subject") || "";
+        const targetParam = params.get("targetConcept") || params.get("concept") || "";
+        const isVerifParam = params.get("isVerification") === "true" || !!targetParam;
+
+        if (isVerifParam) {
+          setIsVerification(true);
+          if (targetParam) setTargetConcept(targetParam);
+          if (subjParam) setActiveSubject(subjParam);
+          startVerificationQuiz(subjParam, targetParam);
+        } else if (subjParam) {
+          startQuiz(subjParam);
+        }
+      }
+    }
+    load();
+  }, []);
+
+  // Timer loop when quiz is active
+  useEffect(() => {
+    let timer: any;
+    if (quizStarted && !isAnswered && !quizFinished) {
+      timer = setInterval(() => {
+        setSecondsSpent(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [quizStarted, isAnswered, quizFinished]);
+
+  if (!profile) return null;
+
   const handleSubmitAnswer = async () => {
     if (selectedOption === null) return;
     setIsAnswered(true);
@@ -161,7 +265,9 @@ export default function Quizzes() {
       concept: activeQuestion.concept,
       difficulty: currentDiff,
       isCorrect: isCorrect,
-      responseTimeSeconds: secondsSpent
+      responseTimeSeconds: secondsSpent,
+      isVerification: isVerificationMode,
+      targetConcept: displayTargetConcept || undefined
     };
 
     const result = await submitQuizAnswer(payload);
@@ -180,7 +286,8 @@ export default function Quizzes() {
   };
 
   const handleNextStep = async () => {
-    if (questionCount >= 10) {
+    const totalSet = quizQuestions.length;
+    if (questionCount + 1 >= totalSet || questionCount + 1 >= 10) {
       setQuizFinished(true);
 
       if (typeof window !== "undefined") {
@@ -195,11 +302,11 @@ export default function Quizzes() {
         applyResultsToProfileLocal();
       }
     } else {
-      const nextIndex = questionCount; // questionCount is now 1 for Q2, 2 for Q3... 9 for Q10
+      const nextIndex = questionCount + 1;
       let nextQ = quizQuestions[nextIndex];
 
-      if (!nextQ) {
-        // Fallback fetch if pool was shorter than 10
+      if (!nextQ && !isVerificationMode) {
+        // Fallback fetch ONLY for normal adaptive quiz
         const extraQuestions = await fetchQuizQuestions(activeSubject, currentDiff, seenQuestionIds);
         const unseen = (extraQuestions || []).filter((q: any) => {
           const key = q.id || q.questionText;
@@ -214,7 +321,11 @@ export default function Quizzes() {
       }
 
       if (!nextQ) {
-        setIsExhausted(true);
+        if (isVerificationMode) {
+          setQuizFinished(true);
+        } else {
+          setIsExhausted(true);
+        }
         return;
       }
 
@@ -266,7 +377,6 @@ export default function Quizzes() {
     setProfile(updatedProfile);
   };
 
-
   return (
     <Layout>
       <div className="space-y-8">
@@ -275,15 +385,17 @@ export default function Quizzes() {
         <div>
           <h1 className="text-3xl font-extrabold text-main-theme flex items-center gap-2">
             <GraduationCap className="h-8 w-8 text-purple-theme" />
-            <span>Adaptive Diagnostic Hub</span>
+            <span>{displayTargetConcept ? `Mastery Verification Quiz: ${displayTargetConcept}` : "Adaptive Diagnostic Hub"}</span>
           </h1>
           <p className="text-secondary-theme text-sm mt-1">
-            EduPilot quizzes scale question difficulty in real-time based on conceptual accuracy and speed across 10-question diagnostic sessions.
+            {displayTargetConcept
+              ? `Focused verification assessment on ${displayTargetConcept}. Complete this set to verify conceptual mastery and update your learning plan.`
+              : "EduPilot quizzes scale question difficulty in real-time based on conceptual accuracy and speed across 10-question diagnostic sessions."}
           </p>
         </div>
 
-        {/* NOT IN QUIZ: Select Subject Selection */}
-        {!quizStarted && (
+        {/* NOT IN QUIZ: Select Subject Selection (Only for normal adaptive diagnostic hub) */}
+        {!quizStarted && !isVerificationMode && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {profile.subjects.map((subj) => (
               <div key={subj} className="glass-panel p-6 rounded-2xl border border-white/5 flex flex-col justify-between space-y-6">
@@ -309,39 +421,54 @@ export default function Quizzes() {
           </div>
         )}
 
-        {/* EXHAUSTED POOL PANEL */}
-        {quizStarted && isExhausted && (
+        {/* LOADING VERIFICATION QUIZ PANEL */}
+        {quizStarted && !activeQuestion && !isExhausted && !verificationError && !quizFinished && (
+          <div className="glass-panel p-12 rounded-2xl border border-white/10 text-center space-y-4 max-w-lg mx-auto">
+            <div className="animate-spin h-10 w-10 border-4 border-purple-500 border-t-transparent rounded-full mx-auto" />
+            <h3 className="text-lg font-bold text-main-theme">Loading Verification Quiz...</h3>
+            <p className="text-xs text-secondary-theme">
+              Fetching targeted questions for <strong className="text-purple-theme">{displayTargetConcept || "selected concept"}</strong> ({activeSubject || urlSubject || "Subject"})
+            </p>
+          </div>
+        )}
+
+        {/* EXHAUSTED / ERROR POOL PANEL */}
+        {quizStarted && (isExhausted || !!verificationError) && (
           <div className="glass-panel p-8 rounded-2xl border border-white/10 space-y-6 text-center max-w-xl mx-auto">
             <div className="h-12 w-12 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-500/20 mx-auto">
               <AlertCircle className="h-6 w-6 text-amber-400" />
             </div>
             <div className="space-y-2">
-              <h3 className="text-xl font-bold text-main-theme">No New Questions Available</h3>
+              <h3 className="text-xl font-bold text-main-theme">
+                {isVerificationMode ? "Unable to load Verification Quiz" : "No New Questions Available"}
+              </h3>
               <p className="text-xs text-secondary-theme leading-relaxed">
-                No new questions are available for this topic right now. You can restart the quiz or choose another topic.
+                {verificationError || (isVerificationMode
+                  ? `Could not load targeted verification questions for concept "${displayTargetConcept}" in subject "${activeSubject || urlSubject}". Please verify system connection.`
+                  : "No new questions are available for this topic right now. You can restart the quiz or choose another topic.")}
               </p>
             </div>
             <div className="flex gap-4 justify-center pt-2">
               <button
                 onClick={() => {
-                  if (typeof window !== "undefined") {
-                    localStorage.removeItem(getStorageKey(activeSubject));
+                  setVerificationError(null);
+                  setIsExhausted(false);
+                  if (isVerificationMode) {
+                    startVerificationQuiz(activeSubject || urlSubject, displayTargetConcept);
+                  } else {
+                    startQuiz(activeSubject || urlSubject);
                   }
-                  startQuiz(activeSubject);
                 }}
                 className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
               >
-                Reset Topic History & Restart
+                Retry Loading
               </button>
-              <button
-                onClick={() => {
-                  setQuizStarted(false);
-                  setIsExhausted(false);
-                }}
-                className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-main-theme border border-white/10 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              <a
+                href="/dashboard"
+                className="px-5 py-2.5 bg-white/5 hover:bg-white/10 text-main-theme border border-white/10 rounded-xl text-xs font-bold transition-all cursor-pointer inline-block"
               >
-                Choose Another Subject
-              </button>
+                Return to Dashboard
+              </a>
             </div>
           </div>
         )}
@@ -356,7 +483,7 @@ export default function Quizzes() {
               {/* Question Header Status */}
               <div className="flex justify-between items-center border-b border-white/5 pb-4">
                 <span className="text-[10px] font-bold text-secondary-theme uppercase tracking-widest">
-                  Question {questionCount + 1} of 10
+                  Question {questionCount + 1} of {quizQuestions.length > 0 ? quizQuestions.length : 10}
                 </span>
                 
                 <div className="flex items-center gap-3">
@@ -373,11 +500,11 @@ export default function Quizzes() {
                 </div>
               </div>
 
-              {/* Progress Bar (1-10) */}
+              {/* Progress Bar */}
               <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
                 <div 
                   className="bg-gradient-to-r from-purple-500 to-pink-500 h-full transition-all duration-300"
-                  style={{ width: `${((questionCount + 1) / 10) * 100}%` }}
+                  style={{ width: `${((questionCount + 1) / (quizQuestions.length > 0 ? quizQuestions.length : 10)) * 100}%` }}
                 />
               </div>
 

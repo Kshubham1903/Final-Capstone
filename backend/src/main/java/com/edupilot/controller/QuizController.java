@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/quizzes")
@@ -33,7 +34,11 @@ public class QuizController {
     public ResponseEntity<?> getQuestions(
             @RequestParam String subject,
             @RequestParam String difficulty,
-            @RequestParam(required = false) String exclude) {
+            @RequestParam(required = false) String exclude,
+            @RequestParam(required = false) String targetConcept,
+            @RequestParam(required = false) String concept) {
+        
+        String effectiveTargetConcept = targetConcept != null && !targetConcept.isBlank() ? targetConcept : concept;
         
         QuizQuestion.Difficulty diff;
         try {
@@ -53,14 +58,13 @@ public class QuizController {
             }
         }
 
-        List<QuizQuestion> dbQuestions = questionRepository.findBySubjectAndDifficulty(subject, diff);
+        List<QuizQuestion> dbQuestions = questionRepository.findBySubject(subject);
         List<QuizQuestion> validUnseen = new ArrayList<>();
         List<String> allSubjectExcludeTexts = new ArrayList<>();
 
         List<QuizQuestion> legacyToClean = new ArrayList<>();
         for (QuizQuestion q : dbQuestions) {
-            boolean isLegacy = (q.getGenerationVersion() > 0 && q.getGenerationVersion() < 3) ||
-                               (q.getQuestionText() != null && q.getQuestionText().startsWith("Regarding fundamental principles"));
+            boolean isLegacy = (q.getGenerationVersion() > 0 && q.getGenerationVersion() < 3);
             if (isLegacy) {
                 legacyToClean.add(q);
                 continue;
@@ -85,23 +89,20 @@ public class QuizController {
             }
         }
 
-        if (validUnseen.size() < 10) {
-            List<String> combinedExclusions = new ArrayList<>(allSubjectExcludeTexts);
-            combinedExclusions.addAll(excludedSet);
+        if (validUnseen.size() < 30) {
+            List<String> userExclusions = new ArrayList<>(excludedSet);
 
-            int maxAttempts = 2;
-            for (int attempt = 0; attempt < maxAttempts && validUnseen.size() < 10; attempt++) {
-                List<QuizQuestion> aiGenerated = aiServiceClient.generateQuestionsForSubject(subject, diff, combinedExclusions);
+            for (QuizQuestion.Difficulty d : List.of(diff, QuizQuestion.Difficulty.MEDIUM, QuizQuestion.Difficulty.HARD, QuizQuestion.Difficulty.EASY)) {
+                if (validUnseen.size() >= 40) break;
+                List<QuizQuestion> aiGenerated = aiServiceClient.generateQuestionsForSubject(subject, d, userExclusions);
                 if (aiGenerated != null && !aiGenerated.isEmpty()) {
                     List<QuizQuestion> toSave = new ArrayList<>();
                     for (QuizQuestion g : aiGenerated) {
                         if (!AiServiceClient.isGenericTemplateQuestion(g.getQuestionText())) {
-                            String normText = AiServiceClient.normalizeText(g.getQuestionText());
-                            boolean isDup = combinedExclusions.stream().anyMatch(e -> AiServiceClient.isDuplicateQuestion(g.getQuestionText(), e));
-                            if (!isDup) {
+                            boolean isDupInUnseen = validUnseen.stream().anyMatch(e -> AiServiceClient.isDuplicateQuestion(g.getQuestionText(), e.getQuestionText()));
+                            if (!isDupInUnseen) {
                                 toSave.add(g);
                                 validUnseen.add(g);
-                                combinedExclusions.add(g.getQuestionText());
                             }
                         }
                     }
@@ -116,19 +117,75 @@ public class QuizController {
             }
         }
 
-        List<QuizQuestion> finalPool = new ArrayList<>();
-        Set<String> seenInPool = new HashSet<>();
-        for (QuizQuestion q : validUnseen) {
-            String normText = AiServiceClient.normalizeText(q.getQuestionText());
-            if (!seenInPool.contains(normText)) {
-                seenInPool.add(normText);
-                finalPool.add(q);
+        List<QuizQuestion> selected = new ArrayList<>();
+
+        if (effectiveTargetConcept != null && !effectiveTargetConcept.isBlank()) {
+            // FOCUSED VERIFICATION QUIZ: Filter exclusively to targetConcept
+            String normTarget = com.edupilot.service.RecommendationService.normalizeConceptName(effectiveTargetConcept, subject);
+            List<QuizQuestion> targetPool = new ArrayList<>();
+            for (QuizQuestion q : validUnseen) {
+                String normQConcept = com.edupilot.service.RecommendationService.normalizeConceptName(q.getConcept(), subject);
+                if (normTarget.equalsIgnoreCase(normQConcept)) {
+                    targetPool.add(q);
+                }
             }
+            if (targetPool.size() < 10) {
+                List<QuizQuestion> allSubjectQs = questionRepository.findBySubject(subject);
+                for (QuizQuestion q : allSubjectQs) {
+                    String normQConcept = com.edupilot.service.RecommendationService.normalizeConceptName(q.getConcept(), subject);
+                    if (normTarget.equalsIgnoreCase(normQConcept) && !targetPool.contains(q)) {
+                        targetPool.add(q);
+                    }
+                }
+            }
+            Collections.shuffle(targetPool);
+            int limit = Math.min(targetPool.size(), 10);
+            selected = targetPool.subList(0, limit);
+        } else {
+            // STANDARD ADAPTIVE QUIZ: Select questions from ONLY 2 to 3 normalized concepts (~3 to 5 questions per concept)
+            List<QuizQuestion> allSubjectQuestions = questionRepository.findBySubject(subject);
+            if (allSubjectQuestions.size() < 10) {
+                allSubjectQuestions = validUnseen;
+            }
+
+            Map<String, List<QuizQuestion>> fullConceptMap = new LinkedHashMap<>();
+            Set<String> seenTexts = new HashSet<>();
+            
+            for (QuizQuestion q : allSubjectQuestions) {
+                if (q.getQuestionText() == null || AiServiceClient.isGenericTemplateQuestion(q.getQuestionText())) continue;
+                String normText = AiServiceClient.normalizeText(q.getQuestionText());
+                if (seenTexts.contains(normText)) continue;
+                seenTexts.add(normText);
+
+                String normConcept = com.edupilot.service.RecommendationService.normalizeConceptName(q.getConcept(), subject);
+                fullConceptMap.computeIfAbsent(normConcept, k -> new ArrayList<>()).add(q);
+            }
+
+            List<String> multiQuestionConcepts = fullConceptMap.entrySet().stream()
+                    .filter(e -> e.getValue().size() >= 2)
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
+
+            List<String> availableConcepts = !multiQuestionConcepts.isEmpty() ? multiQuestionConcepts : new ArrayList<>(fullConceptMap.keySet());
+            Collections.shuffle(availableConcepts);
+
+            int targetConceptCount = Math.min(availableConcepts.size(), availableConcepts.size() >= 3 ? 3 : (availableConcepts.size() >= 2 ? 2 : 1));
+            List<String> chosenConcepts = availableConcepts.subList(0, targetConceptCount);
+
+            List<QuizQuestion> conceptFilteredPool = new ArrayList<>();
+            for (String cName : chosenConcepts) {
+                List<QuizQuestion> cQuestions = fullConceptMap.get(cName);
+                if (cQuestions != null) {
+                    int take = Math.min(cQuestions.size(), 5);
+                    conceptFilteredPool.addAll(cQuestions.subList(0, take));
+                }
+            }
+
+            Collections.shuffle(conceptFilteredPool);
+            int limit = Math.min(conceptFilteredPool.size(), 10);
+            selected = conceptFilteredPool.subList(0, limit);
         }
 
-        Collections.shuffle(finalPool);
-        int limit = Math.min(finalPool.size(), 10);
-        List<QuizQuestion> selected = finalPool.subList(0, limit);
         List<QuizQuestion> randomizedResponse = new ArrayList<>();
         for (QuizQuestion q : selected) {
             randomizedResponse.add(AiServiceClient.shuffleQuestionOptions(q));
@@ -145,6 +202,21 @@ public class QuizController {
             String difficulty = (String) payload.get("difficulty");
             boolean isCorrect = (boolean) payload.get("isCorrect");
             double responseTimeSeconds = ((Number) payload.get("responseTimeSeconds")).doubleValue();
+
+            boolean isVerification = false;
+            if (payload.containsKey("isVerification")) {
+                isVerification = (boolean) payload.get("isVerification");
+            } else if (payload.containsKey("isVerificationQuiz")) {
+                isVerification = (boolean) payload.get("isVerificationQuiz");
+            }
+
+            String targetConcept = null;
+            if (payload.containsKey("targetConcept")) {
+                targetConcept = (String) payload.get("targetConcept");
+            }
+
+            String questionId = payload.containsKey("questionId") ? (String) payload.get("questionId") : null;
+            String questionText = payload.containsKey("questionText") ? (String) payload.get("questionText") : null;
 
             // 1. Call AI service to adjust difficulty
             Map<String, Object> aiResult = aiServiceClient.adjustQuizDifficulty(concept, difficulty, isCorrect, responseTimeSeconds);
@@ -209,7 +281,7 @@ public class QuizController {
 
             // 3. Record/Update ConceptMastery entity, QuizSession, and trigger recommendation engine
             try {
-                updateConceptMasteryAndRecommendations(actualUserId, profile != null ? profile.getId() : actualUserId, subject, concept, difficulty, isCorrect, responseTimeSeconds);
+                updateConceptMasteryAndRecommendations(actualUserId, profile != null ? profile.getId() : actualUserId, subject, concept, difficulty, isCorrect, responseTimeSeconds, isVerification, targetConcept, questionId, questionText);
             } catch (Exception ex) {
                 System.err.println("Error updating concept mastery from quiz submission: " + ex.getMessage());
             }
@@ -238,7 +310,7 @@ public class QuizController {
     @Autowired
     private com.edupilot.service.LearningPlannerService learningPlannerService;
 
-    private void updateConceptMasteryAndRecommendations(String userId, String studentProfileId, String subjectName, String conceptName, String difficulty, boolean isCorrect, double responseTimeSeconds) {
+    private void updateConceptMasteryAndRecommendations(String userId, String studentProfileId, String subjectName, String conceptName, String difficulty, boolean isCorrect, double responseTimeSeconds, boolean isVerification, String targetConcept, String questionId, String questionText) {
         if (userId == null || conceptName == null || conceptName.isBlank()) return;
 
         String normalizedConcept = com.edupilot.service.RecommendationService.normalizeConceptName(conceptName);
@@ -276,7 +348,15 @@ public class QuizController {
                 session.setStatus(com.edupilot.model.QuizSession.Status.IN_PROGRESS);
             }
 
-            session.getAnswers().add(new com.edupilot.model.QuizSession.QuizAnswerRecord(normalizedConcept, difficulty, isCorrect, responseTimeSeconds));
+            if (isVerification) {
+                session.setVerificationQuiz(true);
+                session.setTargetConcept(targetConcept != null ? targetConcept : normalizedConcept);
+            }
+
+            com.edupilot.model.QuizSession.QuizAnswerRecord rec = new com.edupilot.model.QuizSession.QuizAnswerRecord(normalizedConcept, difficulty, isCorrect, responseTimeSeconds);
+            rec.setQuestionId(questionId);
+            rec.setQuestionText(questionText);
+            session.getAnswers().add(rec);
             session.setTotalQuestions(session.getAnswers().size());
             if (isCorrect) {
                 session.setCorrectCount(session.getCorrectCount() + 1);
@@ -356,12 +436,21 @@ public class QuizController {
 
         conceptMasteryRepository.save(cm);
 
-        // Regenerate recommendations & planner for the student
-        try {
-            recommendationService.generateRecommendations(userId);
-            learningPlannerService.generateLearningPlan(userId);
-        } catch (Exception ex) {
-            System.err.println("Error regenerating recommendations: " + ex.getMessage());
+        if (isVerification || (targetConcept != null && !targetConcept.isBlank())) {
+            String activeTarget = targetConcept != null && !targetConcept.isBlank() ? targetConcept : normalizedConcept;
+            recommendationService.processVerificationResult(userId, resolvedSubjectName, activeTarget, isCorrect, isCorrect ? 100.0 : 0.0);
+            try {
+                learningPlannerService.generateLearningPlan(userId);
+            } catch (Exception ex) {
+                System.err.println("Error refreshing plan after verification: " + ex.getMessage());
+            }
+        } else {
+            try {
+                recommendationService.generateRecommendations(userId);
+                learningPlannerService.generateLearningPlan(userId);
+            } catch (Exception ex) {
+                System.err.println("Error regenerating recommendations: " + ex.getMessage());
+            }
         }
     }
 
