@@ -14,7 +14,7 @@ import {
   Timer
 } from "lucide-react";
 import { StudentProfile } from "../../../services/mockData";
-import { fetchQuizQuestions, submitQuizAnswer, fetchProfile, checkBackendConnection } from "../../../services/api";
+import { fetchQuizQuestions, submitQuizAnswer, fetchProfile, checkBackendConnection, generateAiQuizQuestions } from "../../../services/api";
 
 export default function Quizzes() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
@@ -33,6 +33,8 @@ export default function Quizzes() {
   const [isAnswered, setIsAnswered] = useState(false);
   const [secondsSpent, setSecondsSpent] = useState(0);
   const [quizFinished, setQuizFinished] = useState(false);
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [aiGenerationError, setAiGenerationError] = useState<string | null>(null);
 
   // Diagnostic log
   const [diagnosticLog, setDiagnosticLog] = useState<{ difficulty: string; correct: boolean; reason: string }[]>([]);
@@ -146,6 +148,40 @@ export default function Quizzes() {
     setActiveQuestion(firstQ);
     const firstKey = firstQ.id || firstQ.questionText;
     savePersistedSeenId(subj, firstKey);
+  };
+
+  const startAiQuiz = async (subj: string) => {
+    setAiGenerationError(null);
+    setIsGeneratingAi(true);
+
+    try {
+      const aiQuestions = await generateAiQuizQuestions(profile!.id || "", subj, 5);
+
+      if (!aiQuestions || aiQuestions.length === 0) {
+        setAiGenerationError("AI couldn't generate questions right now. Try again in a moment.");
+        return;
+      }
+
+      setActiveSubject(subj);
+      setQuizStarted(true);
+      setCurrentDiff((aiQuestions[0].difficulty as "EASY" | "MEDIUM" | "HARD") || "MEDIUM");
+      setQuestionCount(0);
+      setCorrectAnswers(0);
+      setQuizFinished(false);
+      setIsExhausted(false);
+      setSelectedOption(null);
+      setIsAnswered(false);
+      setSecondsSpent(0);
+      setDiagnosticLog([]);
+
+      setQuizQuestions(aiQuestions);
+      setSeenQuestionIds(aiQuestions.map(q => q.id));
+      setActiveQuestion(aiQuestions[0]);
+    } catch (err: any) {
+      setAiGenerationError(err.message || "AI quiz generation failed.");
+    } finally {
+      setIsGeneratingAi(false);
+    }
   };
 
   const handleSubmitAnswer = async () => {
@@ -300,6 +336,18 @@ export default function Quizzes() {
                   <span>Launch 10-Q Diagnostic Set</span>
                   <ArrowRight className="h-4 w-4" />
                 </button>
+                <button
+                  onClick={() => startAiQuiz(subj)}
+                  disabled={isGeneratingAi}
+                  className="w-full py-3 bg-purple-600/10 hover:bg-purple-600/30 border border-purple-500/20 hover:border-purple-500/40 rounded-xl text-xs font-bold text-purple-theme hover:text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  <span>{isGeneratingAi ? "Generating..." : "Generate AI Test"}</span>
+                </button>
+
+                {aiGenerationError && (
+                  <p className="text-xs text-red-400 text-center">{aiGenerationError}</p>
+                )}
               </div>
             ))}
           </div>

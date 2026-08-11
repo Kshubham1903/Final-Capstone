@@ -595,6 +595,33 @@ export async function fetchQuizQuestions(subject: string, difficulty: string, ex
   });
 }
 
+export async function generateAiQuizQuestions(
+  studentId: string,
+  subject: string,
+  count: number = 5
+): Promise<any[]> {
+  const online = await checkBackendConnection();
+  if (!online) {
+    throw new Error("Backend is offline - AI quiz generation requires a live connection.");
+  }
+
+  const res = await fetch(`${BACKEND_URL}/api/quizzes/generate-ai`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ studentId, subject, count })
+  });
+
+  handleAuthError(res);
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || `AI quiz generation failed (${res.status})`);
+  }
+
+  const data = await res.json();
+  return data.questions || [];
+}
+
 export async function createQuizQuestion(question: {
   subject: string;
   concept: string;

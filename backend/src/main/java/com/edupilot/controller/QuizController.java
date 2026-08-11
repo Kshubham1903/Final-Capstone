@@ -6,6 +6,7 @@ import com.edupilot.repository.QuizQuestionRepository;
 import com.edupilot.repository.StudentProfileRepository;
 import com.edupilot.service.AiServiceClient;
 import com.edupilot.service.StudentService;
+import com.edupilot.service.QuizGenerationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +23,9 @@ public class QuizController {
 
     @Autowired
     private StudentProfileRepository profileRepository;
+
+    @Autowired
+    private QuizGenerationService quizGenerationService;
 
     @Autowired
     private AiServiceClient aiServiceClient;
@@ -226,6 +230,36 @@ public class QuizController {
             return ResponseEntity.ok(saved);
         } catch (Exception ex) {
             return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
+
+    @PostMapping("/generate-ai")
+    public ResponseEntity<?> generateAiQuiz(@RequestBody Map<String, Object> request) {
+        String studentId = (String) request.get("studentId");
+        String subject = (String) request.get("subject");
+        int count = request.containsKey("count") ? ((Number) request.get("count")).intValue() : 5;
+
+        if (studentId == null || subject == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "studentId and subject are required."));
+        }
+        if (count < 1 || count > 20) {
+            return ResponseEntity.badRequest().body(Map.of("message", "count must be between 1 and 20."));
+        }
+
+        try {
+            List<QuizQuestion> questions = quizGenerationService.generateForStudent(studentId, subject, count);
+            if (questions.isEmpty()) {
+                return ResponseEntity.status(502).body(Map.of(
+                    "message", "AI generation returned no valid questions. Check GROQ_API_KEY and try again."
+                ));
+            }
+            return ResponseEntity.ok(Map.of(
+                "subject", subject,
+                "count", questions.size(),
+                "questions", questions
+            ));
+        } catch (IllegalArgumentException iae) {
+            return ResponseEntity.status(404).body(Map.of("message", iae.getMessage()));
         }
     }
 }
