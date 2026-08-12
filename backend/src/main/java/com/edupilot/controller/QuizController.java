@@ -2,11 +2,16 @@ package com.edupilot.controller;
 
 import com.edupilot.model.QuizQuestion;
 import com.edupilot.model.StudentProfile;
+import com.edupilot.model.ConceptMastery;
+import com.edupilot.model.Subject;
 import com.edupilot.repository.QuizQuestionRepository;
 import com.edupilot.repository.StudentProfileRepository;
+import com.edupilot.repository.ConceptMasteryRepository;
+import com.edupilot.repository.SubjectRepository;
 import com.edupilot.service.AiServiceClient;
 import com.edupilot.service.StudentService;
 import com.edupilot.service.QuizGenerationService;
+import com.edupilot.service.RecommendationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -32,6 +37,15 @@ public class QuizController {
 
     @Autowired
     private StudentService studentService;
+    
+    @Autowired
+    private ConceptMasteryRepository conceptRepository;
+
+    @Autowired
+    private SubjectRepository subjectRepository;
+
+    @Autowired
+    private RecommendationService recommendationService;
 
     @GetMapping("/questions")
     public ResponseEntity<?> getQuestions(
@@ -206,10 +220,78 @@ public class QuizController {
                 profile.setWeakConcepts(weakConcepts);
                 profile.setStrongConcepts(strongConcepts);
 
-                // Run background predictor
-                studentService.runSilentBackgroundPrediction(profile);
-                profileRepository.save(profile);
-            }
+                 // Run background predictor
+                 studentService.runSilentBackgroundPrediction(profile);
+                 profileRepository.save(profile);
+ 
+                  // Update topic-level ConceptMastery statistics
+                  try {
+                      String tempSubjectCode = "CS301";
+                      Optional<Subject> sOpt = subjectRepository.findBySubjectName(subject);
+                      if (sOpt.isPresent()) {
+                          tempSubjectCode = sOpt.get().getSubjectCode();
+                      }
+                      final String finalSubjectCode = tempSubjectCode;
+                      String topic = concept != null ? concept : "General";
+                      String conceptName = topic;
+ 
+                      Optional<ConceptMastery> cmOpt = conceptRepository.findByUserIdAndSubjectCodeAndTopicAndConceptName(
+                              profile.getUserId(), finalSubjectCode, topic, conceptName
+                      );
+ 
+                      ConceptMastery cm = cmOpt.orElseGet(() -> {
+                          ConceptMastery c = new ConceptMastery();
+                          c.setUserId(profile.getUserId());
+                          c.setStudentProfileId(profileId);
+                          c.setSubjectCode(finalSubjectCode);
+                          c.setSubjectName(subject);
+                          c.setTopic(topic);
+                          c.setConceptName(conceptName);
+                          c.setMasteryScore(50.0);
+                          return c;
+                      });
+ 
+                     int attempts = cm.getAttemptCount() + 1;
+                     int corrects = cm.getCorrectCount() + (isCorrect ? 1 : 0);
+                     int wrongs = attempts - corrects;
+ 
+                     int recentWrongs = cm.getRecentWrongAnswerCount();
+                     if (isCorrect) {
+                         recentWrongs = Math.max(0, recentWrongs - 1);
+                     } else {
+                         recentWrongs = recentWrongs + 1;
+                     }
+ 
+                     double accuracy = Math.round((corrects * 100.0 / attempts) * 10.0) / 10.0;
+ 
+                     cm.setAttemptCount(attempts);
+                     cm.setCorrectCount(corrects);
+                     cm.setAccuracy(accuracy);
+                     cm.setWrongCount(wrongs);
+                     cm.setRecentWrongAnswerCount(recentWrongs);
+                     cm.setMasteryScore(accuracy);
+                     cm.setLastAssessedAt(java.time.LocalDateTime.now());
+ 
+                     ConceptMastery.MasteryLevel level;
+                     if (accuracy >= 85.0 && attempts >= 3) {
+                         level = ConceptMastery.MasteryLevel.MASTER;
+                     } else if (accuracy >= 70.0) {
+                         level = ConceptMastery.MasteryLevel.PROFICIENT;
+                     } else if (accuracy >= 50.0) {
+                         level = ConceptMastery.MasteryLevel.INTERMEDIATE;
+                     } else {
+                         level = ConceptMastery.MasteryLevel.BEGINNER;
+                     }
+                     cm.setMasteryLevel(level);
+ 
+                     conceptRepository.save(cm);
+ 
+                     // Recalculate and update the active recommendations
+                     recommendationService.generateRecommendations(profile.getUserId());
+                 } catch (Exception ex) {
+                     System.err.println("Failed to update topic-level statistics: " + ex.getMessage());
+                 }
+             }
 
             Map<String, Object> response = new HashMap<>();
             response.put("nextDifficulty", nextDifficulty);

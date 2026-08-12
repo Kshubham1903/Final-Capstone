@@ -20,6 +20,9 @@ public class ConceptMastery {
     private double confidenceScore = 0.0;
     private int attemptCount = 0;
     private int correctCount = 0;
+    private int wrongCount = 0;
+    private int recentWrongAnswerCount = 0;
+    private double masteryScore = 50.0;
     private LocalDateTime lastAssessedAt;
     private String recommendedAction;
 
@@ -164,5 +167,29 @@ public class ConceptMastery {
 
     public void setRecommendedAction(String recommendedAction) {
         this.recommendedAction = recommendedAction;
+    }
+
+    public int getWrongCount() {
+        return wrongCount;
+    }
+
+    public void setWrongCount(int wrongCount) {
+        this.wrongCount = wrongCount;
+    }
+
+    public int getRecentWrongAnswerCount() {
+        return recentWrongAnswerCount;
+    }
+
+    public void setRecentWrongAnswerCount(int recentWrongAnswerCount) {
+        this.recentWrongAnswerCount = recentWrongAnswerCount;
+    }
+
+    public double getMasteryScore() {
+        return masteryScore;
+    }
+
+    public void setMasteryScore(double masteryScore) {
+        this.masteryScore = masteryScore;
     }
 }

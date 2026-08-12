@@ -65,6 +65,15 @@ public class KnowledgeService {
 
                 int attempts = cm.getAttemptCount() + 1;
                 int corrects = cm.getCorrectCount() + (ans.isCorrect() ? 1 : 0);
+                int wrongs = attempts - corrects;
+
+                int recentWrongs = cm.getRecentWrongAnswerCount();
+                if (ans.isCorrect()) {
+                    recentWrongs = Math.max(0, recentWrongs - 1);
+                } else {
+                    recentWrongs = recentWrongs + 1;
+                }
+
                 double accuracy = Math.round((corrects * 100.0 / attempts) * 10.0) / 10.0;
                 double confidence = Math.min(Math.round((attempts * 20.0 + accuracy * 0.8) * 10.0) / 10.0, 100.0);
 
@@ -93,6 +102,9 @@ public class KnowledgeService {
                 cm.setAttemptCount(attempts);
                 cm.setCorrectCount(corrects);
                 cm.setAccuracy(accuracy);
+                cm.setWrongCount(wrongs);
+                cm.setRecentWrongAnswerCount(recentWrongs);
+                cm.setMasteryScore(accuracy);
                 cm.setConfidenceScore(confidence);
                 cm.setMasteryLevel(level);
                 cm.setRecommendedAction(action);

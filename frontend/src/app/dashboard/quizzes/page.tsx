@@ -14,7 +14,7 @@ import {
   Timer
 } from "lucide-react";
 import { StudentProfile } from "../../../services/mockData";
-import { fetchQuizQuestions, submitQuizAnswer, fetchProfile, checkBackendConnection, generateAiQuizQuestions } from "../../../services/api";
+import { fetchQuizQuestions, submitQuizAnswer, fetchProfile, checkBackendConnection, generateAiQuizQuestions, fetchStudentRecommendations } from "../../../services/api";
 
 export default function Quizzes() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
@@ -36,6 +36,7 @@ export default function Quizzes() {
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [generatingSubject, setGeneratingSubject] = useState<string | null>(null);
   const [aiGenerationError, setAiGenerationError] = useState<string | null>(null);
+  const [recommendations, setRecommendations] = useState<any[]>([]);
 
   // Diagnostic log
   const [diagnosticLog, setDiagnosticLog] = useState<{ difficulty: string; correct: boolean; reason: string }[]>([]);
@@ -45,6 +46,10 @@ export default function Quizzes() {
       const activeUserId = typeof window !== "undefined" ? (localStorage.getItem("edupilot_user_id") || "") : "";
       const active = await fetchProfile(activeUserId);
       setProfile(active);
+      if (activeUserId) {
+        const recs = await fetchStudentRecommendations(activeUserId);
+        setRecommendations(recs || []);
+      }
     }
     load();
   }, []);
@@ -132,56 +137,22 @@ export default function Quizzes() {
   };
 
   const getRecommendationForSubject = (subj: string) => {
-    if (!profile) return null;
-    
-    const mastery = profile.conceptMastery[subj] ?? 50;
-    const weakList = profile.weakConcepts?.[subj] || [];
-    const strongList = profile.strongConcepts?.[subj] || [];
+    if (!recommendations || recommendations.length === 0) return null;
 
-    let recommendedTopic = "";
-    if (weakList.length > 0) {
-      recommendedTopic = weakList[0];
-    } else {
-      const lowerSubj = subj.toLowerCase();
-      let candidates: string[] = [];
-      if (lowerSubj.includes("data structure") || lowerSubj.includes("algorithm") || lowerSubj.includes("dsa")) {
-        candidates = ["Recursion", "Trees", "Graphs", "Sorting"];
-      } else if (lowerSubj.includes("database") || lowerSubj.includes("dbms")) {
-        candidates = ["Normalization", "Indexing", "SQL Queries", "Transactions"];
-      } else if (lowerSubj.includes("discrete") || lowerSubj.includes("math")) {
-        candidates = ["Set Theory", "Graph Theory", "Combinatorics", "Propositional Logic"];
-      } else if (lowerSubj.includes("blockchain")) {
-        candidates = ["Consensus Mechanisms", "Smart Contracts", "Proof of Stake", "Cryptographic Linking"];
-      } else if (lowerSubj.includes("cloud")) {
-        candidates = ["Identity & Access Management", "Shared Responsibility Model", "Virtual Firewalls", "Zero Trust Security"];
-      } else {
-        candidates = ["Core Concepts", "Advanced Principles", "Optimization"];
-      }
-      recommendedTopic = candidates.find(c => !strongList.includes(c)) || candidates[0];
-    }
+    const rec = recommendations.find(r => 
+      (r.subjectName && r.subjectName.toLowerCase() === subj.toLowerCase()) || 
+      (r.subjectCode && r.subjectCode.toLowerCase() === subj.toLowerCase())
+    );
 
-    let priorityLevel: "High" | "Medium" | "Low" = "Medium";
-    if (mastery < 40) {
-      priorityLevel = "High";
-    } else if (mastery >= 70) {
-      priorityLevel = "Low";
-    }
+    if (!rec) return null;
 
-    let reason = "";
-    if (weakList.includes(recommendedTopic)) {
-      reason = `Your recent performance indicates this concept needs attention.`;
-    } else if (mastery < 45) {
-      reason = `Establishing foundational understanding of ${recommendedTopic} will significantly boost your subject grade.`;
-    } else if (mastery < 75) {
-      reason = `Practice this topic to build consistency and advance your conceptual mastery.`;
-    } else {
-      reason = `Targeting advanced concepts to secure perfect scores.`;
-    }
+    const rawPriority = rec.priority || "MEDIUM";
+    const priority = rawPriority.charAt(0) + rawPriority.substring(1).toLowerCase();
 
     return {
-      topic: recommendedTopic,
-      priority: priorityLevel,
-      reason: reason
+      topic: rec.topic || rec.conceptName || "General Concepts",
+      priority: priority,
+      reason: rec.reason || "Practice concepts to improve mastery."
     };
   };
 
@@ -224,6 +195,8 @@ export default function Quizzes() {
       if (conn) {
         const updated = await fetchProfile(profile.id || "");
         setProfile(updated);
+        const recs = await fetchStudentRecommendations(profile.id || "");
+        setRecommendations(recs || []);
       } else {
         applyResultsToProfileLocal();
       }

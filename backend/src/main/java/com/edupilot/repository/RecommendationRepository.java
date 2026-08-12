@@ -13,4 +13,5 @@ public interface RecommendationRepository extends MongoRepository<Recommendation
     List<Recommendation> findByUserIdAndStatusOrderByCreatedAtDesc(String userId, Recommendation.Status status);
     List<Recommendation> findByUserIdAndPriorityInAndStatus(String userId, List<Recommendation.Priority> priorities, Recommendation.Status status);
     Optional<Recommendation> findByUserIdAndSubjectCodeAndConceptNameAndStatus(String userId, String subjectCode, String conceptName, Recommendation.Status status);
+    List<Recommendation> findByUserIdAndSubjectCodeAndStatus(String userId, String subjectCode, Recommendation.Status status);
 }

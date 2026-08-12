@@ -22,6 +22,9 @@ public class Recommendation {
     private int estimatedStudyTimeMinutes = 20;
     private String difficulty = "MEDIUM";
     private double confidenceScore = 50.0;
+    private double masteryScore = 50.0;
+    private double accuracy = 50.0;
+    private String prevTopic;
     private Status status = Status.ACTIVE;
     private LocalDateTime createdAt = LocalDateTime.now();
     private LocalDateTime expiresAt = LocalDateTime.now().plusDays(7);
@@ -208,5 +211,29 @@ public class Recommendation {
 
     public void setExpiresAt(LocalDateTime expiresAt) {
         this.expiresAt = expiresAt;
+    }
+
+    public double getMasteryScore() {
+        return masteryScore;
+    }
+
+    public void setMasteryScore(double masteryScore) {
+        this.masteryScore = masteryScore;
+    }
+
+    public double getAccuracy() {
+        return accuracy;
+    }
+
+    public void setAccuracy(double accuracy) {
+        this.accuracy = accuracy;
+    }
+
+    public String getPrevTopic() {
+        return prevTopic;
+    }
+
+    public void setPrevTopic(String prevTopic) {
+        this.prevTopic = prevTopic;
     }
 }
