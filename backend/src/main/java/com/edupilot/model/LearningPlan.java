@@ -41,6 +41,7 @@ public class LearningPlan {
         public enum TaskStatus {
             PENDING,
             IN_PROGRESS,
+            VERIFICATION_PENDING,
             COMPLETED,
             SKIPPED
         }

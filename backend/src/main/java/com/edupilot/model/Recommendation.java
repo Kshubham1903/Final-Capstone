@@ -17,6 +17,8 @@ public class Recommendation {
     private String subjectName;
     private String topic;
     private String conceptName;
+    private String questionId;
+    private String questionText;
     private String reason; // Mandatory Explainability Reason
     private String recommendedAction;
     private int estimatedStudyTimeMinutes = 20;
@@ -47,6 +49,7 @@ public class Recommendation {
 
     public enum Status {
         ACTIVE,
+        VERIFICATION_PENDING,
         COMPLETED,
         DISMISSED
     }
@@ -147,6 +150,22 @@ public class Recommendation {
 
     public void setConceptName(String conceptName) {
         this.conceptName = conceptName;
+    }
+
+    public String getQuestionId() {
+        return questionId;
+    }
+
+    public void setQuestionId(String questionId) {
+        this.questionId = questionId;
+    }
+
+    public String getQuestionText() {
+        return questionText;
+    }
+
+    public void setQuestionText(String questionText) {
+        this.questionText = questionText;
     }
 
     public String getReason() {

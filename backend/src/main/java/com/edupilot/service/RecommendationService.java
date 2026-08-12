@@ -29,233 +29,928 @@ public class RecommendationService {
     private SubjectRepository subjectRepository;
 
     @Autowired
+    private com.edupilot.repository.QuizSessionRepository quizSessionRepository;
+
+    @Autowired
     private LearningPlannerService plannerService;
 
     /**
-     * Generate dynamic, explainable recommendations derived from Knowledge Engine profile & concept mastery.
+     * Normalizes dynamically generated concept names so that the same
+     * concept does not create multiple ConceptMastery records.
+     */
+    public static String normalizeConceptName(String raw) {
+        if (raw == null || raw.trim().isEmpty()) {
+            return "General Concept";
+        }
+
+        String c = raw.trim();
+
+        // Remove standard question preamble prefixes.
+        c = c.replaceAll(
+                "(?i)^(Regarding fundamental principles of|In an operational engineering context for|"
+                        + "Under high-scale production constraints evaluating|In foundational study of|"
+                        + "When implementing practical workflows for|Advanced application of|"
+                        + "Foundational principles of)\\s+",
+                ""
+        );
+
+        // Remove difficulty/tier/index suffixes.
+        c = c.replaceAll(
+                "(?i)\\s+(Implementation|Architecture|Foundations|Concepts|Mechanics|Principles)?"
+                        + "\\s*[-|\\[\\(]?\\s*(EASY|MEDIUM|HARD|Tier\\s*\\d+)?\\s*#?\\d+[\\]\\)]?",
+                ""
+        );
+
+        // Remove standalone difficulty/tier/index tags.
+        c = c.replaceAll(
+                "(?i)\\s*[-|\\[\\(]?\\s*(EASY|MEDIUM|HARD|Tier\\s*\\d+)\\s*[\\]\\)]?",
+                ""
+        );
+
+        c = c.replaceAll("(?i)\\s*#\\d+.*$", "");
+
+        // Remove trailing template qualifier words.
+        if (c.matches(
+                "(?i).+\\s+(Implementation|Architecture|Foundations|Mechanics|Concepts|Principles)$"
+        )
+                && !c.equalsIgnoreCase("Software Architecture")
+                && !c.equalsIgnoreCase("System Architecture")) {
+
+            c = c.replaceAll(
+                    "(?i)\\s+(Implementation|Architecture|Foundations|Mechanics|Concepts|Principles)$",
+                    ""
+            );
+        }
+
+        // Clean punctuation.
+        c = c.replaceAll("^[\\s:-]+|[\\s:-]+$", "");
+
+        return c.trim();
+    }
+
+    /**
+     * Subject-aware concept normalization.
+     */
+    public static String normalizeConceptName(String text, String subject) {
+        if (text == null || text.isBlank()) {
+            return "";
+        }
+
+        String normSubject = subject != null
+                ? subject.trim().toLowerCase()
+                : "";
+
+        if (normSubject.contains("artificial intelligence")
+                || normSubject.equals("ai")) {
+
+            return mapAiCanonicalConcept(text);
+        }
+
+        if (normSubject.contains("discrete")
+                || normSubject.equals("dms")) {
+
+            return mapDmsCanonicalConcept(text);
+        }
+
+        return normalizeConceptName(text);
+    }
+
+    /**
+     * Maps AI questions to canonical concepts.
+     */
+    public static String mapAiCanonicalConcept(String text) {
+        if (text == null) {
+            return "Uninformed & Heuristic Search";
+        }
+
+        String low = text.toLowerCase();
+
+        if (low.contains("search")
+                || low.contains("dfs")
+                || low.contains("bfs")
+                || low.contains("heuristic")
+                || low.contains("a*")
+                || low.contains("uniform-cost")
+                || low.contains("hill-climbing")
+                || low.contains("simulated annealing")
+                || low.contains("state space")
+                || low.contains("greedy")
+                || low.contains("pathfinding")
+                || low.contains("local search")
+                || low.contains("iterative deepening")
+                || low.contains("bidirectional")) {
+
+            if (!low.contains("game playing")
+                    && !low.contains("minimax")
+                    && !low.contains("alpha-beta")
+                    && !low.contains("csp")
+                    && !low.contains("constraint")) {
+
+                return "Uninformed & Heuristic Search";
+            }
+        }
+
+        if (low.contains("logic")
+                || low.contains("propositional")
+                || low.contains("predicate")
+                || low.contains("first-order")
+                || low.contains("resolution")
+                || low.contains("modus ponens")
+                || low.contains("horn clause")
+                || low.contains("bayes")
+                || low.contains("probability")
+                || low.contains("wumpus")
+                || low.contains("ontology")
+                || low.contains("knowledge representation")
+                || low.contains("backward chaining")
+                || low.contains("forward chaining")
+                || low.contains("markov")
+                || low.contains("inference")
+                || low.contains("clause")
+                || low.contains("unification")
+                || low.contains("variable elimination")
+                || low.contains("fol")) {
+
+            return "Logic & Automated Reasoning";
+        }
+
+        return "Game Theory & Constraint Satisfaction";
+    }
+
+    /**
+     * Maps Discrete Mathematics questions to canonical concepts.
+     */
+    public static String mapDmsCanonicalConcept(String text) {
+        if (text == null) {
+            return "Set Theory & Mathematical Logic";
+        }
+
+        String low = text.toLowerCase();
+
+        if (low.contains("graph")
+                || low.contains("path")
+                || low.contains("cycle")
+                || low.contains("tree")
+                || low.contains("bipartite")
+                || low.contains("planar")
+                || low.contains("degree")
+                || low.contains("handshaking")
+                || low.contains("hamiltonian")
+                || low.contains("eulerian")
+                || low.contains("chromatic")
+                || low.contains("adjacency")
+                || low.contains("poset")
+                || low.contains("lattice")
+                || low.contains("vertex")
+                || low.contains("edge")
+                || low.contains("walk")
+                || low.contains("isomorphism")
+                || low.contains("topological")) {
+
+            if (!low.contains("inclusion-exclusion")
+                    && !low.contains("recurrence")) {
+
+                return "Graph Theory & Structural Properties";
+            }
+        }
+
+        if (low.contains("combinatorics")
+                || low.contains("permutation")
+                || low.contains("combination")
+                || low.contains("pigeonhole")
+                || low.contains("recurrence")
+                || low.contains("induction")
+                || low.contains("inclusion-exclusion")
+                || low.contains("generating function")
+                || low.contains("binomial")
+                || low.contains("counting")
+                || low.contains("divisibility")
+                || low.contains("modular")
+                || low.contains("gcd")
+                || low.contains("euclidean")
+                || low.contains("catalan")
+                || low.contains("stirling")
+                || low.contains("derangement")) {
+
+            return "Combinatorics & Recurrence Relations";
+        }
+
+        return "Set Theory & Mathematical Logic";
+    }
+
+    /**
+     * Generate dynamic, explainable recommendations.
+     *
+     * Main logic:
+     *
+     * 1. Identify the student's subjects.
+     * 2. Check whether the student has real topic-level performance data.
+     * 3. If there is no real data, recommend Initial Diagnostic.
+     * 4. If real data exists, completely exclude Initial Diagnostic.
+     * 5. Calculate priority for every topic.
+     * 6. Select the highest-priority topic.
+     * 7. Save exactly one active recommendation per subject.
+     * 8. Trigger learning-plan generation.
      */
     public List<RecommendationResponse> generateRecommendations(String userId) {
+
         if (userId == null || userId.trim().isEmpty()) {
             return Collections.emptyList();
         }
 
-        Optional<StudentProfile> profOpt = studentProfileRepository.findByUserId(userId);
+        Optional<StudentProfile> profOpt =
+                studentProfileRepository.findByUserId(userId);
+
         if (profOpt.isEmpty()) {
             profOpt = studentProfileRepository.findById(userId);
         }
+
         if (profOpt.isEmpty()) {
             return Collections.emptyList();
         }
+
         StudentProfile profile = profOpt.get();
+
         List<String> subjects = profile.getSubjects();
+
         if (subjects == null || subjects.isEmpty()) {
             return Collections.emptyList();
         }
 
         List<Recommendation> generatedList = new ArrayList<>();
 
+        /*
+         * Latest quiz session is intentionally used as contextual information.
+         * The final recommendation is still selected using historical
+         * ConceptMastery + recent wrong-answer statistics.
+         */
+        Optional<QuizSession> latestSessionOpt =
+                quizSessionRepository.findFirstByUserIdOrderByLastAnswerTimeDesc(userId);
+
+        String latestSubjectName = null;
+        String latestSubjectCode = null;
+
+        if (latestSessionOpt.isPresent()) {
+
+            QuizSession latestSession = latestSessionOpt.get();
+
+            latestSubjectCode = latestSession.getSubjectCode();
+
+            latestSubjectName = latestSession.getSubjectName();
+
+            /*
+             * Normalize the latest session's concepts so the recommendation
+             * system can work consistently with dynamic quiz questions.
+             */
+            if (latestSession.getAnswers() != null) {
+
+                for (QuizSession.QuizAnswerRecord answer
+                        : latestSession.getAnswers()) {
+
+                    if (answer == null || answer.getConcept() == null
+                            || answer.getConcept().isBlank()) {
+                        continue;
+                    }
+
+                    normalizeConceptName(
+                            answer.getConcept(),
+                            latestSubjectName
+                    );
+                }
+            }
+        }
+
+        /*
+         * Generate exactly one primary recommendation per subject.
+         */
         for (String subjectName : subjects) {
-            Optional<Subject> catOpt = subjectRepository.findBySubjectName(subjectName);
-            final String finalSubjectCode = catOpt.isPresent() ? catOpt.get().getSubjectCode() : "CS301";
+
+            if (subjectName == null || subjectName.isBlank()) {
+                continue;
+            }
+
+            Optional<Subject> catOpt =
+                    subjectRepository.findBySubjectName(subjectName);
+
+            final String finalSubjectCode =
+                    catOpt.map(Subject::getSubjectCode).orElse("CS301");
+
             final String finalSubjectName = subjectName;
 
-            // 1. Fetch user ConceptMastery records for this subject
-            List<ConceptMastery> userConceptMasteries = conceptRepository.findByUserIdAndSubjectCode(userId, finalSubjectCode);
+            /*
+             * Fetch all ConceptMastery records for this subject.
+             */
+            List<ConceptMastery> userConceptMasteries =
+                    conceptRepository.findByUserIdAndSubjectCode(
+                            userId,
+                            finalSubjectCode
+                    );
+
+            /*
+             * Determine whether the student has actually attempted
+             * topic-level questions for this subject.
+             *
+             * Initial Diagnostic records do NOT count as real performance.
+             */
             boolean hasAnyRealPerformanceData = false;
+
             if (userConceptMasteries != null) {
+
                 for (ConceptMastery cm : userConceptMasteries) {
-                    if (cm.getAttemptCount() > 0 && cm.getTopic() != null && 
-                        !cm.getTopic().equalsIgnoreCase("Initial Diagnostic") && 
-                        !cm.getTopic().equalsIgnoreCase("Initial Diagnostic Foundations")) {
+
+                    if (cm == null) {
+                        continue;
+                    }
+
+                    if (cm.getAttemptCount() > 0
+                            && cm.getTopic() != null
+                            && !cm.getTopic().isBlank()
+                            && !cm.getTopic().equalsIgnoreCase("Initial Diagnostic")
+                            && !cm.getTopic().equalsIgnoreCase("Initial Diagnostic Foundations")) {
+
                         hasAnyRealPerformanceData = true;
                         break;
                     }
                 }
             }
 
-            // 2. Lookup existing active recommendations for this user and subject
-            List<Recommendation> activeRecs = recommendationRepository.findByUserIdAndSubjectCodeAndStatus(
-                userId, finalSubjectCode, Recommendation.Status.ACTIVE
-            );
+            /*
+             * Find all currently active recommendations for this subject.
+             */
+            List<Recommendation> activeRecs =
+                    recommendationRepository.findByUserIdAndSubjectCodeAndStatus(
+                            userId,
+                            finalSubjectCode,
+                            Recommendation.Status.ACTIVE
+                    );
 
             Recommendation rec;
-            if (activeRecs.isEmpty()) {
+
+            if (activeRecs == null || activeRecs.isEmpty()) {
+
                 rec = new Recommendation();
+
                 rec.setUserId(userId);
                 rec.setStudentProfileId(profile.getId());
                 rec.setSubjectCode(finalSubjectCode);
                 rec.setSubjectName(finalSubjectName);
                 rec.setStatus(Recommendation.Status.ACTIVE);
+
             } else {
+
+                /*
+                 * Reuse the existing active recommendation so that the
+                 * recommendation ID remains stable where possible.
+                 */
                 rec = activeRecs.get(0);
-                // Deactivate any duplicate active recommendations for this subject
+
+                /*
+                 * Deactivate duplicate recommendations.
+                 */
                 for (int i = 1; i < activeRecs.size(); i++) {
-                    Recommendation extra = activeRecs.get(i);
-                    extra.setStatus(Recommendation.Status.COMPLETED);
-                    recommendationRepository.save(extra);
+
+                    Recommendation duplicate = activeRecs.get(i);
+
+                    duplicate.setStatus(
+                            Recommendation.Status.COMPLETED
+                    );
+
+                    recommendationRepository.save(duplicate);
                 }
             }
 
-            String prevTopic = rec.getTopic();
+            String previousTopic = rec.getTopic();
 
+            /*
+             * ============================================================
+             * NEW STUDENT / NO REAL PERFORMANCE
+             * ============================================================
+             */
             if (!hasAnyRealPerformanceData) {
-                // If there's no actual performance data, we MUST recommend Initial Diagnostic
+
+                /*
+                 * Initial Diagnostic is ONLY allowed here.
+                 */
                 rec.setTopic("Initial Diagnostic");
-                rec.setConceptName(finalSubjectName + " Foundations");
-                rec.setReason("Baseline diagnostic evaluation required to map conceptual mastery for " + finalSubjectName + ".");
-                rec.setRecommendedAction("Take your first 5-minute diagnostic assessment for " + finalSubjectName + ".");
-                rec.setRecommendationType(Recommendation.RecommendationType.DIAGNOSTIC_RETEST);
-                rec.setPriority(Recommendation.Priority.HIGH);
+
+                rec.setConceptName(
+                        finalSubjectName + " Foundations"
+                );
+
+                rec.setReason(
+                        "Baseline diagnostic evaluation required to map "
+                                + "conceptual mastery for "
+                                + finalSubjectName + "."
+                );
+
+                rec.setRecommendedAction(
+                        "Take your first 5-minute diagnostic assessment for "
+                                + finalSubjectName + "."
+                );
+
+                rec.setRecommendationType(
+                        Recommendation.RecommendationType.DIAGNOSTIC_RETEST
+                );
+
+                rec.setPriority(
+                        Recommendation.Priority.HIGH
+                );
+
                 rec.setDifficulty("MEDIUM");
+
                 rec.setConfidenceScore(50.0);
                 rec.setMasteryScore(50.0);
                 rec.setAccuracy(50.0);
-                rec.setPrevTopic(prevTopic);
+
+                rec.setPrevTopic(previousTopic);
+
                 rec.setCreatedAt(LocalDateTime.now());
-                rec.setExpiresAt(LocalDateTime.now().plusDays(7));
+
+                rec.setExpiresAt(
+                        LocalDateTime.now().plusDays(7)
+                );
+
             } else {
-                // We have real performance data. Exclude "Initial Diagnostic" and find highest-priority weak topic
-                List<String> topics = getTopicsForSubject(finalSubjectName, finalSubjectCode, userId);
-                topics.remove("Initial Diagnostic");
-                topics.remove("Initial Diagnostic Foundations");
+
+                /*
+                 * ========================================================
+                 * EXISTING STUDENT
+                 * ========================================================
+                 *
+                 * The student has real performance data.
+                 *
+                 * Initial Diagnostic is NEVER considered again.
+                 */
+                List<String> topics =
+                        getTopicsForSubject(
+                                finalSubjectName,
+                                finalSubjectCode,
+                                userId
+                        );
+
+                /*
+                 * Explicitly remove all diagnostic placeholders.
+                 */
+                topics.removeIf(topic ->
+                        topic != null
+                                && (
+                                topic.equalsIgnoreCase("Initial Diagnostic")
+                                        || topic.equalsIgnoreCase("Initial Diagnostic Foundations")
+                        )
+                );
 
                 String highestPriorityTopic = null;
+
                 double maxScore = -1.0;
+
                 ConceptMastery bestCm = null;
 
+                /*
+                 * Calculate priority for EVERY topic.
+                 */
                 for (String topic : topics) {
-                    Optional<ConceptMastery> cmOpt = conceptRepository.findByUserIdAndSubjectCodeAndTopicAndConceptName(
-                        userId, finalSubjectCode, topic, topic
-                    );
+
+                    if (topic == null || topic.isBlank()) {
+                        continue;
+                    }
+
+                    Optional<ConceptMastery> cmOpt =
+                            conceptRepository
+                                    .findByUserIdAndSubjectCodeAndTopicAndConceptName(
+                                            userId,
+                                            finalSubjectCode,
+                                            topic,
+                                            topic
+                                    );
+
                     double accuracy = 50.0;
+
                     int attempts = 0;
+
                     int recentWrongs = 0;
+
                     boolean hasData = false;
+
                     ConceptMastery cm = null;
 
                     if (cmOpt.isPresent()) {
+
                         cm = cmOpt.get();
+
                         accuracy = cm.getAccuracy();
+
                         attempts = cm.getAttemptCount();
-                        recentWrongs = cm.getRecentWrongAnswerCount();
-                        hasData = (attempts > 0);
+
+                        recentWrongs =
+                                cm.getRecentWrongAnswerCount();
+
+                        hasData = attempts > 0;
                     }
 
+                    /*
+                     * Priority formula:
+                     *
+                     * Unattempted topic = 45
+                     *
+                     * Attempted topic =
+                     *     (100 - accuracy)
+                     *     +
+                     *     (recent wrong answers * 15)
+                     *
+                     * More wrong answers + lower accuracy
+                     * = higher recommendation priority.
+                     */
                     double priorityScore;
+
                     if (!hasData) {
-                        priorityScore = 45.0; // Moderate priority for unattempted topics
+
+                        priorityScore = 45.0;
+
                     } else {
-                        priorityScore = (100.0 - accuracy) + (recentWrongs * 15.0);
+
+                        priorityScore =
+                                (100.0 - accuracy)
+                                        + (recentWrongs * 15.0);
                     }
 
+                    /*
+                     * Select the highest-priority topic.
+                     */
                     if (priorityScore > maxScore) {
+
                         maxScore = priorityScore;
+
                         highestPriorityTopic = topic;
+
                         bestCm = cm;
                     }
                 }
 
+                /*
+                 * Safety fallback.
+                 */
                 if (highestPriorityTopic == null) {
-                    highestPriorityTopic = topics.isEmpty() ? "General Concepts" : topics.get(0);
+
+                    highestPriorityTopic =
+                            topics.isEmpty()
+                                    ? "General Concepts"
+                                    : topics.get(0);
                 }
 
                 rec.setTopic(highestPriorityTopic);
+
                 rec.setConceptName(highestPriorityTopic);
 
-                double acc = bestCm != null ? bestCm.getAccuracy() : 50.0;
-                int recentWrongs = bestCm != null ? bestCm.getRecentWrongAnswerCount() : 0;
-                int totalAttempts = bestCm != null ? bestCm.getAttemptCount() : 0;
+                double accuracy =
+                        bestCm != null
+                                ? bestCm.getAccuracy()
+                                : 50.0;
 
+                int recentWrongs =
+                        bestCm != null
+                                ? bestCm.getRecentWrongAnswerCount()
+                                : 0;
+
+                int totalAttempts =
+                        bestCm != null
+                                ? bestCm.getAttemptCount()
+                                : 0;
+
+                /*
+                 * ========================================================
+                 * EXPLAINABLE REASON
+                 * ========================================================
+                 */
                 String reason = "";
-                if (prevTopic != null && !prevTopic.equalsIgnoreCase(highestPriorityTopic) && !prevTopic.equalsIgnoreCase("Initial Diagnostic")) {
-                    Optional<ConceptMastery> prevCmOpt = conceptRepository.findByUserIdAndSubjectCodeAndTopicAndConceptName(
-                        userId, finalSubjectCode, prevTopic, prevTopic
-                    );
-                    if (prevCmOpt.isPresent()) {
-                        double prevAcc = prevCmOpt.get().getAccuracy();
-                        reason = "Your " + prevTopic + " accuracy improved to " + Math.round(prevAcc) + "%; " + highestPriorityTopic + " is now your highest-priority topic.";
+
+                /*
+                 * If the recommendation changed from the previous topic,
+                 * explain why.
+                 */
+                if (previousTopic != null
+                        && !previousTopic.equalsIgnoreCase(
+                        highestPriorityTopic)
+                        && !previousTopic.equalsIgnoreCase(
+                        "Initial Diagnostic")) {
+
+                    Optional<ConceptMastery> previousCmOpt =
+                            conceptRepository
+                                    .findByUserIdAndSubjectCodeAndTopicAndConceptName(
+                                            userId,
+                                            finalSubjectCode,
+                                            previousTopic,
+                                            previousTopic
+                                    );
+
+                    if (previousCmOpt.isPresent()) {
+
+                        double previousAccuracy =
+                                previousCmOpt.get().getAccuracy();
+
+                        reason =
+                                "Your "
+                                        + previousTopic
+                                        + " accuracy improved to "
+                                        + Math.round(previousAccuracy)
+                                        + "%; "
+                                        + highestPriorityTopic
+                                        + " is now your highest-priority topic.";
+
                     } else {
-                        reason = "You completed " + prevTopic + "; " + highestPriorityTopic + " is now your highest-priority topic.";
+
+                        reason =
+                                "You completed "
+                                        + previousTopic
+                                        + "; "
+                                        + highestPriorityTopic
+                                        + " is now your highest-priority topic.";
                     }
                 }
 
+                /*
+                 * If there is no topic-change explanation,
+                 * explain the current weakness.
+                 */
                 if (reason.isEmpty()) {
+
                     if (recentWrongs > 0) {
-                        reason = "You answered " + recentWrongs + " of recent questions on " + highestPriorityTopic + " incorrectly.";
+
+                        reason =
+                                "You answered "
+                                        + recentWrongs
+                                        + " of your recent questions on "
+                                        + highestPriorityTopic
+                                        + " incorrectly.";
+
                     } else if (totalAttempts == 0) {
-                        reason = "Establish foundational understanding of " + highestPriorityTopic + " to boost your mastery.";
+
+                        reason =
+                                "Establish foundational understanding of "
+                                        + highestPriorityTopic
+                                        + " to boost your mastery.";
+
                     } else {
-                        reason = "Your " + highestPriorityTopic + " accuracy is " + Math.round(acc) + "%. Practice to build consistency.";
+
+                        reason =
+                                "Your "
+                                        + highestPriorityTopic
+                                        + " accuracy is "
+                                        + Math.round(accuracy)
+                                        + "%. Practice to build consistency.";
                     }
                 }
 
                 rec.setReason(reason);
 
+                /*
+                 * ========================================================
+                 * PRIORITY LEVEL
+                 * ========================================================
+                 */
                 Recommendation.Priority priorityLevel;
+
                 if (maxScore >= 75.0) {
-                    priorityLevel = Recommendation.Priority.CRITICAL;
+
+                    priorityLevel =
+                            Recommendation.Priority.CRITICAL;
+
                 } else if (maxScore >= 50.0) {
-                    priorityLevel = Recommendation.Priority.HIGH;
+
+                    priorityLevel =
+                            Recommendation.Priority.HIGH;
+
                 } else if (maxScore >= 30.0) {
-                    priorityLevel = Recommendation.Priority.MEDIUM;
+
+                    priorityLevel =
+                            Recommendation.Priority.MEDIUM;
+
                 } else {
-                    priorityLevel = Recommendation.Priority.LOW;
+
+                    priorityLevel =
+                            Recommendation.Priority.LOW;
                 }
+
                 rec.setPriority(priorityLevel);
 
+                /*
+                 * ========================================================
+                 * DIFFICULTY
+                 * ========================================================
+                 */
                 String difficulty = "MEDIUM";
-                if (acc < 50.0) difficulty = "EASY";
-                else if (acc >= 75.0) difficulty = "HARD";
+
+                if (accuracy < 50.0) {
+
+                    difficulty = "EASY";
+
+                } else if (accuracy >= 75.0) {
+
+                    difficulty = "HARD";
+                }
+
                 rec.setDifficulty(difficulty);
 
-                rec.setRecommendationType(Recommendation.RecommendationType.CONCEPT_REVISION);
-                rec.setRecommendedAction("Solve practice questions on " + highestPriorityTopic + ".");
+                /*
+                 * ========================================================
+                 * RECOMMENDATION METADATA
+                 * ========================================================
+                 */
+                rec.setRecommendationType(
+                        Recommendation.RecommendationType.CONCEPT_REVISION
+                );
+
+                rec.setRecommendedAction(
+                        "Solve practice questions on "
+                                + highestPriorityTopic
+                                + "."
+                );
+
                 rec.setEstimatedStudyTimeMinutes(20);
-                rec.setConfidenceScore(acc);
-                rec.setMasteryScore(bestCm != null ? bestCm.getMasteryScore() : 50.0);
-                rec.setAccuracy(acc);
-                rec.setPrevTopic(prevTopic);
+
+                rec.setConfidenceScore(accuracy);
+
+                rec.setMasteryScore(
+                        bestCm != null
+                                ? bestCm.getMasteryScore()
+                                : 50.0
+                );
+
+                rec.setAccuracy(accuracy);
+
+                rec.setPrevTopic(previousTopic);
+
+                rec.setStatus(
+                        Recommendation.Status.ACTIVE
+                );
+
                 rec.setCreatedAt(LocalDateTime.now());
-                rec.setExpiresAt(LocalDateTime.now().plusDays(7));
+
+                rec.setExpiresAt(
+                        LocalDateTime.now().plusDays(7)
+                );
             }
 
-            generatedList.add(recommendationRepository.save(rec));
+            /*
+             * Save the one primary recommendation for this subject.
+             */
+            generatedList.add(
+                    recommendationRepository.save(rec)
+            );
         }
 
+        /*
+         * Regenerate the student's learning plan based on
+         * the newly calculated recommendation.
+         */
         try {
+
             plannerService.generateLearningPlan(userId);
+
         } catch (Exception ex) {
-            System.err.println("Failed to trigger planner generation: " + ex.getMessage());
+
+            System.err.println(
+                    "Failed to trigger planner generation: "
+                            + ex.getMessage()
+            );
         }
 
-        return generatedList.stream().map(RecommendationResponse::new).collect(Collectors.toList());
+        return generatedList.stream()
+                .map(RecommendationResponse::new)
+                .collect(Collectors.toList());
     }
 
-    private List<String> getTopicsForSubject(String subjectName, String subjectCode, String userId) {
-        Set<String> topics = new LinkedHashSet<>();
-        
-        String lower = subjectName.toLowerCase();
-        if (lower.contains("data structure") || lower.contains("algorithm") || lower.contains("dsa")) {
-            topics.addAll(Arrays.asList("Recursion", "Trees", "Graphs", "Sorting", "Binary Search Trees", "Sorting Algorithms", "Graph Theory", "Dynamic Programming", "Hash Tables"));
-        } else if (lower.contains("database") || lower.contains("dbms")) {
-            topics.addAll(Arrays.asList("Normalization", "Indexing", "SQL Queries", "Transactions", "Relational Algebra"));
-        } else if (lower.contains("discrete") || lower.contains("math")) {
-            topics.addAll(Arrays.asList("Set Theory", "Graph Theory", "Combinatorics", "Propositional Logic"));
+    /**
+     * Returns the standard topic catalogue for a subject and also adds
+     * dynamically discovered topics from ConceptMastery.
+     */
+    private List<String> getTopicsForSubject(
+            String subjectName,
+            String subjectCode,
+            String userId) {
+
+        Set<String> topics =
+                new LinkedHashSet<>();
+
+        String lower =
+                subjectName != null
+                        ? subjectName.toLowerCase()
+                        : "";
+
+        if (lower.contains("data structure")
+                || lower.contains("algorithm")
+                || lower.contains("dsa")) {
+
+            topics.addAll(
+                    Arrays.asList(
+                            "Recursion",
+                            "Trees",
+                            "Graphs",
+                            "Sorting",
+                            "Binary Search Trees",
+                            "Sorting Algorithms",
+                            "Graph Theory",
+                            "Dynamic Programming",
+                            "Hash Tables"
+                    )
+            );
+
+        } else if (lower.contains("database")
+                || lower.contains("dbms")) {
+
+            topics.addAll(
+                    Arrays.asList(
+                            "Normalization",
+                            "Indexing",
+                            "SQL Queries",
+                            "Transactions",
+                            "Relational Algebra"
+                    )
+            );
+
+        } else if (lower.contains("discrete")
+                || lower.contains("math")) {
+
+            topics.addAll(
+                    Arrays.asList(
+                            "Set Theory",
+                            "Graph Theory",
+                            "Combinatorics",
+                            "Propositional Logic"
+                    )
+            );
+
         } else if (lower.contains("blockchain")) {
-            topics.addAll(Arrays.asList("Consensus Mechanisms", "Smart Contracts", "Proof of Stake", "Cryptographic Linking"));
+
+            topics.addAll(
+                    Arrays.asList(
+                            "Consensus Mechanisms",
+                            "Smart Contracts",
+                            "Proof of Stake",
+                            "Cryptographic Linking"
+                    )
+            );
+
         } else if (lower.contains("cloud")) {
-            topics.addAll(Arrays.asList("Identity & Access Management", "Shared Responsibility Model", "Virtual Firewalls", "Zero Trust Security"));
-        } else if (lower.contains("artificial intelligence") || lower.contains("machine learning") || lower.contains("ai")) {
-            topics.addAll(Arrays.asList("Neural Networks", "Supervised Learning", "Core Concepts", "Advanced Principles", "Optimization"));
+
+            topics.addAll(
+                    Arrays.asList(
+                            "Identity & Access Management",
+                            "Shared Responsibility Model",
+                            "Virtual Firewalls",
+                            "Zero Trust Security"
+                    )
+            );
+
+        } else if (lower.contains("artificial intelligence")
+                || lower.contains("machine learning")
+                || lower.equals("ai")) {
+
+            topics.addAll(
+                    Arrays.asList(
+                            "Neural Networks",
+                            "Supervised Learning",
+                            "Core Concepts",
+                            "Advanced Principles",
+                            "Optimization"
+                    )
+            );
+
         } else {
-            topics.addAll(Arrays.asList("Core Concepts", "Advanced Principles", "Optimization"));
+
+            topics.addAll(
+                    Arrays.asList(
+                            "Core Concepts",
+                            "Advanced Principles",
+                            "Optimization"
+                    )
+            );
         }
 
-        List<ConceptMastery> cmList = conceptRepository.findByUserId(userId);
+        /*
+         * Add dynamically generated concepts discovered in the student's
+         * ConceptMastery records.
+         */
+        List<ConceptMastery> cmList =
+                conceptRepository.findByUserId(userId);
+
         if (cmList != null) {
+
             for (ConceptMastery cm : cmList) {
-                if (cm.getSubjectName().equalsIgnoreCase(subjectName) || cm.getSubjectCode().equalsIgnoreCase(subjectCode)) {
-                    if (cm.getTopic() != null && !cm.getTopic().isBlank()) {
+
+                if (cm == null) {
+                    continue;
+                }
+
+                if (cm.getSubjectName() != null
+                        && cm.getSubjectCode() != null
+                        && (
+                        cm.getSubjectName().equalsIgnoreCase(subjectName)
+                                || cm.getSubjectCode().equalsIgnoreCase(subjectCode)
+                )) {
+
+                    if (cm.getTopic() != null
+                            && !cm.getTopic().isBlank()) {
+
                         topics.add(cm.getTopic());
                     }
                 }
@@ -265,29 +960,292 @@ public class RecommendationService {
         return new ArrayList<>(topics);
     }
 
-    public List<RecommendationResponse> getActiveRecommendations(String userId) {
-        List<Recommendation> active = recommendationRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, Recommendation.Status.ACTIVE);
-        if (active.isEmpty()) {
+    /**
+     * Returns active and verification-pending recommendations.
+     */
+    public List<RecommendationResponse> getActiveRecommendations(
+            String userId) {
+
+        List<Recommendation> active =
+                recommendationRepository
+                        .findByUserIdAndStatusOrderByCreatedAtDesc(
+                                userId,
+                                Recommendation.Status.ACTIVE
+                        );
+
+        List<Recommendation> pending =
+                recommendationRepository
+                        .findByUserIdAndStatusOrderByCreatedAtDesc(
+                                userId,
+                                Recommendation.Status.VERIFICATION_PENDING
+                        );
+
+        List<Recommendation> all =
+                new ArrayList<>(active);
+
+        all.addAll(pending);
+
+        /*
+         * If there are no active recommendations, generate them.
+         */
+        if (all.isEmpty()) {
+
             return generateRecommendations(userId);
         }
-        return active.stream().map(RecommendationResponse::new).collect(Collectors.toList());
+
+        return all.stream()
+                .map(RecommendationResponse::new)
+                .collect(Collectors.toList());
     }
 
-    public List<RecommendationResponse> getHighPriorityRecommendations(String userId) {
-        List<Recommendation.Priority> priorities = List.of(Recommendation.Priority.CRITICAL, Recommendation.Priority.HIGH);
-        List<Recommendation> highList = recommendationRepository.findByUserIdAndPriorityInAndStatus(userId, priorities, Recommendation.Status.ACTIVE);
+    /**
+     * Returns high-priority recommendations.
+     */
+    public List<RecommendationResponse> getHighPriorityRecommendations(
+            String userId) {
+
+        List<Recommendation.Priority> priorities =
+                List.of(
+                        Recommendation.Priority.CRITICAL,
+                        Recommendation.Priority.HIGH
+                );
+
+        List<Recommendation> highList =
+                recommendationRepository
+                        .findByUserIdAndPriorityInAndStatus(
+                                userId,
+                                priorities,
+                                Recommendation.Status.ACTIVE
+                        );
+
         if (highList.isEmpty()) {
+
             return getActiveRecommendations(userId);
         }
-        return highList.stream().map(RecommendationResponse::new).collect(Collectors.toList());
+
+        return highList.stream()
+                .map(RecommendationResponse::new)
+                .collect(Collectors.toList());
     }
 
+    /**
+     * Marks a recommendation as completed.
+     */
     public RecommendationResponse completeRecommendation(String id) {
-        Recommendation rec = recommendationRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Recommendation ID not found: " + id));
-        
-        rec.setStatus(Recommendation.Status.COMPLETED);
-        Recommendation saved = recommendationRepository.save(rec);
+
+        Recommendation rec =
+                recommendationRepository
+                        .findById(id)
+                        .orElseThrow(
+                                () -> new IllegalArgumentException(
+                                        "Recommendation ID not found: "
+                                                + id
+                                )
+                        );
+
+        rec.setStatus(
+                Recommendation.Status.COMPLETED
+        );
+
+        Recommendation saved =
+                recommendationRepository.save(rec);
+
         return new RecommendationResponse(saved);
+    }
+
+    /**
+     * Processes verification/diagnostic results for a concept.
+     */
+    public void processVerificationResult(
+            String userId,
+            String subjectName,
+            String targetConcept,
+            boolean isPassed,
+            double accuracy) {
+
+        if (userId == null
+                || targetConcept == null
+                || targetConcept.isBlank()) {
+
+            return;
+        }
+
+        String normConcept =
+                normalizeConceptName(targetConcept);
+
+        /*
+         * ================================================================
+         * 1. UPDATE CONCEPT MASTERY
+         * ================================================================
+         */
+        List<ConceptMastery> cmList =
+                conceptRepository.findByUserId(userId);
+
+        ConceptMastery targetCm = null;
+
+        for (ConceptMastery cm : cmList) {
+
+            if (normConcept.equalsIgnoreCase(
+                    cm.getConceptName())) {
+
+                targetCm = cm;
+                break;
+            }
+        }
+
+        if (targetCm == null) {
+
+            targetCm = new ConceptMastery();
+
+            targetCm.setUserId(userId);
+
+            targetCm.setSubjectName(
+                    subjectName != null
+                            ? subjectName
+                            : "Data Structures & Algorithms"
+            );
+
+            targetCm.setConceptName(normConcept);
+
+            targetCm.setTopic(normConcept);
+        }
+
+        targetCm.setAttemptCount(
+                targetCm.getAttemptCount() + 1
+        );
+
+        if (isPassed) {
+
+            targetCm.setCorrectCount(
+                    targetCm.getCorrectCount() + 1
+            );
+
+            targetCm.setAccuracy(
+                    Math.max(85.0, accuracy)
+            );
+
+            targetCm.setMasteryLevel(
+                    ConceptMastery.MasteryLevel.MASTER
+            );
+
+            targetCm.setConfidenceScore(100.0);
+
+            targetCm.setRecommendedAction(
+                    "Mastery achieved! Concept verified successfully."
+            );
+
+        } else {
+
+            targetCm.setAccuracy(
+                    Math.min(
+                            targetCm.getAccuracy(),
+                            accuracy
+                    )
+            );
+
+            targetCm.setMasteryLevel(
+                    ConceptMastery.MasteryLevel.BEGINNER
+            );
+
+            targetCm.setConfidenceScore(
+                    Math.max(25.0, accuracy)
+            );
+
+            targetCm.setRecommendedAction(
+                    "Practice needed: Review "
+                            + normConcept
+                            + " and attempt verification quiz again."
+            );
+        }
+
+        targetCm.setLastAssessedAt(
+                LocalDateTime.now()
+        );
+
+        conceptRepository.save(targetCm);
+
+        /*
+         * ================================================================
+         * 2. UPDATE ASSOCIATED RECOMMENDATIONS
+         * ================================================================
+         */
+        List<Recommendation> recs =
+                recommendationRepository.findByUserIdAndStatus(
+                        userId,
+                        Recommendation.Status.VERIFICATION_PENDING
+                );
+
+        List<Recommendation> activeRecs =
+                recommendationRepository.findByUserIdAndStatus(
+                        userId,
+                        Recommendation.Status.ACTIVE
+                );
+
+        recs.addAll(activeRecs);
+
+        for (Recommendation r : recs) {
+
+            if (!normConcept.equalsIgnoreCase(
+                    r.getConceptName())) {
+
+                continue;
+            }
+
+            if (isPassed) {
+
+                r.setStatus(
+                        Recommendation.Status.COMPLETED
+                );
+
+                recommendationRepository.save(r);
+
+                if (r.getId() != null) {
+
+                    plannerService.forceCompleteTask(
+                            userId,
+                            r.getId()
+                    );
+                }
+
+            } else {
+
+                r.setStatus(
+                        Recommendation.Status.ACTIVE
+                );
+
+                r.setReason(
+                        "In your verification quiz for "
+                                + r.getSubjectName()
+                                + ", mastery for "
+                                + normConcept
+                                + " was not demonstrated yet."
+                );
+
+                r.setRecommendedAction(
+                        "Practice needed: Review "
+                                + normConcept
+                                + " fundamental concepts and attempt practice questions again."
+                );
+
+                recommendationRepository.save(r);
+            }
+        }
+
+        /*
+         * Recalculate the overall recommendation after verification.
+         * This allows the recommendation to move to another weak topic
+         * immediately after the student improves a concept.
+         */
+        try {
+
+            generateRecommendations(userId);
+
+        } catch (Exception ex) {
+
+            System.err.println(
+                    "Failed to regenerate recommendations after verification: "
+                            + ex.getMessage()
+            );
+        }
     }
 }
