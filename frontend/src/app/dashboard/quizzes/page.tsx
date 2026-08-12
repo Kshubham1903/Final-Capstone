@@ -34,6 +34,7 @@ export default function Quizzes() {
   const [secondsSpent, setSecondsSpent] = useState(0);
   const [quizFinished, setQuizFinished] = useState(false);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [generatingSubject, setGeneratingSubject] = useState<string | null>(null);
   const [aiGenerationError, setAiGenerationError] = useState<string | null>(null);
 
   // Diagnostic log
@@ -93,69 +94,14 @@ export default function Quizzes() {
     }
   };
 
-  const startQuiz = async (subj: string) => {
-    setActiveSubject(subj);
-    setQuizStarted(true);
-    setCurrentDiff("EASY");
-    setQuestionCount(0);
-    setCorrectAnswers(0);
-    setQuizFinished(false);
-    setIsExhausted(false);
-    setSelectedOption(null);
-    setIsAnswered(false);
-    setSecondsSpent(0);
-    setDiagnosticLog([]);
-
-    const persistedSeen = getPersistedSeenIds(subj);
-    const cumulativeExclusions = [...persistedSeen];
-    
-    // Fetch initial 10-question session pool from backend
-    let sessionPool: any[] = [];
-    const easyBatch = await fetchQuizQuestions(subj, "EASY", cumulativeExclusions);
-    for (const q of easyBatch || []) {
-      const key = q.id || q.questionText;
-      if (!cumulativeExclusions.includes(key)) {
-        cumulativeExclusions.push(key);
-        sessionPool.push(q);
-      }
-    }
-
-    // If initial fetch returned fewer than 10, fetch additional difficulties to ensure 10 unique session items
-    if (sessionPool.length < 10) {
-      for (const d of ["MEDIUM", "HARD", "EASY"]) {
-        if (sessionPool.length >= 10) break;
-        const extraBatch = await fetchQuizQuestions(subj, d, cumulativeExclusions);
-        for (const q of extraBatch || []) {
-          if (sessionPool.length >= 10) break;
-          const key = q.id || q.questionText;
-          if (!cumulativeExclusions.includes(key)) {
-            cumulativeExclusions.push(key);
-            sessionPool.push(q);
-          }
-        }
-      }
-    }
-
-    if (sessionPool.length === 0) {
-      setIsExhausted(true);
-      return;
-    }
-
-    setQuizQuestions(sessionPool);
-    setSeenQuestionIds(cumulativeExclusions);
-    
-    const firstQ = sessionPool[0];
-    setActiveQuestion(firstQ);
-    const firstKey = firstQ.id || firstQ.questionText;
-    savePersistedSeenId(subj, firstKey);
-  };
 
   const startAiQuiz = async (subj: string) => {
     setAiGenerationError(null);
+    setGeneratingSubject(subj);
     setIsGeneratingAi(true);
 
     try {
-      const aiQuestions = await generateAiQuizQuestions(profile!.id || "", subj, 5);
+      const aiQuestions = await generateAiQuizQuestions(profile!.id || "", subj, 10);
 
       if (!aiQuestions || aiQuestions.length === 0) {
         setAiGenerationError("AI couldn't generate questions right now. Try again in a moment.");
@@ -181,7 +127,62 @@ export default function Quizzes() {
       setAiGenerationError(err.message || "AI quiz generation failed.");
     } finally {
       setIsGeneratingAi(false);
+      setGeneratingSubject(null);
     }
+  };
+
+  const getRecommendationForSubject = (subj: string) => {
+    if (!profile) return null;
+    
+    const mastery = profile.conceptMastery[subj] ?? 50;
+    const weakList = profile.weakConcepts?.[subj] || [];
+    const strongList = profile.strongConcepts?.[subj] || [];
+
+    let recommendedTopic = "";
+    if (weakList.length > 0) {
+      recommendedTopic = weakList[0];
+    } else {
+      const lowerSubj = subj.toLowerCase();
+      let candidates: string[] = [];
+      if (lowerSubj.includes("data structure") || lowerSubj.includes("algorithm") || lowerSubj.includes("dsa")) {
+        candidates = ["Recursion", "Trees", "Graphs", "Sorting"];
+      } else if (lowerSubj.includes("database") || lowerSubj.includes("dbms")) {
+        candidates = ["Normalization", "Indexing", "SQL Queries", "Transactions"];
+      } else if (lowerSubj.includes("discrete") || lowerSubj.includes("math")) {
+        candidates = ["Set Theory", "Graph Theory", "Combinatorics", "Propositional Logic"];
+      } else if (lowerSubj.includes("blockchain")) {
+        candidates = ["Consensus Mechanisms", "Smart Contracts", "Proof of Stake", "Cryptographic Linking"];
+      } else if (lowerSubj.includes("cloud")) {
+        candidates = ["Identity & Access Management", "Shared Responsibility Model", "Virtual Firewalls", "Zero Trust Security"];
+      } else {
+        candidates = ["Core Concepts", "Advanced Principles", "Optimization"];
+      }
+      recommendedTopic = candidates.find(c => !strongList.includes(c)) || candidates[0];
+    }
+
+    let priorityLevel: "High" | "Medium" | "Low" = "Medium";
+    if (mastery < 40) {
+      priorityLevel = "High";
+    } else if (mastery >= 70) {
+      priorityLevel = "Low";
+    }
+
+    let reason = "";
+    if (weakList.includes(recommendedTopic)) {
+      reason = `Your recent performance indicates this concept needs attention.`;
+    } else if (mastery < 45) {
+      reason = `Establishing foundational understanding of ${recommendedTopic} will significantly boost your subject grade.`;
+    } else if (mastery < 75) {
+      reason = `Practice this topic to build consistency and advance your conceptual mastery.`;
+    } else {
+      reason = `Targeting advanced concepts to secure perfect scores.`;
+    }
+
+    return {
+      topic: recommendedTopic,
+      priority: priorityLevel,
+      reason: reason
+    };
   };
 
   const handleSubmitAnswer = async () => {
@@ -216,7 +217,7 @@ export default function Quizzes() {
   };
 
   const handleNextStep = async () => {
-    if (questionCount >= 10) {
+    if (questionCount >= quizQuestions.length) {
       setQuizFinished(true);
       
       const conn = await checkBackendConnection();
@@ -316,41 +317,86 @@ export default function Quizzes() {
 
         {/* NOT IN QUIZ: Select Subject Selection */}
         {!quizStarted && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {profile.subjects.map((subj) => (
-              <div key={subj} className="glass-panel p-6 rounded-2xl border border-white/5 flex flex-col justify-between space-y-6">
-                <div className="space-y-2">
-                  <div className="h-10 w-10 bg-purple-500/10 rounded-xl flex items-center justify-center border border-purple-500/20">
-                    <BrainCircuit className="h-5 w-5 text-purple-theme" />
+          profile.subjects.length === 0 ? (
+            <div className="glass-panel p-8 rounded-2xl border border-white/5 text-center space-y-4">
+              <p className="text-secondary-theme text-sm">No enrolled subjects found. Please complete your academic profile configuration.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {profile.subjects.map((subj) => {
+                const rec = getRecommendationForSubject(subj);
+                const isThisSubjectLoading = isGeneratingAi && generatingSubject === subj;
+                
+                return (
+                  <div key={subj} className="glass-panel p-6 rounded-2xl border border-white/5 flex flex-col justify-between space-y-5 relative overflow-hidden">
+                    {/* Dynamic Loader Overlay */}
+                    {isThisSubjectLoading && (
+                      <div className="absolute inset-0 bg-black/70 backdrop-blur-xs flex flex-col items-center justify-center space-y-2 z-10">
+                        <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-purple-500"></div>
+                        <span className="text-[10px] font-bold text-purple-theme uppercase tracking-wider">Structuring Test...</span>
+                      </div>
+                    )}
+                    
+                    <div className="space-y-4">
+                      {/* Header Info & Mastery */}
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <h3 className="text-sm font-bold text-main-theme leading-snug">{subj}</h3>
+                          <p className="text-xs text-secondary-theme">
+                            Current Mastery Score: <strong className="text-purple-theme">{Math.round(profile.conceptMastery[subj] || 50)}%</strong>
+                          </p>
+                        </div>
+                        <div className="h-8 w-8 bg-purple-500/10 rounded-lg flex items-center justify-center border border-purple-500/20 shrink-0">
+                          <BrainCircuit className="h-4.5 w-4.5 text-purple-theme" />
+                        </div>
+                      </div>
+
+                      {/* Dynamic Recommended Section */}
+                      {rec ? (
+                        <div className="bg-purple-950/20 border border-purple-500/10 rounded-xl p-3.5 space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[9px] font-bold text-purple-theme tracking-wide uppercase">Recommended for You</span>
+                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                              rec.priority === "High" ? "bg-red-500/10 text-red-400 border border-red-500/10" :
+                              rec.priority === "Medium" ? "bg-amber-500/10 text-amber-400 border border-amber-500/10" :
+                              "bg-emerald-500/10 text-emerald-400 border border-emerald-500/10"
+                            }`}>
+                              {rec.priority} Priority
+                            </span>
+                          </div>
+                          <div className="space-y-0.5">
+                            <h4 className="text-xs font-bold text-main-theme">{rec.topic}</h4>
+                            <p className="text-[10px] text-secondary-theme leading-relaxed">{rec.reason}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-white/5 border border-white/5 rounded-xl p-3 text-center">
+                          <span className="text-[10px] text-secondary-theme font-medium">No active recommendations available</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Navigation Actions */}
+                    <div className="space-y-2 pt-2">
+                      <button
+                        onClick={() => startAiQuiz(subj)}
+                        disabled={isGeneratingAi}
+                        className="group w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(168,85,247,0.5)] hover:shadow-[0_0_25px_rgba(168,85,247,0.8)] active:scale-[0.98] border border-purple-500/30 hover:border-purple-400/50"
+                      >
+                        <Sparkles className="h-4 w-4 text-white/90 animate-pulse" />
+                        <span>{isGeneratingAi ? "Generating..." : "Start Test"}</span>
+                        <ArrowRight className="h-4 w-4 text-white/90 transition-transform duration-300 group-hover:translate-x-1" />
+                      </button>
+
+                      {activeSubject === subj && aiGenerationError && (
+                        <p className="text-xs text-red-400 text-center mt-1">{aiGenerationError}</p>
+                      )}
+                    </div>
                   </div>
-                  <h3 className="text-base font-bold text-main-theme leading-snug">{subj}</h3>
-                  <p className="text-xs text-secondary-theme">
-                    Current Mastery Score: <strong className="text-purple-theme">{Math.round(profile.conceptMastery[subj] || 50)}%</strong>
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => startQuiz(subj)}
-                  className="w-full py-3 bg-white/5 hover:bg-purple-600/20 border border-white/5 hover:border-purple-500/30 rounded-xl text-xs font-bold text-main-theme hover:text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <span>Launch 10-Q Diagnostic Set</span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={() => startAiQuiz(subj)}
-                  disabled={isGeneratingAi}
-                  className="w-full py-3 bg-purple-600/10 hover:bg-purple-600/30 border border-purple-500/20 hover:border-purple-500/40 rounded-xl text-xs font-bold text-purple-theme hover:text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Sparkles className="h-4 w-4" />
-                  <span>{isGeneratingAi ? "Generating..." : "Generate AI Test"}</span>
-                </button>
-
-                {aiGenerationError && (
-                  <p className="text-xs text-red-400 text-center">{aiGenerationError}</p>
-                )}
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )
         )}
 
         {/* EXHAUSTED POOL PANEL */}
@@ -371,7 +417,7 @@ export default function Quizzes() {
                   if (typeof window !== "undefined") {
                     localStorage.removeItem(getStorageKey(activeSubject));
                   }
-                  startQuiz(activeSubject);
+                  startAiQuiz(activeSubject);
                 }}
                 className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
               >
@@ -400,7 +446,7 @@ export default function Quizzes() {
               {/* Question Header Status */}
               <div className="flex justify-between items-center border-b border-white/5 pb-4">
                 <span className="text-[10px] font-bold text-secondary-theme uppercase tracking-widest">
-                  Question {questionCount + 1} of 10
+                  Question {isAnswered ? questionCount : questionCount + 1} of {quizQuestions.length}
                 </span>
                 
                 <div className="flex items-center gap-3">
@@ -421,7 +467,7 @@ export default function Quizzes() {
               <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
                 <div 
                   className="bg-gradient-to-r from-purple-500 to-pink-500 h-full transition-all duration-300"
-                  style={{ width: `${((questionCount + 1) / 10) * 100}%` }}
+                  style={{ width: `${((isAnswered ? questionCount : questionCount + 1) / quizQuestions.length) * 100}%` }}
                 />
               </div>
 
@@ -495,7 +541,7 @@ export default function Quizzes() {
                     onClick={handleNextStep}
                     className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-purple-500/20 flex items-center gap-1 cursor-pointer"
                   >
-                    <span>{questionCount >= 10 ? "Complete Profile Update" : "Advance Question"}</span>
+                    <span>{questionCount >= quizQuestions.length ? "Complete Profile Update" : "Advance Question"}</span>
                     <ArrowRight className="h-4 w-4" />
                   </button>
                 )}
