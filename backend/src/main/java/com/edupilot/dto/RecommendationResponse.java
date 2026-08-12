@@ -18,6 +18,9 @@ public class RecommendationResponse {
     private int estimatedStudyTimeMinutes;
     private String difficulty;
     private double confidenceScore;
+    private double masteryScore;
+    private double accuracy;
+    private String prevTopic;
     private String status;
     private LocalDateTime createdAt;
     private LocalDateTime expiresAt;
@@ -40,6 +43,9 @@ public class RecommendationResponse {
             this.estimatedStudyTimeMinutes = rec.getEstimatedStudyTimeMinutes();
             this.difficulty = rec.getDifficulty();
             this.confidenceScore = rec.getConfidenceScore();
+            this.masteryScore = rec.getMasteryScore();
+            this.accuracy = rec.getAccuracy();
+            this.prevTopic = rec.getPrevTopic();
             this.status = rec.getStatus() != null ? rec.getStatus().name() : "ACTIVE";
             this.createdAt = rec.getCreatedAt();
             this.expiresAt = rec.getExpiresAt();
@@ -172,5 +178,29 @@ public class RecommendationResponse {
 
     public void setExpiresAt(LocalDateTime expiresAt) {
         this.expiresAt = expiresAt;
+    }
+
+    public double getMasteryScore() {
+        return masteryScore;
+    }
+
+    public void setMasteryScore(double masteryScore) {
+        this.masteryScore = masteryScore;
+    }
+
+    public double getAccuracy() {
+        return accuracy;
+    }
+
+    public void setAccuracy(double accuracy) {
+        this.accuracy = accuracy;
+    }
+
+    public String getPrevTopic() {
+        return prevTopic;
+    }
+
+    public void setPrevTopic(String prevTopic) {
+        this.prevTopic = prevTopic;
     }
 }

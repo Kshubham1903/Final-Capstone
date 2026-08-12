@@ -226,7 +226,7 @@ export async function onboardStudent(payload: any): Promise<StudentProfile> {
       console.warn("Error onboarding student on backend:", err);
     }
   }
-  
+
   // Local fallback
   const profile = getStoredStudentProfile();
   profile.course = payload.course;
@@ -279,7 +279,7 @@ export async function postLifestyleLog(profileId: string, log: any): Promise<Stu
       console.warn("Error submitting lifestyle to backend:", err);
     }
   }
-  
+
   const profile = getStoredStudentProfile();
   const updatedHistory = [...profile.lifestyleHistory.slice(1), log];
   const updated = {
@@ -312,7 +312,7 @@ export async function postQuestionnaire(profileId: string, data: any): Promise<S
       console.warn("Error submitting questionnaire to backend:", err);
     }
   }
-  
+
   const profile = getStoredStudentProfile();
   profile.consistencyScore = data.previousScores >= 75 ? 90 : 70;
   profile.productivityScore = data.hoursStudied >= 20 ? 80 : 60;
@@ -336,7 +336,7 @@ export async function getRecommendations(profileId: string): Promise<any> {
       console.warn("Error getting recommendations from backend:", err);
     }
   }
-  
+
   const profile = getStoredStudentProfile();
   const latestLog = profile.lifestyleHistory[profile.lifestyleHistory.length - 1];
   const recs = [];
@@ -350,7 +350,7 @@ export async function getRecommendations(profileId: string): Promise<any> {
     recs.push("Focus Interval: Activate Pomodoro focus timer with Lofi background beats.");
   }
   recs.push("Career Guidance: Check out target ML Engineering internships recommended for you.");
-  
+
   return {
     predicted_performance_level: profile.studentGrowthIndex >= 7.5 ? "High" : "Medium",
     predicted_cgpa: profile.predictedCgpa,
@@ -414,7 +414,6 @@ export async function fetchQuizQuestions(subject: string, difficulty: string, ex
       console.warn("Error fetching quiz questions from backend:", err);
     }
   }
-  
   if (isVerificationRequest) {
     throw new Error("NO_QUESTIONS: Targeted verification questions unavailable in local bank.");
   }
@@ -422,7 +421,7 @@ export async function fetchQuizQuestions(subject: string, difficulty: string, ex
   const localBankRaw = typeof window !== "undefined" ? localStorage.getItem("edupilot_custom_questions") : null;
   const localQuestions = localBankRaw ? JSON.parse(localBankRaw) : [];
   const fullBank = [...QUESTION_BANK, ...localQuestions];
-  
+
   const candidates = fullBank.filter(q => q.subject === subject && q.difficulty === difficulty);
   if (candidates.length > 0) return candidates.slice(0, 10);
 
@@ -615,7 +614,7 @@ export async function fetchQuizQuestions(subject: string, difficulty: string, ex
     const originalOptions = [...item.options];
     const origIdx = item.correctOptionIndex;
     const correctText = originalOptions[origIdx];
-    
+
     // Simple deterministic/random shuffle
     const paired = originalOptions.map((opt, idx) => ({ opt, isCorrect: idx === origIdx }));
     for (let i = paired.length - 1; i > 0; i--) {
@@ -630,6 +629,33 @@ export async function fetchQuizQuestions(subject: string, difficulty: string, ex
       correctOptionIndex: newCorrectIdx
     };
   });
+}
+
+export async function generateAiQuizQuestions(
+  studentId: string,
+  subject: string,
+  count: number = 10
+): Promise<any[]> {
+  const online = await checkBackendConnection();
+  if (!online) {
+    throw new Error("Backend is offline - AI quiz generation requires a live connection.");
+  }
+
+  const res = await fetch(`${BACKEND_URL}/api/quizzes/generate-ai`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ studentId, subject, count })
+  });
+
+  handleAuthError(res);
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || `AI quiz generation failed (${res.status})`);
+  }
+
+  const data = await res.json();
+  return data.questions || [];
 }
 
 export async function createQuizQuestion(question: {
@@ -661,7 +687,7 @@ export async function createQuizQuestion(question: {
   const localBank = localBankRaw ? JSON.parse(localBankRaw) : [];
   localBank.push(question);
   localStorage.setItem("edupilot_custom_questions", JSON.stringify(localBank));
-  
+
   QUESTION_BANK.push(question as any);
   return question;
 }
@@ -691,11 +717,11 @@ export async function submitQuizAnswer(payload: {
       console.warn("Error submitting answer to backend:", err);
     }
   }
-  
+
   const isCorrect = payload.isCorrect;
   const currentDiff = payload.difficulty;
   const time = payload.responseTimeSeconds;
-  
+
   let nextDifficulty = currentDiff;
   let reason = "";
 
@@ -770,7 +796,7 @@ export async function fetchSubjectsByBranchAndSemester(branch: string, semester:
       console.warn("Error fetching subjects by branch & semester:", err);
     }
   }
-  
+
   return [
     { id: "1", subjectCode: "CS301", subjectName: "Data Structures & Algorithms", credits: 4, branch, semester, isActive: true },
     { id: "2", subjectCode: "CS302", subjectName: "Database Management Systems", credits: 4, branch, semester, isActive: true },

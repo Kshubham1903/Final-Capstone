@@ -28,6 +28,9 @@ llm:
   gemini:
     api-key: ${GEMINI_API_KEY}
     model: ${GEMINI_MODEL:gemini-flash-latest}
+  groq:
+    api-key: ${GROQ_API_KEY:mock-key}
+    model: ${GROQ_MODEL:llama-3.3-70b-versatile}
   temperature: ${LLM_TEMPERATURE:0.7}
   top-p: ${LLM_TOP_P:0.95}
   top-k: ${LLM_TOP_K:40}

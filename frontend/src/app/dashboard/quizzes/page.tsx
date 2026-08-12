@@ -14,7 +14,7 @@ import {
   Timer
 } from "lucide-react";
 import { StudentProfile } from "../../../services/mockData";
-import { fetchQuizQuestions, submitQuizAnswer, fetchProfile, checkBackendConnection } from "../../../services/api";
+import { fetchQuizQuestions, submitQuizAnswer, fetchProfile, checkBackendConnection, generateAiQuizQuestions, fetchStudentRecommendations } from "../../../services/api";
 
 export default function Quizzes() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
@@ -40,12 +40,29 @@ export default function Quizzes() {
   const [isAnswered, setIsAnswered] = useState(false);
   const [secondsSpent, setSecondsSpent] = useState(0);
   const [quizFinished, setQuizFinished] = useState(false);
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [generatingSubject, setGeneratingSubject] = useState<string | null>(null);
+  const [aiGenerationError, setAiGenerationError] = useState<string | null>(null);
+  const [recommendations, setRecommendations] = useState<any[]>([]);
 
   // Diagnostic log
   const [diagnosticLog, setDiagnosticLog] = useState<{ difficulty: string; correct: boolean; reason: string }[]>([]);
 
   const [targetConcept, setTargetConcept] = useState(urlTargetConcept);
   const [isVerification, setIsVerification] = useState(urlIsVerification);
+
+  useEffect(() => {
+    async function load() {
+      const activeUserId = typeof window !== "undefined" ? (localStorage.getItem("edupilot_user_id") || "") : "";
+      const active = await fetchProfile(activeUserId);
+      setProfile(active);
+      if (activeUserId) {
+        const recs = await fetchStudentRecommendations(activeUserId);
+        setRecommendations(recs || []);
+      }
+    }
+    load();
+  }, []);
 
   const displayTargetConcept = targetConcept || urlTargetConcept;
   const isVerificationMode = isVerification || urlIsVerification || !!displayTargetConcept;
@@ -81,6 +98,47 @@ export default function Quizzes() {
       }
     } catch (e) {
       console.warn("Could not persist seen question ID", e);
+    }
+  };
+
+  const startAiQuiz = async (subj: string) => {
+    setAiGenerationError(null);
+    setGeneratingSubject(subj);
+    setIsGeneratingAi(true);
+
+    try {
+      const aiQuestions = await generateAiQuizQuestions(profile!.id || "", subj, 10);
+
+      if (!aiQuestions || aiQuestions.length === 0) {
+        setAiGenerationError("AI couldn't generate questions right now. Try again in a moment.");
+        return;
+      }
+
+      setActiveSubject(subj);
+      setIsVerification(false);
+      setTargetConcept("");
+      setQuizStarted(true);
+      setCurrentDiff((aiQuestions[0].difficulty as "EASY" | "MEDIUM" | "HARD") || "MEDIUM");
+      setQuestionCount(0);
+      setCorrectAnswers(0);
+      setQuizFinished(false);
+      setIsExhausted(false);
+      setSelectedOption(null);
+      setIsAnswered(false);
+      setSecondsSpent(0);
+      setDiagnosticLog([]);
+      setVerificationError(null);
+      setVerificationLoading(false);
+
+      const finalQuestions = aiQuestions.slice(0, 10);
+      setQuizQuestions(finalQuestions);
+      setSeenQuestionIds(finalQuestions.map(q => q?.id || q?.questionText).filter(Boolean));
+      setActiveQuestion(finalQuestions[0]);
+    } catch (err: any) {
+      setAiGenerationError(err.message || "AI quiz generation failed.");
+    } finally {
+      setIsGeneratingAi(false);
+      setGeneratingSubject(null);
     }
   };
 
@@ -205,13 +263,30 @@ export default function Quizzes() {
       return;
     }
 
-    setQuizQuestions(sessionPool);
-    setSeenQuestionIds(cumulativeExclusions);
-    
-    const firstQ = sessionPool[0];
-    setActiveQuestion(firstQ);
-    const firstKey = firstQ.id || firstQ.questionText;
-    savePersistedSeenId(subj, firstKey);
+    const finalQuestions = sessionPool.slice(0, 10);
+    setQuizQuestions(finalQuestions);
+    setSeenQuestionIds(finalQuestions.map(q => q?.id || q?.questionText).filter(Boolean));
+    setActiveQuestion(finalQuestions[0]);
+  };
+
+  const getRecommendationForSubject = (subj: string) => {
+    if (!recommendations || recommendations.length === 0) return null;
+
+    const rec = recommendations.find(r => 
+      (r.subjectName && r.subjectName.toLowerCase() === subj.toLowerCase()) || 
+      (r.subjectCode && r.subjectCode.toLowerCase() === subj.toLowerCase())
+    );
+
+    if (!rec) return null;
+
+    const rawPriority = rec.priority || "MEDIUM";
+    const priority = rawPriority.charAt(0) + rawPriority.substring(1).toLowerCase();
+
+    return {
+      topic: rec.topic || rec.conceptName || "General Concepts",
+      priority: priority,
+      reason: rec.reason || "Practice concepts to improve mastery."
+    };
   };
 
   useEffect(() => {
@@ -298,6 +373,8 @@ export default function Quizzes() {
       if (conn) {
         const updated = await fetchProfile(profile.id || "");
         setProfile(updated);
+        const recs = await fetchStudentRecommendations(profile.id || "");
+        setRecommendations(recs || []);
       } else {
         applyResultsToProfileLocal();
       }
@@ -394,31 +471,88 @@ export default function Quizzes() {
           </p>
         </div>
 
-        {/* NOT IN QUIZ: Select Subject Selection (Only for normal adaptive diagnostic hub) */}
+        {/* NOT IN QUIZ: Select Subject Selection */}
         {!quizStarted && !isVerificationMode && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {profile.subjects.map((subj) => (
-              <div key={subj} className="glass-panel p-6 rounded-2xl border border-white/5 flex flex-col justify-between space-y-6">
-                <div className="space-y-2">
-                  <div className="h-10 w-10 bg-purple-500/10 rounded-xl flex items-center justify-center border border-purple-500/20">
-                    <BrainCircuit className="h-5 w-5 text-purple-theme" />
-                  </div>
-                  <h3 className="text-base font-bold text-main-theme leading-snug">{subj}</h3>
-                  <p className="text-xs text-secondary-theme">
-                    Current Mastery Score: <strong className="text-purple-theme">{Math.round(profile.conceptMastery[subj] || 50)}%</strong>
-                  </p>
-                </div>
+          profile.subjects.length === 0 ? (
+            <div className="glass-panel p-8 rounded-2xl border border-white/5 text-center space-y-4">
+              <p className="text-secondary-theme text-sm">No enrolled subjects found. Please complete your academic profile configuration.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {profile.subjects.map((subj) => {
+                const rec = getRecommendationForSubject(subj);
+                const isThisSubjectLoading = isGeneratingAi && generatingSubject === subj;
+                
+                return (
+                  <div key={subj} className="glass-panel p-6 rounded-2xl border border-white/5 flex flex-col justify-between space-y-5 relative overflow-hidden">
+                    {/* Dynamic Loader Overlay */}
+                    {isThisSubjectLoading && (
+                      <div className="absolute inset-0 bg-black/70 backdrop-blur-xs flex flex-col items-center justify-center space-y-2 z-10">
+                        <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-purple-500"></div>
+                        <span className="text-[10px] font-bold text-purple-theme uppercase tracking-wider">Structuring Test...</span>
+                      </div>
+                    )}
+                    
+                    <div className="space-y-4">
+                      {/* Header Info & Mastery */}
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <h3 className="text-sm font-bold text-main-theme leading-snug">{subj}</h3>
+                          <p className="text-xs text-secondary-theme">
+                            Current Mastery Score: <strong className="text-purple-theme">{Math.round(profile.conceptMastery[subj] || 50)}%</strong>
+                          </p>
+                        </div>
+                        <div className="h-8 w-8 bg-purple-500/10 rounded-lg flex items-center justify-center border border-purple-500/20 shrink-0">
+                          <BrainCircuit className="h-4.5 w-4.5 text-purple-theme" />
+                        </div>
+                      </div>
 
-                <button
-                  onClick={() => startQuiz(subj)}
-                  className="w-full py-3 bg-white/5 hover:bg-purple-600/20 border border-white/5 hover:border-purple-500/30 rounded-xl text-xs font-bold text-main-theme hover:text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <span>Launch 10-Q Diagnostic Set</span>
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
-          </div>
+                      {/* Dynamic Recommended Section */}
+                      {rec ? (
+                        <div className="bg-purple-950/20 border border-purple-500/10 rounded-xl p-3.5 space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[9px] font-bold text-purple-theme tracking-wide uppercase">Recommended for You</span>
+                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                              rec.priority === "High" ? "bg-red-500/10 text-red-400 border border-red-500/10" :
+                              rec.priority === "Medium" ? "bg-amber-500/10 text-amber-400 border border-amber-500/10" :
+                              "bg-emerald-500/10 text-emerald-400 border border-emerald-500/10"
+                            }`}>
+                              {rec.priority} Priority
+                            </span>
+                          </div>
+                          <div className="space-y-0.5">
+                            <h4 className="text-xs font-bold text-main-theme">{rec.topic}</h4>
+                            <p className="text-[10px] text-secondary-theme leading-relaxed">{rec.reason}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-white/5 border border-white/5 rounded-xl p-3 text-center">
+                          <span className="text-[10px] text-secondary-theme font-medium">No active recommendations available</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Navigation Actions */}
+                    <div className="space-y-2 pt-2">
+                      <button
+                        onClick={() => startAiQuiz(subj)}
+                        disabled={isGeneratingAi}
+                        className="group w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(168,85,247,0.5)] hover:shadow-[0_0_25px_rgba(168,85,247,0.8)] active:scale-[0.98] border border-purple-500/30 hover:border-purple-400/50"
+                      >
+                        <Sparkles className="h-4 w-4 text-white/90 animate-pulse" />
+                        <span>{isGeneratingAi ? "Generating..." : "Start Test"}</span>
+                        <ArrowRight className="h-4 w-4 text-white/90 transition-transform duration-300 group-hover:translate-x-1" />
+                      </button>
+
+                      {activeSubject === subj && aiGenerationError && (
+                        <p className="text-xs text-red-400 text-center mt-1">{aiGenerationError}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
         )}
 
         {/* LOADING VERIFICATION QUIZ PANEL */}
@@ -578,7 +712,7 @@ export default function Quizzes() {
                     onClick={handleNextStep}
                     className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-purple-500/20 flex items-center gap-1 cursor-pointer"
                   >
-                    <span>{questionCount >= 10 ? "Complete Profile Update" : "Advance Question"}</span>
+                    <span>{questionCount >= quizQuestions.length ? "Complete Profile Update" : "Advance Question"}</span>
                     <ArrowRight className="h-4 w-4" />
                   </button>
                 )}
