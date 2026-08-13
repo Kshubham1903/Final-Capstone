@@ -52,6 +52,7 @@ export interface QuickActionsCardProps {
 
 export interface LearningProgressCardProps {
   profile: StudentProfile | null;
+  onSelectSubject?: (subjectName: string, currentMastery: number) => void;
 }
 
 export interface DiagnosticAssessmentCardProps {

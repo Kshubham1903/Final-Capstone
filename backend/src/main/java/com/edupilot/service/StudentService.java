@@ -64,11 +64,11 @@ public class StudentService {
         }
         Optional<StudentProfile> opt = profileRepository.findById(idOrUserId);
         if (opt.isPresent()) {
-            return opt.get();
+            return ensureSubjectMastery(opt.get());
         }
         opt = profileRepository.findByUserId(idOrUserId);
         if (opt.isPresent()) {
-            return opt.get();
+            return ensureSubjectMastery(opt.get());
         }
 
         // Initialize new StudentProfile for this userId
@@ -622,5 +622,23 @@ public class StudentService {
             }
         }
         return Collections.emptyList();
+    }
+
+    private StudentProfile ensureSubjectMastery(StudentProfile profile) {
+        if (profile != null && profile.getSubjects() != null && !profile.getSubjects().isEmpty()) {
+            Map<String, Double> masteryMap = profile.getConceptMastery() != null ? profile.getConceptMastery() : new HashMap<>();
+            boolean updated = false;
+            for (String subj : profile.getSubjects()) {
+                if (subj != null && !subj.trim().isEmpty() && !masteryMap.containsKey(subj)) {
+                    masteryMap.put(subj, 0.0);
+                    updated = true;
+                }
+            }
+            if (updated) {
+                profile.setConceptMastery(masteryMap);
+                return profileRepository.save(profile);
+            }
+        }
+        return profile;
     }
 }

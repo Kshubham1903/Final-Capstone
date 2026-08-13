@@ -9,6 +9,7 @@ import java.util.Optional;
 
 @Repository
 public interface AssessmentResultRepository extends MongoRepository<AssessmentResult, String> {
+    List<AssessmentResult> findByUserId(String userId);
     List<AssessmentResult> findByUserIdOrderByCreatedAtDesc(String userId);
     Optional<AssessmentResult> findTopByUserIdOrderByCreatedAtDesc(String userId);
     Optional<AssessmentResult> findBySessionId(String sessionId);
