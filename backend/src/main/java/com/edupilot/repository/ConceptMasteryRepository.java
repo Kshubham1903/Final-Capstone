@@ -11,5 +11,6 @@ import java.util.Optional;
 public interface ConceptMasteryRepository extends MongoRepository<ConceptMastery, String> {
     List<ConceptMastery> findByUserId(String userId);
     List<ConceptMastery> findByUserIdAndSubjectCode(String userId, String subjectCode);
+    Optional<ConceptMastery> findByUserIdAndConceptName(String userId, String conceptName);
     Optional<ConceptMastery> findByUserIdAndSubjectCodeAndTopicAndConceptName(String userId, String subjectCode, String topic, String conceptName);
 }

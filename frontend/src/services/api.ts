@@ -1,6 +1,12 @@
 import { StudentProfile, LifestyleLog, getStoredStudentProfile, saveStudentProfile, calculateLocalSgi, QUESTION_BANK } from "./mockData";
 
-const BACKEND_URL = (import.meta as any).env?.VITE_API_URL || "http://127.0.0.1:8080";
+let activeBackendUrl = (import.meta as any).env?.VITE_API_URL || "http://127.0.0.1:8081";
+
+export function getBackendUrl(): string {
+  return activeBackendUrl;
+}
+
+export const BACKEND_URL = activeBackendUrl;
 
 let isBackendOnline = false;
 
@@ -23,20 +29,35 @@ export function handleAuthError(res: Response): void {
 }
 
 export async function checkBackendConnection(): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(`${BACKEND_URL}/api/students/health`, {
-      method: "GET",
-      signal: controller.signal
-    });
-    clearTimeout(id);
-    isBackendOnline = res.ok;
-    return isBackendOnline;
-  } catch (err) {
-    isBackendOnline = false;
-    return false;
+  const candidateUrls = Array.from(new Set([
+    (import.meta as any).env?.VITE_API_URL,
+    activeBackendUrl,
+    "http://127.0.0.1:8081",
+    "http://localhost:8081",
+    "http://127.0.0.1:8080",
+    "http://localhost:8080"
+  ].filter(Boolean)));
+
+  for (const url of candidateUrls) {
+    try {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(`${url}/api/students/health`, {
+        method: "GET",
+        signal: controller.signal
+      });
+      clearTimeout(id);
+      if (res.ok || res.status === 401 || res.status === 403 || res.status === 404) {
+        activeBackendUrl = url as string;
+        isBackendOnline = true;
+        return true;
+      }
+    } catch (err) {
+      // try next candidate
+    }
   }
+  isBackendOnline = false;
+  return false;
 }
 
 if (typeof window !== "undefined") {
@@ -1317,6 +1338,179 @@ export async function deleteConversation(conversationId: string): Promise<boolea
   }
   return false;
 }
+
+/* ============================================================================
+   DASHBOARD KNOWLEDGE TEST API SERVICES
+   ============================================================================ */
+
+export interface DashboardTestQuestionDTO {
+  questionId: string;
+  subject: string;
+  concept: string;
+  questionText: string;
+  options: string[];
+}
+
+export interface DashboardTestSubmissionDTO {
+  studentId: string;
+  sessionId: string;
+  answers: Array<{
+    questionId: string;
+    selectedOptionIndex: number;
+  }>;
+}
+
+export interface DashboardTestResultDTO {
+  sessionId: string;
+  studentId: string;
+  subjectScorePercentage: Record<string, number>;
+  correctCountPerSubject: Record<string, number>;
+  totalQuestions: number;
+  totalCorrect: number;
+  overallPercentage: number;
+  createdAt: string;
+  hasResults?: boolean;
+}
+
+export async function generateDashboardTest(studentId: string): Promise<{
+  ok: boolean;
+  message?: string;
+  sessionId?: string;
+  subjects?: string[];
+  totalQuestions?: number;
+  questions?: DashboardTestQuestionDTO[];
+}> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/dashboard-test/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ studentId })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { ok: false, message: data.message || "Failed to generate knowledge test." };
+    }
+    return { ok: true, ...data };
+  } catch (err: any) {
+    return { ok: false, message: "Network error generating dashboard test: " + err.message };
+  }
+}
+
+export async function submitDashboardTest(submission: DashboardTestSubmissionDTO): Promise<{
+  ok: boolean;
+  message?: string;
+  result?: DashboardTestResultDTO;
+}> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/dashboard-test/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify(submission)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      return { ok: false, message: data.message || "Failed to grade submission." };
+    }
+    return { ok: true, result: data };
+  } catch (err: any) {
+    return { ok: false, message: "Network error submitting test: " + err.message };
+  }
+}
+
+export async function getLatestDashboardTestResult(studentId: string): Promise<DashboardTestResultDTO | null> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/dashboard-test/latest-result/${studentId}`, {
+      headers: getAuthHeaders()
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.hasResults === false) {
+        return null;
+      }
+      return data as DashboardTestResultDTO;
+    }
+  } catch (err) {
+    console.warn("Failed to fetch latest dashboard test result:", err);
+  }
+  return null;
+}
+
+export interface DailyMasteryPointDTO {
+  date: string;
+  masteryPercentage: number;
+  questionsAnsweredThatDay: number;
+  correctThatDay: number;
+}
+
+export interface AttemptMasteryPointDTO {
+  attemptId: string;
+  dateTime: string;
+  scorePercentage: number;
+  questionsInAttempt: number;
+  correctInAttempt: number;
+  subject: string;
+}
+
+export async function fetchSubjectProgressHistory(
+  studentId: string, 
+  subject: string, 
+  days: number = 30,
+  granularity: string = "perAttempt"
+): Promise<AttemptMasteryPointDTO[]> {
+  try {
+    const encodedSubject = encodeURIComponent(subject);
+    const res = await fetch(`${getBackendUrl()}/api/subject-progress/${studentId}/${encodedSubject}?days=${days}&granularity=${granularity}`, {
+      headers: getAuthHeaders()
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn("Failed to fetch subject progress history:", err);
+  }
+  return [];
+}
+
+export async function startConceptRemediation(
+  studentId: string,
+  subject: string,
+  concept: string
+): Promise<any> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/concept-remediation/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ studentId, subject, concept })
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn("Failed to start concept remediation test:", err);
+  }
+  return null;
+}
+
+export async function submitConceptRemediation(
+  studentId: string,
+  sessionId: string,
+  answers: Array<{ questionId: string; selectedOptionIndex: number }>
+): Promise<any> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/concept-remediation/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ studentId, sessionId, answers })
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn("Failed to submit concept remediation test:", err);
+  }
+  return null;
+}
+
 
 export async function fetchStudentContext(studentId: string, concept?: string): Promise<any> {
   const online = await checkBackendConnection();

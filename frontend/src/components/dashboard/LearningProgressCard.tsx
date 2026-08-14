@@ -5,12 +5,33 @@ import {
 import { Activity } from "lucide-react";
 import { LearningProgressCardProps } from "./types";
 
-export default function LearningProgressCard({ profile }: LearningProgressCardProps) {
-  // Convert conceptMastery to chart data format with safe defensive check
-  const masteryData = Object.entries(profile?.conceptMastery || {}).map(([subj, val]) => ({
-    subject: subj.length > 14 ? subj.substring(0, 14) + "..." : subj,
-    Mastery: Math.round(val)
-  }));
+export default function LearningProgressCard({ profile, onSelectSubject }: LearningProgressCardProps) {
+  // Use profile.subjects as the single source of truth for the student's subjects (exact same source as Adaptive Quizzes)
+  const studentSubjects = profile?.subjects && profile.subjects.length > 0 
+    ? profile.subjects 
+    : Object.keys(profile?.conceptMastery || {});
+
+  const masteryData = studentSubjects.map((subj) => {
+    let val = 0;
+    if (profile?.conceptMastery) {
+      if (profile.conceptMastery[subj] !== undefined) {
+        val = profile.conceptMastery[subj];
+      } else {
+        const foundKey = Object.keys(profile.conceptMastery).find(
+          k => k.trim().toLowerCase() === subj.trim().toLowerCase()
+        );
+        if (foundKey && profile.conceptMastery[foundKey] !== undefined) {
+          val = profile.conceptMastery[foundKey];
+        }
+      }
+    }
+    return {
+      subject: subj.length > 14 ? subj.substring(0, 14) + "..." : subj,
+      fullSubject: subj,
+      rawMastery: val,
+      Mastery: Math.round(val)
+    };
+  });
 
   return (
     <div className="glass-panel p-6 rounded-2xl border border-white/5 space-y-4">
@@ -20,7 +41,7 @@ export default function LearningProgressCard({ profile }: LearningProgressCardPr
           <h3 className="text-sm font-extrabold tracking-wide text-main-theme">Subject Mastery Breakdown</h3>
         </div>
         <span className="text-[10px] text-secondary-theme uppercase font-bold tracking-wider">
-          Learning Analytics
+          Learning Analytics (Click Bar for History)
         </span>
       </div>
 
@@ -41,7 +62,17 @@ export default function LearningProgressCard({ profile }: LearningProgressCardPr
                   fontSize: "12px"
                 }} 
               />
-              <Bar dataKey="Mastery" fill="var(--accent-purple)" radius={[4, 4, 0, 0]} />
+              <Bar 
+                dataKey="Mastery" 
+                fill="var(--accent-purple)" 
+                radius={[4, 4, 0, 0]} 
+                className="cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={(data: any) => {
+                  if (data && data.fullSubject && onSelectSubject) {
+                    onSelectSubject(data.fullSubject, data.rawMastery ?? data.Mastery);
+                  }
+                }}
+              />
             </BarChart>
           </ResponsiveContainer>
         ) : (

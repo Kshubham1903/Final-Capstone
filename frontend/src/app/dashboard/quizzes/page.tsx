@@ -14,7 +14,7 @@ import {
   Timer
 } from "lucide-react";
 import { StudentProfile } from "../../../services/mockData";
-import { fetchQuizQuestions, submitQuizAnswer, fetchProfile, checkBackendConnection, generateAiQuizQuestions, fetchStudentRecommendations } from "../../../services/api";
+import { fetchQuizQuestions, submitQuizAnswer, fetchProfile, checkBackendConnection, generateAiQuizQuestions, fetchStudentRecommendations, startConceptRemediation, submitConceptRemediation } from "../../../services/api";
 
 export default function Quizzes() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
@@ -69,6 +69,9 @@ export default function Quizzes() {
 
   const [verificationLoading, setVerificationLoading] = useState(urlIsVerification);
   const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [remediationSessionId, setRemediationSessionId] = useState<string | null>(null);
+  const [remediationResult, setRemediationResult] = useState<any | null>(null);
+  const [userAnswers, setUserAnswers] = useState<Array<{ questionId: string; selectedOptionIndex: number }>>([]);
   const [seenQuestionIds, setSeenQuestionIds] = useState<string[]>([]);
   const [isExhausted, setIsExhausted] = useState(false);
 
@@ -170,17 +173,21 @@ export default function Quizzes() {
     }
 
     try {
-      const questions = await fetchQuizQuestions(subj, "EASY", [], conc);
-      if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      const activeUserId = profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") : "") || "";
+      const res = await startConceptRemediation(activeUserId, subj, conc);
+      if (!res || !res.questions || !Array.isArray(res.questions) || res.questions.length === 0) {
         setVerificationError("No verification questions available for this concept.");
         setVerificationLoading(false);
         return;
       }
-      setQuizQuestions(questions);
-      setActiveQuestion(questions[0]);
+      setRemediationSessionId(res.sessionId || null);
+      setRemediationResult(null);
+      setUserAnswers([]);
+      setQuizQuestions(res.questions);
+      setActiveQuestion(res.questions[0]);
       setVerificationLoading(false);
     } catch (err: any) {
-      console.error("[startVerificationQuiz] Error fetching verification questions:", err);
+      console.error("[startVerificationQuiz] Error starting remediation test:", err);
       const errMsg = err?.message || String(err);
       if (errMsg.includes("AUTH_ERROR")) {
         setVerificationError("Authentication error: Please log in again to attempt verification.");
@@ -188,8 +195,6 @@ export default function Quizzes() {
         setVerificationError("Timeout error: Verification quiz loading timed out.");
       } else if (errMsg.includes("SERVER_ERROR") || errMsg.includes("NETWORK_ERROR")) {
         setVerificationError("Backend / Network error: Unable to connect to verification quiz service.");
-      } else if (errMsg.includes("NO_QUESTIONS")) {
-        setVerificationError("No verification questions available for this concept.");
       } else {
         setVerificationError(`Unable to load Verification Quiz: ${errMsg}`);
       }
@@ -334,6 +339,9 @@ export default function Quizzes() {
     const isCorrect = selectedOption === activeQuestion.correctOptionIndex;
     if (isCorrect) setCorrectAnswers(prev => prev + 1);
 
+    const qId = activeQuestion.questionId || activeQuestion.id || `q_${questionCount}`;
+    setUserAnswers(prev => [...prev, { questionId: qId, selectedOptionIndex: selectedOption }]);
+
     const payload = {
       profileId: profile.id || "",
       subject: activeSubject,
@@ -363,6 +371,12 @@ export default function Quizzes() {
   const handleNextStep = async () => {
     const totalSet = quizQuestions.length;
     if (questionCount + 1 >= totalSet || questionCount + 1 >= 10) {
+      if (isVerificationMode && remediationSessionId) {
+        const activeUserId = profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") : "") || "";
+        const remRes = await submitConceptRemediation(activeUserId, remediationSessionId, userAnswers);
+        setRemediationResult(remRes);
+      }
+
       setQuizFinished(true);
 
       if (typeof window !== "undefined") {
@@ -750,45 +764,70 @@ export default function Quizzes() {
           </div>
         )}
 
-        {/* QUIZ COMPLETION SUMMARY & FULL 10-QUESTION REVIEW */}
+        {/* QUIZ COMPLETION SUMMARY */}
         {quizStarted && quizFinished && (
           <div className="w-full max-w-3xl mx-auto glass-panel p-8 rounded-2xl border border-white/10 space-y-6 text-center">
-            <div className="h-16 w-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
-              <CheckCircle2 className="h-8 w-8 text-emerald-theme" />
+            <div className={`h-16 w-16 rounded-full flex items-center justify-center mx-auto border ${
+              isVerificationMode 
+                ? (remediationResult?.passed ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-theme" : "bg-amber-500/10 border-amber-500/20 text-amber-400")
+                : "bg-emerald-500/10 border-emerald-500/20 text-emerald-theme"
+            }`}>
+              {isVerificationMode && !remediationResult?.passed ? (
+                <AlertCircle className="h-8 w-8 text-amber-400" />
+              ) : (
+                <CheckCircle2 className="h-8 w-8 text-emerald-theme" />
+              )}
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-2xl font-bold tracking-wider text-gradient-purple">10-Question Diagnostic Complete</h2>
+              <h2 className={`text-2xl font-bold tracking-wider ${
+                isVerificationMode && !remediationResult?.passed ? "text-amber-400" : "text-gradient-purple"
+              }`}>
+                {isVerificationMode 
+                  ? (remediationResult?.passed ? "Concept Successfully Remediated!" : "Remediation Test Complete") 
+                  : "10-Question Diagnostic Complete"}
+              </h2>
               <p className="text-xs text-secondary-theme">
-                You correctly answered <strong className="text-purple-theme font-bold">{correctAnswers} out of 10 questions</strong> for:
+                You correctly answered <strong className="text-purple-theme font-bold">{correctAnswers} out of {quizQuestions.length > 0 ? quizQuestions.length : 5} questions</strong> for:
               </p>
-              <p className="text-base font-bold text-main-theme">{activeSubject}</p>
+              <p className="text-base font-bold text-main-theme">
+                {activeSubject} {displayTargetConcept ? `— ${displayTargetConcept}` : ""}
+              </p>
+              {isVerificationMode && remediationResult?.message && (
+                <p className={`text-xs font-semibold max-w-md mx-auto pt-1 leading-relaxed ${
+                  remediationResult.passed ? "text-emerald-400" : "text-amber-400"
+                }`}>
+                  {remediationResult.message}
+                </p>
+              )}
             </div>
 
             {/* Diagnostic Indicators */}
             <div className="grid grid-cols-2 gap-4 pt-2">
               <div className="p-4 bg-white/5 rounded-xl border border-white/5">
-                <span className="text-[10px] text-secondary-theme block uppercase">Diagnostics SGI</span>
-                <span className="text-lg font-bold text-purple-theme">+{correctAnswers >= 7 ? "0.4" : "0.1"} Growth</span>
+                <span className="text-[10px] text-secondary-theme block uppercase">Status Result</span>
+                <span className={`text-lg font-bold ${isVerificationMode ? (remediationResult?.passed ? "text-emerald-400" : "text-amber-400") : "text-purple-theme"}`}>
+                  {isVerificationMode ? (remediationResult?.passed ? "REMEDIATED" : "PRACTICE NEEDED") : `+${correctAnswers >= 7 ? "0.4" : "0.1"} Growth`}
+                </span>
               </div>
               <div className="p-4 bg-white/5 rounded-xl border border-white/5">
                 <span className="text-[10px] text-secondary-theme block uppercase">Accuracy Rate</span>
-                <span className="text-lg font-bold text-cyan-theme">{((correctAnswers / 10) * 100).toFixed(0)}%</span>
+                <span className="text-lg font-bold text-cyan-theme">{((correctAnswers / (quizQuestions.length > 0 ? quizQuestions.length : 5)) * 100).toFixed(0)}%</span>
               </div>
             </div>
 
-            {/* Full 10-Question Results Breakdown */}
+            {/* Full Questions Results Breakdown */}
             <div className="space-y-4 text-left pt-4 border-t border-white/10">
               <h3 className="text-sm font-bold text-main-theme uppercase tracking-wider flex items-center gap-2">
                 <BrainCircuit className="h-4 w-4 text-purple-theme" />
-                <span>All 10 Questions Session Results</span>
+                <span>Session Results Breakdown</span>
               </h3>
 
               <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
                 {diagnosticLog.map((item, idx) => (
                   <div key={idx} className="p-4 bg-white/5 border border-white/5 rounded-xl space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-purple-theme">Question {idx + 1} of 10 ({item.difficulty})</span>
+                      <span className="text-xs font-bold text-purple-theme">Question {idx + 1} of {quizQuestions.length > 0 ? quizQuestions.length : 5} ({item.difficulty})</span>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${item.correct ? "bg-emerald-500/10 text-emerald-theme border border-emerald-500/20" : "bg-pink-500/10 text-pink-theme border border-pink-500/20"}`}>
                         {item.correct ? "CORRECT" : "INCORRECT"}
                       </span>
@@ -799,16 +838,12 @@ export default function Quizzes() {
               </div>
             </div>
 
-            <div className="p-3.5 bg-purple-500/5 border border-purple-500/15 rounded-xl text-xs text-secondary-theme leading-relaxed">
-              **Knowledge Tracing Map:** The recommender engine has noted your conceptual masteries across all 10 questions and updated your dashboard recommendations list accordingly.
-            </div>
-
-            <button
-              onClick={() => setQuizStarted(false)}
-              className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-500/20 cursor-pointer"
+            <a
+              href="/dashboard"
+              className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-500/20 inline-block cursor-pointer"
             >
-              Return to Subject Hub
-            </button>
+              Return to Dashboard
+            </a>
           </div>
         )}
 
