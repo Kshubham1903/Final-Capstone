@@ -46,75 +46,110 @@ public class KnowledgeService {
         if (result.getUserAnswers() != null) {
             for (AssessmentResult.UserAnswer ans : result.getUserAnswers()) {
                 String topic = ans.getTopic() != null ? ans.getTopic() : "General";
-                String conceptName = topic;
-
-                Optional<ConceptMastery> opt = conceptRepository.findByUserIdAndSubjectCodeAndTopicAndConceptName(
-                        userId, subjectCode, topic, conceptName
-                );
-
-                ConceptMastery cm = opt.orElseGet(() -> {
-                    ConceptMastery c = new ConceptMastery();
-                    c.setUserId(userId);
-                    c.setStudentProfileId(result.getStudentProfileId());
-                    c.setSubjectCode(subjectCode);
-                    c.setSubjectName(subjectName);
-                    c.setTopic(topic);
-                    c.setConceptName(conceptName);
-                    return c;
-                });
-
-                int attempts = cm.getAttemptCount() + 1;
-                int corrects = cm.getCorrectCount() + (ans.isCorrect() ? 1 : 0);
-                int wrongs = attempts - corrects;
-
-                int recentWrongs = cm.getRecentWrongAnswerCount();
-                if (ans.isCorrect()) {
-                    recentWrongs = Math.max(0, recentWrongs - 1);
-                } else {
-                    recentWrongs = recentWrongs + 1;
-                }
-
-                double accuracy = Math.round((corrects * 100.0 / attempts) * 10.0) / 10.0;
-                double confidence = Math.min(Math.round((attempts * 20.0 + accuracy * 0.8) * 10.0) / 10.0, 100.0);
-
-                ConceptMastery.MasteryLevel level;
-                if (accuracy >= 85.0 && attempts >= 3) {
-                    level = ConceptMastery.MasteryLevel.MASTER;
-                } else if (accuracy >= 70.0) {
-                    level = ConceptMastery.MasteryLevel.PROFICIENT;
-                } else if (accuracy >= 50.0) {
-                    level = ConceptMastery.MasteryLevel.INTERMEDIATE;
-                } else {
-                    level = ConceptMastery.MasteryLevel.BEGINNER;
-                }
-
-                String action;
-                if (level == ConceptMastery.MasteryLevel.BEGINNER) {
-                    action = "Review core foundational concepts & practice EASY problems for " + conceptName;
-                } else if (level == ConceptMastery.MasteryLevel.INTERMEDIATE) {
-                    action = "Practice MEDIUM difficulty diagnostic sets on " + conceptName;
-                } else if (level == ConceptMastery.MasteryLevel.PROFICIENT) {
-                    action = "Attempt HARD challenge sets to reach MASTER tier in " + conceptName;
-                } else {
-                    action = "Mastery achieved! Maintain velocity with periodic spaced retention.";
-                }
-
-                cm.setAttemptCount(attempts);
-                cm.setCorrectCount(corrects);
-                cm.setAccuracy(accuracy);
-                cm.setWrongCount(wrongs);
-                cm.setRecentWrongAnswerCount(recentWrongs);
-                cm.setMasteryScore(accuracy);
-                cm.setConfidenceScore(confidence);
-                cm.setMasteryLevel(level);
-                cm.setRecommendedAction(action);
-                cm.setLastAssessedAt(LocalDateTime.now());
-
-                conceptRepository.save(cm);
+                updateSingleConceptMastery(userId, result.getStudentProfileId(), subjectCode, subjectName, topic, ans.isCorrect());
             }
+        } else {
+            syncKnowledgeProfileSummary(userId, subjectName);
         }
 
-        // Recalculate Knowledge Profile summary
+        return profileRepository.findByUserId(userId).orElse(null);
+    }
+
+    /**
+     * Standardized single concept mastery update (Authoritative Source of Truth).
+     */
+    public ConceptMastery updateSingleConceptMastery(String userId, String studentProfileId, String subjectCode, String subjectName, String topic, boolean isCorrect) {
+        if (userId == null) return null;
+        String conceptName = (topic != null && !topic.isBlank()) ? topic : "General";
+        String sCode = (subjectCode != null && !subjectCode.isBlank()) ? subjectCode : "CS301";
+        String sName = (subjectName != null && !subjectName.isBlank()) ? subjectName : "General";
+
+        Optional<ConceptMastery> opt = conceptRepository.findByUserIdAndSubjectCodeAndTopicAndConceptName(
+                userId, sCode, conceptName, conceptName
+        );
+
+        ConceptMastery cm = opt.orElseGet(() -> {
+            ConceptMastery c = new ConceptMastery();
+            c.setUserId(userId);
+            c.setStudentProfileId(studentProfileId);
+            c.setSubjectCode(sCode);
+            c.setSubjectName(sName);
+            c.setTopic(conceptName);
+            c.setConceptName(conceptName);
+            return c;
+        });
+
+        int attempts = cm.getAttemptCount() + 1;
+        int corrects = cm.getCorrectCount() + (isCorrect ? 1 : 0);
+        int wrongs = attempts - corrects;
+
+        int recentWrongs = cm.getRecentWrongAnswerCount();
+        if (isCorrect) {
+            recentWrongs = Math.max(0, recentWrongs - 1);
+        } else {
+            recentWrongs = recentWrongs + 1;
+        }
+
+        double accuracy = Math.round((corrects * 100.0 / attempts) * 10.0) / 10.0;
+        
+        // V1 Sample-size evidence-confidence heuristic: min(attempts / 4.0 * 100.0, 100.0)
+        double confidence = Math.min(Math.round((attempts / 4.0 * 100.0) * 10.0) / 10.0, 100.0);
+
+        // 1. MasteryLevel based STRICTLY on accuracy (observed performance):
+        ConceptMastery.MasteryLevel level;
+        if (accuracy >= 85.0) {
+            level = ConceptMastery.MasteryLevel.MASTER;
+        } else if (accuracy >= 70.0) {
+            level = ConceptMastery.MasteryLevel.PROFICIENT;
+        } else if (accuracy >= 50.0) {
+            level = ConceptMastery.MasteryLevel.INTERMEDIATE;
+        } else {
+            level = ConceptMastery.MasteryLevel.BEGINNER;
+        }
+
+        // 2. ConceptStatus based on evidence/reliability state:
+        ConceptMastery.ConceptStatus status;
+        if (attempts == 0) {
+            status = ConceptMastery.ConceptStatus.UNASSESSED;
+        } else if (confidence < 75.0) { // attempts < 3
+            status = ConceptMastery.ConceptStatus.UNCERTAIN; // insufficient evidence
+        } else if (accuracy >= 70.0) {
+            status = ConceptMastery.ConceptStatus.STRONG; // high confidence, accuracy >= 70%
+        } else {
+            status = ConceptMastery.ConceptStatus.WEAK; // high confidence, accuracy < 70%
+        }
+
+        String action;
+        if (status == ConceptMastery.ConceptStatus.UNCERTAIN) {
+            action = "Targeted adaptive testing required for " + conceptName + " to gather sufficient evidence.";
+        } else if (status == ConceptMastery.ConceptStatus.WEAK) {
+            action = "Review core foundational concepts & practice EASY problems for " + conceptName;
+        } else {
+            action = "Mastery achieved! Maintain velocity with periodic spaced retention.";
+        }
+
+        cm.setAttemptCount(attempts);
+        cm.setCorrectCount(corrects);
+        cm.setAccuracy(accuracy);
+        cm.setWrongCount(wrongs);
+        cm.setRecentWrongAnswerCount(recentWrongs);
+        cm.setMasteryScore(accuracy);
+        cm.setConfidenceScore(confidence);
+        cm.setMasteryLevel(level);
+        cm.setStatus(status);
+        cm.setRecommendedAction(action);
+        cm.setLastAssessedAt(LocalDateTime.now());
+
+        ConceptMastery savedCm = conceptRepository.save(cm);
+
+        syncKnowledgeProfileSummary(userId, sName);
+
+        return savedCm;
+    }
+
+    public void syncKnowledgeProfileSummary(String userId, String subjectName) {
+        if (userId == null) return;
+
         List<ConceptMastery> allConcepts = conceptRepository.findByUserId(userId);
 
         int mastered = 0;
@@ -125,20 +160,20 @@ public class KnowledgeService {
         List<String> weakList = new ArrayList<>();
 
         for (ConceptMastery cm : allConcepts) {
+            if (cm.getStatus() == ConceptMastery.ConceptStatus.STRONG) {
+                strongList.add(cm.getConceptName());
+            } else if (cm.getStatus() == ConceptMastery.ConceptStatus.WEAK) {
+                weakList.add(cm.getConceptName());
+            }
+
             if (cm.getMasteryLevel() == ConceptMastery.MasteryLevel.MASTER) {
                 mastered++;
-                strongList.add(cm.getConceptName());
             } else if (cm.getMasteryLevel() == ConceptMastery.MasteryLevel.PROFICIENT) {
                 proficient++;
-                strongList.add(cm.getConceptName());
             } else if (cm.getMasteryLevel() == ConceptMastery.MasteryLevel.INTERMEDIATE) {
                 intermediate++;
-                if (cm.getAccuracy() < 70.0) {
-                    weakList.add(cm.getConceptName());
-                }
             } else {
                 beginner++;
-                weakList.add(cm.getConceptName());
             }
         }
 
@@ -151,7 +186,6 @@ public class KnowledgeService {
         KnowledgeProfile kp = profileRepository.findByUserId(userId).orElseGet(() -> {
             KnowledgeProfile k = new KnowledgeProfile();
             k.setUserId(userId);
-            k.setStudentProfileId(result.getStudentProfileId());
             return k;
         });
 
@@ -165,20 +199,26 @@ public class KnowledgeService {
         kp.setWeakConcepts(weakList);
         kp.setUpdatedAt(LocalDateTime.now());
 
-        KnowledgeProfile savedKp = profileRepository.save(kp);
+        profileRepository.save(kp);
 
-        // Sync with StudentProfile
+        // Sync with StudentProfile to preserve compatibility with existing UI/cards
         Optional<StudentProfile> profOpt = studentProfileRepository.findByUserId(userId);
         if (profOpt.isPresent()) {
             StudentProfile prof = profOpt.get();
             
+            String sName = (subjectName != null && !subjectName.isBlank()) ? subjectName : "General";
+
             Map<String, List<String>> weakMap = prof.getWeakConcepts() != null ? prof.getWeakConcepts() : new HashMap<>();
-            weakMap.put(subjectName, weakList);
+            weakMap.put(sName, weakList);
             prof.setWeakConcepts(weakMap);
 
             Map<String, List<String>> strongMap = prof.getStrongConcepts() != null ? prof.getStrongConcepts() : new HashMap<>();
-            strongMap.put(subjectName, strongList);
+            strongMap.put(sName, strongList);
             prof.setStrongConcepts(strongMap);
+
+            Map<String, Double> masteryMap = prof.getConceptMastery() != null ? prof.getConceptMastery() : new HashMap<>();
+            masteryMap.put(sName, healthScore);
+            prof.setConceptMastery(masteryMap);
 
             studentProfileRepository.save(prof);
         }
@@ -189,8 +229,6 @@ public class KnowledgeService {
         } catch (Exception ex) {
             System.err.println("Failed to trigger recommendation generation: " + ex.getMessage());
         }
-
-        return savedKp;
     }
 
     public KnowledgeProfileResponse getKnowledgeProfile(String userId) {
@@ -211,7 +249,7 @@ public class KnowledgeService {
     public List<ConceptMasteryResponse> getWeakConcepts(String userId) {
         return conceptRepository.findByUserId(userId)
                 .stream()
-                .filter(cm -> cm.getAccuracy() < 60.0 || cm.getMasteryLevel() == ConceptMastery.MasteryLevel.BEGINNER)
+                .filter(cm -> cm.getStatus() == ConceptMastery.ConceptStatus.WEAK || cm.getStatus() == ConceptMastery.ConceptStatus.UNCERTAIN)
                 .map(ConceptMasteryResponse::new)
                 .collect(Collectors.toList());
     }
@@ -219,7 +257,7 @@ public class KnowledgeService {
     public List<ConceptMasteryResponse> getStrongConcepts(String userId) {
         return conceptRepository.findByUserId(userId)
                 .stream()
-                .filter(cm -> cm.getAccuracy() >= 75.0 || cm.getMasteryLevel() == ConceptMastery.MasteryLevel.MASTER || cm.getMasteryLevel() == ConceptMastery.MasteryLevel.PROFICIENT)
+                .filter(cm -> cm.getStatus() == ConceptMastery.ConceptStatus.STRONG)
                 .map(ConceptMasteryResponse::new)
                 .collect(Collectors.toList());
     }

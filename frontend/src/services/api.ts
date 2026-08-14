@@ -1,6 +1,6 @@
 import { StudentProfile, LifestyleLog, getStoredStudentProfile, saveStudentProfile, calculateLocalSgi, QUESTION_BANK } from "./mockData";
 
-let activeBackendUrl = (import.meta as any).env?.VITE_API_URL || "http://127.0.0.1:8081";
+let activeBackendUrl = (import.meta as any).env?.VITE_API_URL || "http://127.0.0.1:8080";
 
 export function getBackendUrl(): string {
   return activeBackendUrl;
@@ -32,10 +32,10 @@ export async function checkBackendConnection(): Promise<boolean> {
   const candidateUrls = Array.from(new Set([
     (import.meta as any).env?.VITE_API_URL,
     activeBackendUrl,
-    "http://127.0.0.1:8081",
-    "http://localhost:8081",
     "http://127.0.0.1:8080",
-    "http://localhost:8080"
+    "http://localhost:8080",
+    "http://127.0.0.1:8081",
+    "http://localhost:8081"
   ].filter(Boolean)));
 
   for (const url of candidateUrls) {
@@ -71,7 +71,7 @@ export async function registerUser(payload: {
   role: "STUDENT" | "FACULTY" | "ADMIN";
 }): Promise<{ ok: boolean; message?: string; userId?: string; role?: string }> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/auth/register`, {
+    const res = await fetch(`${getBackendUrl()}/api/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -91,7 +91,7 @@ export async function loginUser(payload: {
   password: string;
 }): Promise<{ ok: boolean; message?: string; token?: string; role?: string; fullName?: string; email?: string; userId?: string }> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
+    const res = await fetch(`${getBackendUrl()}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
@@ -127,7 +127,7 @@ export async function fetchOnboardingStatus(userId: string): Promise<{
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/students/onboarding-status/${userId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/students/onboarding-status/${userId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -156,7 +156,7 @@ export async function saveOnboardingStep(userId: string, step: number, data: any
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/students/onboard/step`, {
+      const res = await fetch(`${getBackendUrl()}/api/students/onboard/step`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({ userId, step, data })
@@ -175,7 +175,7 @@ export async function fetchFullProfile(userId: string): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/students/profile-full/${userId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/students/profile-full/${userId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -192,7 +192,7 @@ export async function updateFullProfile(userId: string, data: any): Promise<Stud
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/students/profile/${userId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/students/profile/${userId}`, {
         method: "PUT",
         headers: getAuthHeaders(),
         body: JSON.stringify(data)
@@ -216,7 +216,7 @@ export async function fetchProfile(userId: string): Promise<StudentProfile> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/students/profile/${userId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/students/profile/${userId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -233,7 +233,7 @@ export async function onboardStudent(payload: any): Promise<StudentProfile> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/students/onboard`, {
+      const res = await fetch(`${getBackendUrl()}/api/students/onboard`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
@@ -278,7 +278,7 @@ export async function postLifestyleLog(profileId: string, log: any): Promise<Stu
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/students/lifestyle/${profileId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/students/lifestyle/${profileId}`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -319,7 +319,7 @@ export async function postQuestionnaire(profileId: string, data: any): Promise<S
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/students/questionnaire/${profileId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/students/questionnaire/${profileId}`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify(data)
@@ -347,7 +347,7 @@ export async function getRecommendations(profileId: string): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/students/recommendations/${profileId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/students/recommendations/${profileId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -398,7 +398,7 @@ export async function fetchQuizQuestions(subject: string, difficulty: string, ex
       if (isVerificationRequest) {
         params.append("targetConcept", targetConcept);
       }
-      const fetchUrl = `${BACKEND_URL}/api/quizzes/questions?${params.toString()}`;
+      const fetchUrl = `${getBackendUrl()}/api/quizzes/questions?${params.toString()}`;
       const authHeaders = getAuthHeaders();
       const res = await fetch(fetchUrl, {
         headers: authHeaders,
@@ -662,7 +662,7 @@ export async function generateAiQuizQuestions(
     throw new Error("Backend is offline - AI quiz generation requires a live connection.");
   }
 
-  const res = await fetch(`${BACKEND_URL}/api/quizzes/generate-ai`, {
+  const res = await fetch(`${getBackendUrl()}/api/quizzes/generate-ai`, {
     method: "POST",
     headers: getAuthHeaders(),
     body: JSON.stringify({ studentId, subject, count })
@@ -691,7 +691,7 @@ export async function createQuizQuestion(question: {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/quizzes`, {
+      const res = await fetch(`${getBackendUrl()}/api/quizzes`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify(question)
@@ -726,7 +726,7 @@ export async function submitQuizAnswer(payload: {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/quizzes/submit`, {
+      const res = await fetch(`${getBackendUrl()}/api/quizzes/submit`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
@@ -786,7 +786,7 @@ export async function fetchSubjectBranches(): Promise<string[]> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/subjects/branches`, {
+      const res = await fetch(`${getBackendUrl()}/api/subjects/branches`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -807,7 +807,7 @@ export async function fetchSubjectsByBranchAndSemester(branch: string, semester:
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/subjects/branches/${encodeURIComponent(branch)}/semesters/${semester}`, {
+      const res = await fetch(`${getBackendUrl()}/api/subjects/branches/${encodeURIComponent(branch)}/semesters/${semester}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -829,7 +829,7 @@ export async function fetchAllSubjects(): Promise<any[]> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/subjects`, {
+      const res = await fetch(`${getBackendUrl()}/api/subjects`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -849,12 +849,13 @@ export async function startDiagnosticAssessment(payload: {
   branch: string;
   semester: number;
   subjectCode: string;
+  subjectName?: string;
   questionCount?: number;
 }): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/assessment/start`, {
+      const res = await fetch(`${getBackendUrl()}/api/assessment/start`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
@@ -914,7 +915,7 @@ export async function submitDiagnosticAssessment(payload: {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/assessment/submit`, {
+      const res = await fetch(`${getBackendUrl()}/api/assessment/submit`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
@@ -956,7 +957,7 @@ export async function fetchLatestDiagnosticResult(userId: string): Promise<any> 
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/assessment/latest/${userId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/assessment/latest/${userId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -969,13 +970,163 @@ export async function fetchLatestDiagnosticResult(userId: string): Promise<any> 
   return null;
 }
 
+// 1-by-1 Adaptive Assessment API Client Services
+
+export async function startAdaptiveDiagnosticSession(payload: {
+  diagnosticSessionId: string;
+  subjectCode: string;
+  subjectName?: string;
+  userId?: string;
+}): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/assessment/adaptive/start`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error starting adaptive diagnostic session:", err);
+    }
+  }
+  return {
+    adaptiveSessionId: "adap_local_" + Date.now(),
+    subjectCode: payload.subjectCode,
+    targetConcepts: ["Binary Search Trees", "Graph Theory"],
+    maxQuestions: 15,
+    totalTargetConcepts: 2,
+    completed: false
+  };
+}
+
+export async function fetchNextAdaptiveQuestion(payload: {
+  adaptiveSessionId: string;
+}): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/assessment/adaptive/next`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return data;
+      }
+      return { error: "QUESTION_GENERATION_FAILED", message: data.message || "Groq API question generation failed." };
+    } catch (err: any) {
+      console.warn("Error fetching next adaptive question:", err);
+      return { error: "QUESTION_GENERATION_FAILED", message: err.message || "Failed to communicate with diagnostic service." };
+    }
+  }
+  return { error: "QUESTION_GENERATION_FAILED", message: "Backend service is offline." };
+}
+
+export async function submitAdaptiveQuestionAnswer(payload: {
+  adaptiveSessionId: string;
+  questionId: string;
+  selectedOption: number;
+  responseTimeSeconds: number;
+}): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/assessment/adaptive/submit`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error submitting adaptive answer:", err);
+    }
+  }
+  return {
+    adaptiveSessionId: payload.adaptiveSessionId,
+    isCorrect: payload.selectedOption === 2,
+    explanation: "Correct! Searching in an unbalanced BST degrades to O(N) linear time.",
+    completed: false,
+    updatedConceptStatus: "UNCERTAIN",
+    updatedConceptConfidence: 50.0,
+    nextDifficulty: "HARD"
+  };
+}
+
+export async function fetchNextInitialDiagnosticQuestion(payload: {
+  sessionId: string;
+}): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/assessment/initial/next`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ adaptiveSessionId: payload.sessionId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        return data;
+      }
+      return { error: "QUESTION_GENERATION_FAILED", message: data.message || "Groq API question generation failed." };
+    } catch (err: any) {
+      console.warn("Error fetching next initial diagnostic question:", err);
+      return { error: "QUESTION_GENERATION_FAILED", message: err.message || "Failed to communicate with diagnostic service." };
+    }
+  }
+  return { error: "QUESTION_GENERATION_FAILED", message: "Backend service is offline." };
+}
+
+export async function submitInitialDiagnosticAnswer(payload: {
+  sessionId: string;
+  questionId: string;
+  selectedOption: number;
+  responseTimeSeconds: number;
+}): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/assessment/initial/submit`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          adaptiveSessionId: payload.sessionId,
+          questionId: payload.questionId,
+          selectedOption: payload.selectedOption,
+          responseTimeSeconds: payload.responseTimeSeconds
+        })
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Error submitting initial diagnostic answer:", err);
+    }
+  }
+  return {
+    adaptiveSessionId: payload.sessionId,
+    isCorrect: payload.selectedOption === 2,
+    explanation: "In an unbalanced BST, search degrades to linear scan O(N).",
+    completed: false,
+    updatedConceptStatus: "UNCERTAIN",
+    updatedConceptConfidence: 25.0,
+    nextDifficulty: "MEDIUM"
+  };
+}
+
 // Knowledge Intelligence Engine Master APIs
 
 export async function fetchKnowledgeProfile(userId: string): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/knowledge/profile/${userId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/knowledge/profile/${userId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -992,7 +1143,7 @@ export async function fetchWeakConcepts(userId: string): Promise<any[]> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/knowledge/weak-concepts/${userId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/knowledge/weak-concepts/${userId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -1009,7 +1160,7 @@ export async function fetchStrongConcepts(userId: string): Promise<any[]> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/knowledge/strong-concepts/${userId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/knowledge/strong-concepts/${userId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -1028,7 +1179,7 @@ export async function fetchStudentRecommendations(userId: string): Promise<any[]
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/recommendations/${userId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/recommendations/${userId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -1045,7 +1196,7 @@ export async function fetchHighPriorityRecommendations(userId: string): Promise<
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/recommendations/high-priority/${userId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/recommendations/high-priority/${userId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -1062,7 +1213,7 @@ export async function regenerateStudentRecommendations(userId: string): Promise<
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/recommendations/regenerate/${userId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/recommendations/regenerate/${userId}`, {
         method: "POST",
         headers: getAuthHeaders()
       });
@@ -1080,7 +1231,7 @@ export async function completeRecommendation(id: string): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/recommendations/${id}/complete`, {
+      const res = await fetch(`${getBackendUrl()}/api/recommendations/${id}/complete`, {
         method: "PATCH",
         headers: getAuthHeaders()
       });
@@ -1100,7 +1251,7 @@ export async function fetchTodayPlan(userId: string): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/planner/today/${userId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/planner/today/${userId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -1117,7 +1268,7 @@ export async function fetchWeekPlan(userId: string): Promise<any[]> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/planner/week/${userId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/planner/week/${userId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -1134,7 +1285,7 @@ export async function regeneratePlan(userId: string): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/planner/regenerate/${userId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/planner/regenerate/${userId}`, {
         method: "POST",
         headers: getAuthHeaders()
       });
@@ -1152,7 +1303,7 @@ export async function completePlannerTask(taskId: string, userId: string): Promi
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/planner/task/${taskId}/complete?userId=${encodeURIComponent(userId)}`, {
+      const res = await fetch(`${getBackendUrl()}/api/planner/task/${taskId}/complete?userId=${encodeURIComponent(userId)}`, {
         method: "PATCH",
         headers: getAuthHeaders()
       });
@@ -1170,7 +1321,7 @@ export async function startStudySession(payload: { userId: string; taskId: strin
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/planner/session/start`, {
+      const res = await fetch(`${getBackendUrl()}/api/planner/session/start`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
@@ -1189,7 +1340,7 @@ export async function endStudySession(payload: { sessionId: string; actualDurati
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/planner/session/end`, {
+      const res = await fetch(`${getBackendUrl()}/api/planner/session/end`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
@@ -1208,7 +1359,7 @@ export async function endStudySession(payload: { sessionId: string; actualDurati
 
 export async function fetchLLMProviderInfo(): Promise<{ provider: string; model: string }> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/ai/provider-info`, {
+    const res = await fetch(`${getBackendUrl()}/api/ai/provider-info`, {
       headers: getAuthHeaders()
     });
     if (res.ok) {
@@ -1224,7 +1375,7 @@ export async function sendChatMessage(payload: { studentId: string; conversation
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/ai/chat`, {
+      const res = await fetch(`${getBackendUrl()}/api/ai/chat`, {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
@@ -1275,7 +1426,7 @@ export async function createNewConversation(studentId: string, title?: string, t
       if (concept) query.append("concept", concept);
       if (learningMode) query.append("mode", learningMode);
 
-      const res = await fetch(`${BACKEND_URL}/api/ai/new-conversation?${query.toString()}`, {
+      const res = await fetch(`${getBackendUrl()}/api/ai/new-conversation?${query.toString()}`, {
         method: "POST",
         headers: getAuthHeaders()
       });
@@ -1293,7 +1444,7 @@ export async function fetchConversationHistory(studentId: string): Promise<any[]
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/ai/history/${studentId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/ai/history/${studentId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -1310,7 +1461,7 @@ export async function fetchConversationById(conversationId: string): Promise<any
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/ai/conversation/${conversationId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/ai/conversation/${conversationId}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {
@@ -1327,7 +1478,7 @@ export async function deleteConversation(conversationId: string): Promise<boolea
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/ai/conversation/${conversationId}`, {
+      const res = await fetch(`${getBackendUrl()}/api/ai/conversation/${conversationId}`, {
         method: "DELETE",
         headers: getAuthHeaders()
       });
@@ -1517,7 +1668,7 @@ export async function fetchStudentContext(studentId: string, concept?: string): 
   if (online) {
     try {
       const query = concept ? `?concept=${encodeURIComponent(concept)}` : "";
-      const res = await fetch(`${BACKEND_URL}/api/ai/context/${studentId}${query}`, {
+      const res = await fetch(`${getBackendUrl()}/api/ai/context/${studentId}${query}`, {
         headers: getAuthHeaders()
       });
       if (res.ok) {

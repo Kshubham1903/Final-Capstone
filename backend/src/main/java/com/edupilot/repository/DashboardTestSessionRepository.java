@@ -9,4 +9,5 @@ import java.util.List;
 @Repository
 public interface DashboardTestSessionRepository extends MongoRepository<DashboardTestSession, String> {
     List<DashboardTestSession> findByStudentId(String studentId);
+    List<DashboardTestSession> findTop5ByStudentIdOrderByCreatedAtDesc(String studentId);
 }

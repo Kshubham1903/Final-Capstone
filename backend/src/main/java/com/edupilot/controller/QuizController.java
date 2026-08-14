@@ -48,6 +48,9 @@ public class QuizController {
     @Autowired
     private RecommendationService recommendationService;
 
+    @Autowired
+    private com.edupilot.service.KnowledgeService knowledgeService;
+
     @GetMapping("/questions")
     public ResponseEntity<?> getQuestions(
             @RequestParam String subject,
@@ -247,129 +250,37 @@ public class QuizController {
             String actualUserId = profile != null && profile.getUserId() != null ? profile.getUserId() : profileId;
 
             if (profile != null) {
-                // Adjust concept mastery
-                double masteryChange = isCorrect ? 8.0 : -3.0;
-                Map<String, Double> mastery = profile.getConceptMastery();
-                if (mastery == null) {
-                    mastery = new HashMap<>();
-                }
-                double currentMastery = mastery.getOrDefault(subject, 50.0);
-                double nextMastery = Math.min(Math.max(currentMastery + masteryChange, 0.0), 100.0);
-                mastery.put(subject, nextMastery);
-                profile.setConceptMastery(mastery);
-
-                // Increment completed quizzes
                 profile.setCompletedQuizzesCount(profile.getCompletedQuizzesCount() + 1);
+                studentService.runSilentBackgroundPrediction(profile);
+                profileRepository.save(profile);
+            }
 
-                // Adjust weak/strong concepts
-                Map<String, List<String>> weakConcepts = profile.getWeakConcepts();
-                if (weakConcepts == null) weakConcepts = new HashMap<>();
-                Map<String, List<String>> strongConcepts = profile.getStrongConcepts();
-                if (strongConcepts == null) strongConcepts = new HashMap<>();
-
-                List<String> weaks = weakConcepts.get(subject);
-                if (weaks == null) {
-                    weaks = new ArrayList<>();
-                    weakConcepts.put(subject, weaks);
-                }
-                List<String> strongs = strongConcepts.get(subject);
-                if (strongs == null) {
-                    strongs = new ArrayList<>();
-                    strongConcepts.put(subject, strongs);
-                }
-
-                if (isCorrect) {
-                    if (!strongs.contains(concept)) {
-                        strongs.add(concept);
-                    }
-                    weaks.remove(concept);
-                } else {
-                    if (!weaks.contains(concept)) {
-                        weaks.add(concept);
-                    }
-                    strongs.remove(concept);
-                }
-                profile.setWeakConcepts(weakConcepts);
-                profile.setStrongConcepts(strongConcepts);
-
-                 // Run background predictor
-                 studentService.runSilentBackgroundPrediction(profile);
-                 profileRepository.save(profile);
- 
-                  // Update topic-level ConceptMastery statistics
-                  try {
-                      String tempSubjectCode = "CS301";
-                      Optional<Subject> sOpt = subjectRepository.findBySubjectName(subject);
-                      if (sOpt.isPresent()) {
-                          tempSubjectCode = sOpt.get().getSubjectCode();
-                      }
-                      final String finalSubjectCode = tempSubjectCode;
-                      String topic = concept != null ? concept : "General";
-                      String conceptName = topic;
- 
-                      Optional<ConceptMastery> cmOpt = conceptRepository.findByUserIdAndSubjectCodeAndTopicAndConceptName(
-                              profile.getUserId(), finalSubjectCode, topic, conceptName
-                      );
- 
-                      ConceptMastery cm = cmOpt.orElseGet(() -> {
-                          ConceptMastery c = new ConceptMastery();
-                          c.setUserId(profile.getUserId());
-                          c.setStudentProfileId(profileId);
-                          c.setSubjectCode(finalSubjectCode);
-                          c.setSubjectName(subject);
-                          c.setTopic(topic);
-                          c.setConceptName(conceptName);
-                          c.setMasteryScore(50.0);
-                          return c;
-                      });
- 
-                     int attempts = cm.getAttemptCount() + 1;
-                     int corrects = cm.getCorrectCount() + (isCorrect ? 1 : 0);
-                     int wrongs = attempts - corrects;
- 
-                     int recentWrongs = cm.getRecentWrongAnswerCount();
-                     if (isCorrect) {
-                         recentWrongs = Math.max(0, recentWrongs - 1);
-                     } else {
-                         recentWrongs = recentWrongs + 1;
-                     }
- 
-                     double accuracy = Math.round((corrects * 100.0 / attempts) * 10.0) / 10.0;
- 
-                     cm.setAttemptCount(attempts);
-                     cm.setCorrectCount(corrects);
-                     cm.setAccuracy(accuracy);
-                     cm.setWrongCount(wrongs);
-                     cm.setRecentWrongAnswerCount(recentWrongs);
-                     cm.setMasteryScore(accuracy);
-                     cm.setLastAssessedAt(java.time.LocalDateTime.now());
- 
-                     ConceptMastery.MasteryLevel level;
-                     if (accuracy >= 85.0 && attempts >= 3) {
-                         level = ConceptMastery.MasteryLevel.MASTER;
-                     } else if (accuracy >= 70.0) {
-                         level = ConceptMastery.MasteryLevel.PROFICIENT;
-                     } else if (accuracy >= 50.0) {
-                         level = ConceptMastery.MasteryLevel.INTERMEDIATE;
-                     } else {
-                         level = ConceptMastery.MasteryLevel.BEGINNER;
-                     }
-                     cm.setMasteryLevel(level);
- 
-                     conceptRepository.save(cm);
- 
-                     // Recalculate and update the active recommendations
-                     recommendationService.generateRecommendations(profile.getUserId());
-                 } catch (Exception ex) {
-                     System.err.println("Failed to update topic-level statistics: " + ex.getMessage());
-                 }
-             }
-
-            // 3. Record/Update ConceptMastery entity, QuizSession, and trigger recommendation engine
+            // Standardized concept mastery evaluation via KnowledgeService (Source of Truth)
             try {
-                updateConceptMasteryAndRecommendations(actualUserId, profile != null ? profile.getId() : actualUserId, subject, concept, difficulty, isCorrect, responseTimeSeconds, isVerification, targetConcept, questionId, questionText);
+                String finalSubjectCode = "CS301";
+                Optional<Subject> sOpt = subjectRepository.findBySubjectName(subject);
+                if (sOpt.isPresent()) {
+                    finalSubjectCode = sOpt.get().getSubjectCode();
+                }
+                String topic = concept != null && !concept.isBlank() ? concept : "General";
+
+                knowledgeService.updateSingleConceptMastery(
+                        actualUserId,
+                        profile != null ? profile.getId() : actualUserId,
+                        finalSubjectCode,
+                        subject,
+                        topic,
+                        isCorrect
+                );
             } catch (Exception ex) {
-                System.err.println("Error updating concept mastery from quiz submission: " + ex.getMessage());
+                System.err.println("Failed to update concept mastery via KnowledgeService: " + ex.getMessage());
+            }
+
+            // Record QuizSession record for session tracking
+            try {
+                updateQuizSessionOnly(actualUserId, profile != null ? profile.getId() : actualUserId, subject, concept, difficulty, isCorrect, responseTimeSeconds, isVerification, targetConcept, questionId, questionText);
+            } catch (Exception ex) {
+                System.err.println("Error recording quiz session: " + ex.getMessage());
             }
 
             Map<String, Object> response = new HashMap<>();
@@ -390,12 +301,11 @@ public class QuizController {
     @Autowired
     private com.edupilot.service.LearningPlannerService learningPlannerService;
 
-    private void updateConceptMasteryAndRecommendations(String userId, String studentProfileId, String subjectName, String conceptName, String difficulty, boolean isCorrect, double responseTimeSeconds, boolean isVerification, String targetConcept, String questionId, String questionText) {
+    private void updateQuizSessionOnly(String userId, String studentProfileId, String subjectName, String conceptName, String difficulty, boolean isCorrect, double responseTimeSeconds, boolean isVerification, String targetConcept, String questionId, String questionText) {
         if (userId == null || conceptName == null || conceptName.isBlank()) return;
 
         String normalizedConcept = com.edupilot.service.RecommendationService.normalizeConceptName(conceptName);
 
-        // Resolve subject code from subject name or fallback
         String subjectCode = "CS301";
         if (subjectName != null && !subjectName.isBlank()) {
             Optional<com.edupilot.model.Subject> subjOpt = subjectRepository.findBySubjectName(subjectName);
@@ -411,7 +321,7 @@ public class QuizController {
         final String resolvedSubjectCode = subjectCode;
         final String resolvedSubjectName = subjectName != null ? subjectName : "Data Structures & Algorithms";
 
-        // 1. Record Quiz Session for session tracking
+        // Record Quiz Session for session tracking
         try {
             Optional<com.edupilot.model.QuizSession> sessionOpt = quizSessionRepository
                     .findFirstByUserIdAndSubjectNameAndStatusOrderByLastAnswerTimeDesc(userId, resolvedSubjectName, com.edupilot.model.QuizSession.Status.IN_PROGRESS);
@@ -453,69 +363,6 @@ public class QuizController {
             System.err.println("Failed to record quiz session: " + ex.getMessage());
         }
 
-        String topic = normalizedConcept;
-        Optional<com.edupilot.model.ConceptMastery> opt = conceptMasteryRepository.findByUserIdAndSubjectCodeAndTopicAndConceptName(
-                userId, subjectCode, topic, normalizedConcept
-        );
-        if (opt.isEmpty()) {
-            // Also try by userId and conceptName across subjects
-            List<com.edupilot.model.ConceptMastery> userConcepts = conceptMasteryRepository.findByUserId(userId);
-            for (com.edupilot.model.ConceptMastery cm : userConcepts) {
-                if (normalizedConcept.equalsIgnoreCase(cm.getConceptName())) {
-                    opt = Optional.of(cm);
-                    break;
-                }
-            }
-        }
-
-        com.edupilot.model.ConceptMastery cm = opt.orElseGet(() -> {
-            com.edupilot.model.ConceptMastery c = new com.edupilot.model.ConceptMastery();
-            c.setUserId(userId);
-            c.setStudentProfileId(studentProfileId);
-            c.setSubjectCode(resolvedSubjectCode);
-            c.setSubjectName(resolvedSubjectName);
-            c.setTopic(topic);
-            c.setConceptName(normalizedConcept);
-            return c;
-        });
-
-        int attempts = cm.getAttemptCount() + 1;
-        int corrects = cm.getCorrectCount() + (isCorrect ? 1 : 0);
-        double accuracy = Math.round((corrects * 100.0 / attempts) * 10.0) / 10.0;
-        double confidence = Math.min(Math.round((attempts * 20.0 + accuracy * 0.8) * 10.0) / 10.0, 100.0);
-
-        com.edupilot.model.ConceptMastery.MasteryLevel level;
-        if (accuracy >= 85.0 && attempts >= 2) {
-            level = com.edupilot.model.ConceptMastery.MasteryLevel.MASTER;
-        } else if (accuracy >= 70.0) {
-            level = com.edupilot.model.ConceptMastery.MasteryLevel.PROFICIENT;
-        } else if (accuracy >= 50.0) {
-            level = com.edupilot.model.ConceptMastery.MasteryLevel.INTERMEDIATE;
-        } else {
-            level = com.edupilot.model.ConceptMastery.MasteryLevel.BEGINNER;
-        }
-
-        String action;
-        if (level == com.edupilot.model.ConceptMastery.MasteryLevel.BEGINNER) {
-            action = "Review core concepts and collision/traversal handling for " + conceptName + ".";
-        } else if (level == com.edupilot.model.ConceptMastery.MasteryLevel.INTERMEDIATE) {
-            action = "Solve medium-difficulty practice questions on " + conceptName + ".";
-        } else if (level == com.edupilot.model.ConceptMastery.MasteryLevel.PROFICIENT) {
-            action = "Attempt advanced challenge questions for " + conceptName + ".";
-        } else {
-            action = "Mastery achieved! Maintain proficiency with periodic retention.";
-        }
-
-        cm.setAttemptCount(attempts);
-        cm.setCorrectCount(corrects);
-        cm.setAccuracy(accuracy);
-        cm.setConfidenceScore(confidence);
-        cm.setMasteryLevel(level);
-        cm.setRecommendedAction(action);
-        cm.setLastAssessedAt(java.time.LocalDateTime.now());
-
-        conceptMasteryRepository.save(cm);
-
         if (isVerification || (targetConcept != null && !targetConcept.isBlank())) {
             String activeTarget = targetConcept != null && !targetConcept.isBlank() ? targetConcept : normalizedConcept;
             recommendationService.processVerificationResult(userId, resolvedSubjectName, activeTarget, isCorrect, isCorrect ? 100.0 : 0.0);
@@ -523,13 +370,6 @@ public class QuizController {
                 learningPlannerService.generateLearningPlan(userId);
             } catch (Exception ex) {
                 System.err.println("Error refreshing plan after verification: " + ex.getMessage());
-            }
-        } else {
-            try {
-                recommendationService.generateRecommendations(userId);
-                learningPlannerService.generateLearningPlan(userId);
-            } catch (Exception ex) {
-                System.err.println("Error regenerating recommendations: " + ex.getMessage());
             }
         }
     }

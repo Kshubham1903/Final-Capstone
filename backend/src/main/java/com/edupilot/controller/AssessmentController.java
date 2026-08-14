@@ -103,5 +103,82 @@ public class AssessmentController {
         }
         return ResponseEntity.notFound().build();
     }
+
+    // =========================================================================
+    // PHASE 5: TRUE ONE-BY-ONE ADAPTIVE DIAGNOSTIC ENDPOINTS
+    // =========================================================================
+
+    @PostMapping("/adaptive/start")
+    public ResponseEntity<?> startAdaptiveSession(@RequestBody AdaptiveAssessmentDTOs.AdaptiveStartRequest request) {
+        try {
+            String authUserId = getAuthenticatedUserId();
+            AdaptiveAssessmentDTOs.AdaptiveStartResponse response = assessmentService.startAdaptiveSession(request, authUserId);
+            return ResponseEntity.ok(response);
+        } catch (SecurityException secEx) {
+            return ResponseEntity.status(403).body(Map.of("message", secEx.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
+
+    @PostMapping("/adaptive/next")
+    public ResponseEntity<?> getAdaptiveNextQuestion(@RequestBody AdaptiveAssessmentDTOs.AdaptiveNextRequest request) {
+        try {
+            String authUserId = getAuthenticatedUserId();
+            AdaptiveAssessmentDTOs.AdaptiveNextResponse response = assessmentService.getAdaptiveNextQuestion(request, authUserId);
+            return ResponseEntity.ok(response);
+        } catch (SecurityException secEx) {
+            return ResponseEntity.status(403).body(Map.of("message", secEx.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
+
+    @PostMapping("/adaptive/submit")
+    public ResponseEntity<?> submitAdaptiveAnswer(@RequestBody AdaptiveAssessmentDTOs.AdaptiveSubmitRequest request) {
+        try {
+            String authUserId = getAuthenticatedUserId();
+            AdaptiveAssessmentDTOs.AdaptiveSubmitResponse response = assessmentService.submitAdaptiveAnswer(request, authUserId);
+            return ResponseEntity.ok(response);
+        } catch (SecurityException secEx) {
+            return ResponseEntity.status(403).body(Map.of("message", secEx.getMessage()));
+        } catch (IllegalStateException stateEx) {
+            return ResponseEntity.status(409).body(Map.of("message", stateEx.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
+
+    // =========================================================================
+    // PHASE 6: TRUE ONE-BY-ONE GROQ INITIAL DIAGNOSTIC ENDPOINTS
+    // =========================================================================
+
+    @PostMapping("/initial/next")
+    public ResponseEntity<?> getInitialNextQuestion(@RequestBody AdaptiveAssessmentDTOs.AdaptiveNextRequest request) {
+        try {
+            String authUserId = getAuthenticatedUserId();
+            AdaptiveAssessmentDTOs.AdaptiveNextResponse response = assessmentService.getInitialNextQuestion(request, authUserId);
+            return ResponseEntity.ok(response);
+        } catch (SecurityException secEx) {
+            return ResponseEntity.status(403).body(Map.of("message", secEx.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
+
+    @PostMapping("/initial/submit")
+    public ResponseEntity<?> submitInitialAnswer(@RequestBody AdaptiveAssessmentDTOs.AdaptiveSubmitRequest request) {
+        try {
+            String authUserId = getAuthenticatedUserId();
+            AdaptiveAssessmentDTOs.AdaptiveSubmitResponse response = assessmentService.submitInitialAnswer(request, authUserId);
+            return ResponseEntity.ok(response);
+        } catch (SecurityException secEx) {
+            return ResponseEntity.status(403).body(Map.of("message", secEx.getMessage()));
+        } catch (IllegalStateException stateEx) {
+            return ResponseEntity.status(409).body(Map.of("message", stateEx.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
 }
 

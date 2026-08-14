@@ -57,14 +57,54 @@ public class DashboardKnowledgeTestService {
             );
         }
 
+        String effectiveStudentId = profile.getId() != null ? profile.getId() : studentId;
+
+        // Gather question IDs from recent DashboardTestSessions for effectiveStudentId
+        List<DashboardTestSession> pastSessions = sessionRepository.findTop5ByStudentIdOrderByCreatedAtDesc(effectiveStudentId);
+        Set<String> pastQuestionIds = new LinkedHashSet<>();
+        if (pastSessions != null) {
+            for (DashboardTestSession past : pastSessions) {
+                if (past.getQuestionIds() != null) {
+                    pastQuestionIds.addAll(past.getQuestionIds());
+                }
+            }
+        }
+
+        List<QuizQuestion> pastQuestions = !pastQuestionIds.isEmpty() 
+                ? questionRepository.findAllById(pastQuestionIds) 
+                : List.of();
+
         List<QuizQuestion> allGeneratedQuestions = new ArrayList<>();
         List<String> questionIds = new ArrayList<>();
 
         for (String subject : subjects) {
+            List<String> subjectExclusions = new ArrayList<>();
+            for (QuizQuestion pq : pastQuestions) {
+                if (pq.getSubject() != null && pq.getSubject().equalsIgnoreCase(subject)) {
+                    String fp = (pq.getQuestionFingerprint() != null && !pq.getQuestionFingerprint().isBlank())
+                            ? pq.getQuestionFingerprint() 
+                            : "fp_" + Math.abs(pq.getQuestionText().hashCode());
+                    if (!subjectExclusions.contains(fp)) {
+                        subjectExclusions.add(fp);
+                    }
+                }
+            }
+
+            List<String> boundedExclusions = subjectExclusions.size() > 10
+                    ? subjectExclusions.subList(subjectExclusions.size() - 10, subjectExclusions.size())
+                    : subjectExclusions;
+
+            Map<String, Object> genContext = Map.of(
+                    "excludeQuestions", boundedExclusions,
+                    "maxTokens", 1200,
+                    "purpose", "DASHBOARD_KNOWLEDGE_TEST"
+            );
+
             List<QuizQuestion> subjectQuestions = quizGenerationService.generate(
                     subject, 
                     QuizQuestion.Difficulty.EASY, 
-                    5
+                    5,
+                    genContext
             );
             allGeneratedQuestions.addAll(subjectQuestions);
             for (QuizQuestion q : subjectQuestions) {

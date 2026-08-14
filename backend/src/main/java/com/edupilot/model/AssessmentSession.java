@@ -23,6 +23,13 @@ public class AssessmentSession {
     private LocalDateTime startTime = LocalDateTime.now();
     private LocalDateTime endTime;
 
+    // 1-by-1 Initial Diagnostic tracking fields
+    private String currentQuestionId;
+    private boolean activeQuestionSubmitted = false;
+    private int questionCount = 0;
+    private List<String> usedQuestionFingerprints = new java.util.ArrayList<>();
+    private List<AssessmentResult.UserAnswer> userAnswers = new java.util.ArrayList<>();
+
     public enum Status {
         IN_PROGRESS,
         COMPLETED,
@@ -153,4 +160,15 @@ public class AssessmentSession {
     public void setEndTime(LocalDateTime endTime) {
         this.endTime = endTime;
     }
+
+    public String getCurrentQuestionId() { return currentQuestionId; }
+    public void setCurrentQuestionId(String currentQuestionId) { this.currentQuestionId = currentQuestionId; }
+    public boolean isActiveQuestionSubmitted() { return activeQuestionSubmitted; }
+    public void setActiveQuestionSubmitted(boolean activeQuestionSubmitted) { this.activeQuestionSubmitted = activeQuestionSubmitted; }
+    public int getQuestionCount() { return questionCount; }
+    public void setQuestionCount(int questionCount) { this.questionCount = questionCount; }
+    public List<String> getUsedQuestionFingerprints() { return usedQuestionFingerprints; }
+    public void setUsedQuestionFingerprints(List<String> usedQuestionFingerprints) { this.usedQuestionFingerprints = usedQuestionFingerprints; }
+    public List<AssessmentResult.UserAnswer> getUserAnswers() { return userAnswers; }
+    public void setUserAnswers(List<AssessmentResult.UserAnswer> userAnswers) { this.userAnswers = userAnswers; }
 }

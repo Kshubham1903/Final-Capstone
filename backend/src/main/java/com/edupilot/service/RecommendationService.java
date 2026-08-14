@@ -819,6 +819,74 @@ public class RecommendationService {
                 .collect(Collectors.toList());
     }
 
+    public static List<String> getSubjectBlueprintConcepts(String subjectName) {
+        if (subjectName == null || subjectName.isBlank()) {
+            return List.of("Core Principles", "Foundational Concepts", "Advanced System Architecture", "Operational Frameworks", "Optimization & Best Practices");
+        }
+        String lower = subjectName.toLowerCase().trim();
+        if (lower.contains("physics")) {
+            return List.of("Mechanics", "Kinematics & Laws of Motion", "Work, Energy & Power", "Thermodynamics", "Optics & Electromagnetism");
+        } else if (lower.contains("database") || lower.contains("dbms") || lower.contains("sql")) {
+            return List.of("Relational Data Modeling", "SQL Query Optimization", "Database Normalization", "ACID Transactions", "Indexing & B-Trees");
+        } else if (lower.contains("java") || lower.contains("object oriented") || lower.contains("oop")) {
+            return List.of("Classes & Encapsulation", "Inheritance & Polymorphism", "Exception Handling", "Java Collections Framework", "Multithreading & Concurrency");
+        } else if (lower.contains("operating") || lower.contains("os")) {
+            return List.of("Process Synchronization & Deadlocks", "CPU Scheduling Algorithms", "Virtual Memory & Paging", "File Systems Architecture", "System Calls & Kernel Architecture");
+        } else if (lower.contains("network") || lower.contains("cn")) {
+            return List.of("OSI & TCP/IP Model", "IP Addressing & Subnetting", "Routing Algorithms", "Transport Layer Protocols (TCP/UDP)", "Network Security & Cryptography");
+        } else if (lower.contains("discrete") || lower.contains("math")) {
+            return List.of("Set Theory & Relations", "Graph Theory & Trees", "Combinatorics & Permutations", "Propositional Logic", "Boolean Algebra");
+        } else if (lower.contains("programming in c") || lower.equals("c")) {
+            return List.of("Pointers & Memory Allocation", "Structures & Unions", "File I/O Operations", "Control Flow & Functions", "Arrays & Strings");
+        } else if (lower.contains("software engineering") || lower.contains("testing")) {
+            return List.of("Agile & Scrum Methodologies", "Requirements Engineering", "Software Design Patterns", "CI/CD & DevOps Pipelines", "Software Testing & QA");
+        } else if (lower.contains("artificial intelligence") || lower.contains("machine learning") || lower.equals("ai")) {
+            return List.of("Supervised & Unsupervised Learning", "Neural Networks & Deep Learning", "Model Evaluation & Metrics", "Feature Engineering", "Reinforcement Learning");
+        } else if (lower.contains("compiler")) {
+            return List.of("Lexical Analysis & Parsing", "Syntax Directed Translation", "Intermediate Code Generation", "Code Optimization", "Symbol Tables");
+        } else if (lower.contains("cloud")) {
+            return List.of("IaaS, PaaS & SaaS Models", "Virtualization & Containers", "Cloud Storage & Databases", "Identity & Access Management (IAM)", "Serverless Computing");
+        } else if (lower.contains("cyber") || lower.contains("security") || lower.contains("cryptography")) {
+            return List.of("Symmetric & Asymmetric Encryption", "Public Key Infrastructure (PKI)", "Network Security & Firewalls", "Threat Analysis & Vulnerabilities", "Authentication Protocols");
+        } else if (lower.contains("data structure") || lower.contains("algorithm") || lower.contains("dsa")) {
+            return List.of("Arrays & Linked Lists", "Stacks & Queues", "Binary Search Trees", "Sorting Algorithms", "Graph Theory & Dynamic Programming");
+        } else {
+            return List.of(
+                "Core Principles of " + subjectName,
+                "Foundational Concepts of " + subjectName,
+                "Advanced System Architecture of " + subjectName,
+                "Operational Frameworks of " + subjectName,
+                "Optimization & Best Practices in " + subjectName
+            );
+        }
+    }
+
+    public static boolean isConceptValidForSubject(String subjectName, String conceptName) {
+        if (subjectName == null || conceptName == null || conceptName.isBlank()) return true;
+        String targetLower = conceptName.trim().toLowerCase();
+        List<String> validConcepts = getSubjectBlueprintConcepts(subjectName);
+        for (String valid : validConcepts) {
+            if (valid.toLowerCase().contains(targetLower) || targetLower.contains(valid.toLowerCase())) {
+                return true;
+            }
+        }
+        if (targetLower.contains("core") || targetLower.contains("principle") || targetLower.contains("general") || targetLower.contains("foundations") || targetLower.contains("advanced")) {
+            return true;
+        }
+        String subjLower = subjectName.toLowerCase();
+        if (!subjLower.contains("data structure") && !subjLower.contains("algorithm") && !subjLower.contains("dsa")) {
+            if (targetLower.contains("binary search tree") || targetLower.contains("sorting algorithm") || targetLower.contains("hash table") || targetLower.contains("dynamic programming")) {
+                return false;
+            }
+        }
+        if (!subjLower.contains("database") && !subjLower.contains("dbms") && !subjLower.contains("sql")) {
+            if (targetLower.contains("sql query") || targetLower.contains("database normalization") || targetLower.contains("acid transactions")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /**
      * Returns the standard topic catalogue for a subject and also adds
      * dynamically discovered topics from ConceptMastery.
@@ -828,103 +896,8 @@ public class RecommendationService {
             String subjectCode,
             String userId) {
 
-        Set<String> topics =
-                new LinkedHashSet<>();
-
-        String lower =
-                subjectName != null
-                        ? subjectName.toLowerCase()
-                        : "";
-
-        if (lower.contains("data structure")
-                || lower.contains("algorithm")
-                || lower.contains("dsa")) {
-
-            topics.addAll(
-                    Arrays.asList(
-                            "Recursion",
-                            "Trees",
-                            "Graphs",
-                            "Sorting",
-                            "Binary Search Trees",
-                            "Sorting Algorithms",
-                            "Graph Theory",
-                            "Dynamic Programming",
-                            "Hash Tables"
-                    )
-            );
-
-        } else if (lower.contains("database")
-                || lower.contains("dbms")) {
-
-            topics.addAll(
-                    Arrays.asList(
-                            "Normalization",
-                            "Indexing",
-                            "SQL Queries",
-                            "Transactions",
-                            "Relational Algebra"
-                    )
-            );
-
-        } else if (lower.contains("discrete")
-                || lower.contains("math")) {
-
-            topics.addAll(
-                    Arrays.asList(
-                            "Set Theory",
-                            "Graph Theory",
-                            "Combinatorics",
-                            "Propositional Logic"
-                    )
-            );
-
-        } else if (lower.contains("blockchain")) {
-
-            topics.addAll(
-                    Arrays.asList(
-                            "Consensus Mechanisms",
-                            "Smart Contracts",
-                            "Proof of Stake",
-                            "Cryptographic Linking"
-                    )
-            );
-
-        } else if (lower.contains("cloud")) {
-
-            topics.addAll(
-                    Arrays.asList(
-                            "Identity & Access Management",
-                            "Shared Responsibility Model",
-                            "Virtual Firewalls",
-                            "Zero Trust Security"
-                    )
-            );
-
-        } else if (lower.contains("artificial intelligence")
-                || lower.contains("machine learning")
-                || lower.equals("ai")) {
-
-            topics.addAll(
-                    Arrays.asList(
-                            "Neural Networks",
-                            "Supervised Learning",
-                            "Core Concepts",
-                            "Advanced Principles",
-                            "Optimization"
-                    )
-            );
-
-        } else {
-
-            topics.addAll(
-                    Arrays.asList(
-                            "Core Concepts",
-                            "Advanced Principles",
-                            "Optimization"
-                    )
-            );
-        }
+        Set<String> topics = new LinkedHashSet<>();
+        topics.addAll(getSubjectBlueprintConcepts(subjectName));
 
         /*
          * Add dynamically generated concepts discovered in the student's
