@@ -653,35 +653,20 @@ export default function Quizzes() {
     if (diagnosticSessionId || adaptiveSessionId) {
       const isCompleted = questionFeedback && questionFeedback.completed;
 
+      console.log("[QUIZ DEBUG]", {
+        currentQuestionNumber: questionCount + 1,
+        currentQuestionIndex: questionCount,
+        questionId: activeQuestion?.id || activeQuestion?.questionId,
+        isLastQuestion: questionCount + 1 >= maxQuestions,
+        action: "handleNextStep",
+        assessmentStage,
+        isCompleted
+      });
+
       if (assessmentStage === "INITIAL") {
         if (isCompleted) {
-          // Transition to Stage 2 Adaptive Assessment
-          setIsGeneratingAi(true);
-          try {
-            const userId = profile?.userId || profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") : "") || "";
-            const subjectCode = resolveSubjectCode(activeSubject);
-            const adapStart = await startAdaptiveDiagnosticSession({
-              diagnosticSessionId: diagnosticSessionId!,
-              subjectCode: subjectCode,
-              subjectName: activeSubject,
-              userId: userId
-            });
-
-            if (adapStart && adapStart.adaptiveSessionId && !adapStart.completed) {
-              setAdaptiveSessionId(adapStart.adaptiveSessionId);
-              setAssessmentStage("ADAPTIVE");
-              setQuestionFeedback(null);
-              setSelectedOption(null);
-              setIsAnswered(false);
-              await loadNextAdaptiveQuestion(adapStart.adaptiveSessionId);
-            } else {
-              await finishDiagnosticSession();
-            }
-          } catch (err) {
-            await finishDiagnosticSession();
-          } finally {
-            setIsGeneratingAi(false);
-          }
+          console.log("[QUIZ DEBUG] 10-question initial assessment batch completed. Transitioning directly to results/profile.");
+          await finishDiagnosticSession();
         } else {
           setQuestionFeedback(null);
           setSelectedOption(null);
@@ -690,6 +675,7 @@ export default function Quizzes() {
         }
       } else if (assessmentStage === "ADAPTIVE") {
         if (isCompleted) {
+          console.log("[QUIZ DEBUG] Adaptive stage completed. Transitioning to results/profile.");
           await finishDiagnosticSession();
         } else {
           setQuestionFeedback(null);
@@ -1033,19 +1019,34 @@ export default function Quizzes() {
               <div className="space-y-3">
                 {activeQuestion.options.map((option: string, idx: number) => {
                   const isSelected = selectedOption === idx;
-                  const isOptionCorrect = isSelected
-                    ? (questionFeedback ? questionFeedback.isCorrect === true : activeQuestion.correctOptionIndex !== undefined && idx === activeQuestion.correctOptionIndex)
-                    : (activeQuestion.correctOptionIndex !== undefined && idx === activeQuestion.correctOptionIndex);
+                  const targetCorrectIdx = questionFeedback?.correctOptionIndex !== undefined && questionFeedback?.correctOptionIndex !== null
+                    ? questionFeedback.correctOptionIndex
+                    : activeQuestion?.correctOptionIndex;
+
+                  const isOptionCorrect = targetCorrectIdx !== undefined && targetCorrectIdx !== null && idx === targetCorrectIdx;
 
                   let cardStyle = "bg-white/5 border-white/5 text-main-theme hover:bg-white/10";
-                  
+                  let badgeLabel = null;
+
                   if (isAnswered) {
                     if (isOptionCorrect) {
-                      cardStyle = "bg-emerald-500/10 border-emerald-500/50 text-emerald-theme font-bold";
+                      cardStyle = "bg-emerald-500/10 border-emerald-500/50 text-emerald-400 font-bold shadow-[0_0_15px_rgba(16,185,129,0.15)]";
+                      badgeLabel = (
+                        <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-500/20 px-2.5 py-0.5 rounded-md border border-emerald-500/30">
+                          <Check className="h-3.5 w-3.5" />
+                          <span>Correct Answer</span>
+                        </span>
+                      );
                     } else if (isSelected) {
-                      cardStyle = "bg-pink-500/10 border-pink-500/50 text-pink-theme font-bold";
+                      cardStyle = "bg-red-500/10 border-red-500/50 text-red-400 font-bold shadow-[0_0_15px_rgba(239,68,68,0.15)]";
+                      badgeLabel = (
+                        <span className="flex items-center gap-1 text-[11px] font-bold text-red-400 bg-red-500/20 px-2.5 py-0.5 rounded-md border border-red-500/30">
+                          <X className="h-3.5 w-3.5" />
+                          <span>Your Answer</span>
+                        </span>
+                      );
                     } else {
-                      cardStyle = "bg-white/3 border-white/5 opacity-55 text-secondary-theme";
+                      cardStyle = "bg-white/3 border-white/5 opacity-50 text-secondary-theme";
                     }
                   } else if (isSelected) {
                     cardStyle = "bg-purple-600/20 border-purple-500/50 text-purple-theme font-bold";
@@ -1056,11 +1057,10 @@ export default function Quizzes() {
                       key={idx}
                       disabled={isAnswered}
                       onClick={() => setSelectedOption(idx)}
-                      className={`w-full p-4 rounded-xl border text-xs font-semibold text-left transition-all flex items-center justify-between ${cardStyle}`}
+                      className={`w-full p-4 rounded-xl border text-xs font-semibold text-left transition-all flex items-center justify-between gap-3 ${cardStyle}`}
                     >
-                      <span>{option}</span>
-                      {isAnswered && isOptionCorrect && <Check className="h-4 w-4 text-emerald-theme" />}
-                      {isAnswered && isSelected && !isOptionCorrect && <X className="h-4 w-4 text-pink-theme" />}
+                      <span className="flex-1">{option}</span>
+                      {badgeLabel}
                     </button>
                   );
                 })}
@@ -1068,12 +1068,36 @@ export default function Quizzes() {
 
               {/* Conceptual Review Explanation */}
               {isAnswered && (
-                <div className="p-4 rounded-xl bg-purple-500/5 border border-purple-500/15 text-xs space-y-2">
-                  <div className="flex items-center gap-1.5 text-purple-theme font-bold">
-                    <AlertCircle className="h-4 w-4" />
-                    <span>AI Conceptual Feedback</span>
+                <div className={`p-4 rounded-xl text-xs space-y-2 border ${
+                  (questionFeedback?.isCorrect ?? (selectedOption === activeQuestion?.correctOptionIndex))
+                    ? "bg-emerald-500/5 border-emerald-500/20"
+                    : "bg-red-500/5 border-red-500/20"
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      {(questionFeedback?.isCorrect ?? (selectedOption === activeQuestion?.correctOptionIndex)) ? (
+                        <span className="text-emerald-400 flex items-center gap-1.5">
+                          <CheckCircle2 className="h-4 w-4" />
+                          <span>Correct!</span>
+                        </span>
+                      ) : (
+                        <span className="text-red-400 flex items-center gap-1.5">
+                          <AlertCircle className="h-4 w-4" />
+                          <span>
+                            Incorrect. Correct Answer:{" "}
+                            <strong>
+                              Option {String.fromCharCode(65 + (questionFeedback?.correctOptionIndex ?? activeQuestion?.correctOptionIndex ?? 0))}: {" "}
+                              {activeQuestion.options[questionFeedback?.correctOptionIndex ?? activeQuestion?.correctOptionIndex ?? 0]}
+                            </strong>
+                          </span>
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-secondary-theme leading-relaxed">{activeQuestion.conceptualExplanation}</p>
+                  <div className="pt-1 text-secondary-theme leading-relaxed">
+                    <strong className="text-main-theme block mb-0.5">Conceptual Explanation:</strong>
+                    <p>{questionFeedback?.explanation || activeQuestion?.conceptualExplanation}</p>
+                  </div>
                 </div>
               )}
 

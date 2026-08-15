@@ -146,6 +146,245 @@ public class QuizGenerationService {
         throw new IllegalStateException("Groq API question generation failed for concept '" + concept + "' after " + maxRetries + " attempts. Last failure: " + lastError);
     }
 
+    public static class QuestionBlueprintSpec {
+        private int position;
+        private String concept;
+        private QuizQuestion.Difficulty difficulty;
+
+        public QuestionBlueprintSpec() {}
+
+        public QuestionBlueprintSpec(int position, String concept, QuizQuestion.Difficulty difficulty) {
+            this.position = position;
+            this.concept = concept;
+            this.difficulty = difficulty;
+        }
+
+        public int getPosition() { return position; }
+        public void setPosition(int position) { this.position = position; }
+        public String getConcept() { return concept; }
+        public void setConcept(String concept) { this.concept = concept; }
+        public QuizQuestion.Difficulty getDifficulty() { return difficulty; }
+        public void setDifficulty(QuizQuestion.Difficulty difficulty) { this.difficulty = difficulty; }
+    }
+
+    public List<QuizQuestion> generateBatchDiagnosticQuestionsViaGroq(String subject, List<QuestionBlueprintSpec> blueprint, Map<String, Object> context) {
+        if (blueprint == null || blueprint.isEmpty()) {
+            throw new IllegalArgumentException("Blueprint cannot be null or empty");
+        }
+
+        Map<String, Object> genContext = context != null ? new HashMap<>(context) : new HashMap<>();
+        if (!genContext.containsKey("maxTokens")) genContext.put("maxTokens", 3500);
+        if (!genContext.containsKey("purpose")) genContext.put("purpose", "DIAGNOSTIC_BATCH_10");
+
+        List<String> excludeTexts = genContext.containsKey("excludeQuestions") 
+                ? (List<String>) genContext.get("excludeQuestions") : List.of();
+
+        List<String> cleanExclusions = new ArrayList<>();
+        if (excludeTexts != null) {
+            for (String exc : excludeTexts) {
+                if (exc != null && !exc.isBlank() && !exc.startsWith("fp_")) {
+                    cleanExclusions.add(exc);
+                }
+            }
+        }
+        List<String> recentExclusions = cleanExclusions.size() > 6
+                ? cleanExclusions.subList(cleanExclusions.size() - 6, cleanExclusions.size())
+                : cleanExclusions;
+
+        String systemPrompt = "You are an expert academic assessment question generator for " + subject + ".\n" +
+                "CRITICAL INSTRUCTIONS:\n" +
+                "1. You MUST respond with ONLY a single valid JSON object. Do NOT include markdown code blocks (such as ```json), preambles, or commentary.\n" +
+                "2. All keys and string values MUST use strict double quotes (\"). NEVER use single quotes (') or unescaped control characters.\n" +
+                "3. Ensure all brackets, braces, and double quotes are perfectly closed and valid RFC-8259 syntax.\n" +
+                "4. Follow the exact JSON structure specified below.";
+
+        StringBuilder baseUserPrompt = new StringBuilder();
+        baseUserPrompt.append("Generate EXACTLY ").append(blueprint.size()).append(" multiple-choice diagnostic questions for subject \"").append(subject)
+                .append("\" strictly following the 10-question blueprint below.\n\n")
+                .append("10-QUESTION BLUEPRINT:\n");
+
+        for (QuestionBlueprintSpec spec : blueprint) {
+            baseUserPrompt.append("Question ").append(spec.getPosition())
+                    .append(": Concept: \"").append(spec.getConcept())
+                    .append("\", Difficulty: ").append(spec.getDifficulty().name()).append("\n");
+        }
+
+        baseUserPrompt.append("\nRequirements:\n")
+                .append("- Generate EXACTLY ").append(blueprint.size()).append(" questions matching blueprint items 1 through ").append(blueprint.size()).append(" in exact sequential order.\n")
+                .append("- Question 1 MUST match blueprint item 1, Question 2 MUST match blueprint item 2, ..., Question 10 MUST match blueprint item 10.\n")
+                .append("- Do NOT change the assigned concept or difficulty for any question.\n")
+                .append("- Each question must test genuine conceptual understanding.\n")
+                .append("- Exactly 4 distinct answer options per question, with only one correct option.\n")
+                .append("- Include correctOptionIndex (0, 1, 2, or 3).\n")
+                .append("- Include a brief conceptual explanation of why the correct answer is correct.\n")
+                .append("- Do NOT duplicate questions within this batch.\n");
+
+        if (!recentExclusions.isEmpty()) {
+            baseUserPrompt.append("- DO NOT generate questions similar to these existing question texts:\n");
+            for (String exc : recentExclusions) {
+                String shortExc = exc.length() > 60 ? exc.substring(0, 60) + "..." : exc;
+                baseUserPrompt.append("  * ").append(shortExc).append("\n");
+            }
+        }
+
+        baseUserPrompt.append("\nRequired JSON Format (strict double quotes ONLY):\n")
+                .append("{\n")
+                .append("  \"questions\": [\n")
+                .append("    {\n")
+                .append("      \"concept\": \"<concept_from_blueprint>\",\n")
+                .append("      \"questionText\": \"Clear conceptual question text here\",\n")
+                .append("      \"options\": [\"Option A\", \"Option B\", \"Option C\", \"Option D\"],\n")
+                .append("      \"correctOptionIndex\": 0,\n")
+                .append("      \"conceptualExplanation\": \"Explanation of why option A is correct\"\n")
+                .append("    }\n")
+                .append("  ]\n")
+                .append("}");
+
+        int promptChars = systemPrompt.length() + baseUserPrompt.length();
+        int estTokens = promptChars / 4;
+
+        // PART 15 Logging requirement: Safe structured log before sending batch request
+        System.out.println("========== GROQ BATCH REQUEST ==========");
+        System.out.println("Purpose: DIAGNOSTIC_BATCH_10");
+        System.out.println("Subject: " + subject);
+        System.out.println("Batch Size: " + blueprint.size());
+        if (genContext.containsKey("adaptiveSummary")) {
+            System.out.println("Adaptive Profile: " + genContext.get("adaptiveSummary"));
+        }
+        System.out.println("Blueprint:");
+        for (QuestionBlueprintSpec spec : blueprint) {
+            System.out.println("Q" + spec.getPosition() + ": " + spec.getConcept() + " / " + spec.getDifficulty().name());
+        }
+        System.out.println("Prompt Characters: " + promptChars);
+        System.out.println("Estimated Prompt Tokens: " + estTokens);
+        System.out.println("========================================");
+
+        int maxRetries = 2;
+        String lastError = "Groq API returned empty or invalid batch output";
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            StringBuilder currentPrompt = new StringBuilder(baseUserPrompt);
+            if (attempt > 1) {
+                currentPrompt.append("\n\nSTRICT JSON RETRY NOTICE (Attempt ").append(attempt).append(" of ").append(maxRetries).append("):\n")
+                        .append("Your previous output failed validation. Output strictly valid RFC-8259 JSON containing an array of exactly 10 questions matching the blueprint.");
+            }
+
+            try {
+                String rawResponse = groqProvider.generateResponse(systemPrompt, currentPrompt.toString(), genContext);
+
+                if (rawResponse != null && (rawResponse.contains("RATE_LIMIT_TPD") || rawResponse.contains("retryAfterMs=9") || rawResponse.contains("retryAfterMs=8"))) {
+                    System.err.println("[QuizGenerationService] Groq Daily Quota Exceeded (TPD). Halting automatic retries.");
+                    throw new IllegalStateException("Groq daily token quota (TPD) reached. Please retry after quota resets.");
+                }
+
+                List<QuizQuestion> parsedBatch = parseBatchQuestions(rawResponse, subject, blueprint);
+                if (!parsedBatch.isEmpty() && parsedBatch.size() == blueprint.size()) {
+                    List<QuizQuestion> savedBatch = questionRepository.saveAll(parsedBatch);
+                    System.out.println("========== GROQ BATCH RESPONSE ==========");
+                    System.out.println("Groq response received");
+                    System.out.println("Question count: " + savedBatch.size());
+                    System.out.println("Validation result: SUCCESS");
+                    System.out.println("=========================================");
+                    return savedBatch;
+                } else {
+                    lastError = "Parsed batch size (" + parsedBatch.size() + ") did not match requested blueprint size (" + blueprint.size() + ")";
+                }
+            } catch (Exception ex) {
+                lastError = ex.getMessage();
+                System.err.println("[QuizGenerationService] Batch generation attempt " + attempt + " failed: " + lastError);
+                if (lastError != null && lastError.contains("daily token quota")) throw ex;
+            }
+        }
+
+        throw new IllegalStateException("Groq API 10-question batch generation failed after " + maxRetries + " attempts. Last error: " + lastError);
+    }
+
+    private List<QuizQuestion> parseBatchQuestions(String rawJson, String subject, List<QuestionBlueprintSpec> blueprint) {
+        List<QuizQuestion> result = new ArrayList<>();
+        if (rawJson == null || rawJson.isBlank()) return result;
+
+        String cleanJson = rawJson.trim();
+        if (cleanJson.startsWith("```json")) {
+            cleanJson = cleanJson.substring(7);
+        } else if (cleanJson.startsWith("```")) {
+            cleanJson = cleanJson.substring(3);
+        }
+        if (cleanJson.endsWith("```")) {
+            cleanJson = cleanJson.substring(0, cleanJson.length() - 3);
+        }
+        cleanJson = cleanJson.trim();
+
+        try {
+            JsonNode root = objectMapper.readTree(cleanJson);
+            if (root.has("success") && !root.get("success").asBoolean(true)) {
+                System.err.println("[QuizGenerationService] Groq error payload in batch parse: " + root.toString());
+                return result;
+            }
+
+            JsonNode questionsNode = root.get("questions");
+            if (questionsNode == null || !questionsNode.isArray() || questionsNode.size() != blueprint.size()) {
+                System.err.println("[QuizGenerationService] Invalid questions array in batch response. Expected " + blueprint.size() + ", got: " + (questionsNode != null && questionsNode.isArray() ? questionsNode.size() : "none"));
+                return result;
+            }
+
+            Set<String> seenTexts = new HashSet<>();
+
+            for (int i = 0; i < questionsNode.size(); i++) {
+                JsonNode qNode = questionsNode.get(i);
+                QuestionBlueprintSpec spec = blueprint.get(i);
+
+                if (!qNode.has("questionText") || !qNode.has("options") || !qNode.get("options").isArray()) {
+                    System.err.println("[QuizGenerationService] Question " + (i+1) + " missing questionText or options array");
+                    return new ArrayList<>();
+                }
+
+                String questionText = qNode.path("questionText").asText().trim();
+                if (questionText.isEmpty() || seenTexts.contains(questionText.toLowerCase())) {
+                    System.err.println("[QuizGenerationService] Duplicate or empty questionText at index " + i + ": " + questionText);
+                    return new ArrayList<>();
+                }
+                seenTexts.add(questionText.toLowerCase());
+
+                List<String> options = new ArrayList<>();
+                qNode.get("options").forEach(opt -> options.add(opt.asText().trim()));
+                if (options.size() != 4) {
+                    System.err.println("[QuizGenerationService] Question " + (i+1) + " options size is not 4: " + options.size());
+                    return new ArrayList<>();
+                }
+
+                int correctIdx = qNode.path("correctOptionIndex").asInt(0);
+                if (correctIdx < 0 || correctIdx > 3) {
+                    correctIdx = 0;
+                }
+
+                String explanation = qNode.path("conceptualExplanation").asText("Conceptual explanation for " + spec.getConcept()).trim();
+                if (explanation.isEmpty()) {
+                    explanation = "Conceptual explanation for " + spec.getConcept();
+                }
+
+                QuizQuestion question = QuizQuestion.builder()
+                        .subject(subject)
+                        .concept(spec.getConcept())
+                        .difficulty(spec.getDifficulty())
+                        .questionText(questionText)
+                        .options(options)
+                        .correctOptionIndex(correctIdx)
+                        .conceptualExplanation(explanation)
+                        .build();
+
+                question.setQuestionSource("GROQ_DIAGNOSTIC_BATCH");
+                question.setGenerationVersion(3);
+                String fp = "fp_" + Math.abs(question.getQuestionText().hashCode());
+                question.setQuestionFingerprint(fp);
+
+                result.add(question);
+            }
+        } catch (Exception e) {
+            System.err.println("[QuizGenerationService] Failed to parse batch Groq response: " + e.getMessage());
+        }
+        return result;
+    }
+
     public QuizQuestion generateOneDiagnosticQuestionViaGroq(String subject, String concept, QuizQuestion.Difficulty difficulty, Map<String, Object> context) {
         if (difficulty == null) difficulty = QuizQuestion.Difficulty.MEDIUM;
         if (concept == null || concept.isBlank()) concept = "General Principles";

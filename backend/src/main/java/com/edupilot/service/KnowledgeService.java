@@ -111,12 +111,12 @@ public class KnowledgeService {
         ConceptMastery.ConceptStatus status;
         if (attempts == 0) {
             status = ConceptMastery.ConceptStatus.UNASSESSED;
-        } else if (confidence < 75.0) { // attempts < 3
-            status = ConceptMastery.ConceptStatus.UNCERTAIN; // insufficient evidence
+        } else if (confidence < 50.0) { // attempts < 2 (insufficient evidence)
+            status = ConceptMastery.ConceptStatus.UNCERTAIN;
         } else if (accuracy >= 70.0) {
-            status = ConceptMastery.ConceptStatus.STRONG; // high confidence, accuracy >= 70%
+            status = ConceptMastery.ConceptStatus.STRONG; // confidence >= 50%, accuracy >= 70%
         } else {
-            status = ConceptMastery.ConceptStatus.WEAK; // high confidence, accuracy < 70%
+            status = ConceptMastery.ConceptStatus.WEAK; // confidence >= 50%, accuracy < 70%
         }
 
         String action;
@@ -139,6 +139,8 @@ public class KnowledgeService {
         cm.setStatus(status);
         cm.setRecommendedAction(action);
         cm.setLastAssessedAt(LocalDateTime.now());
+
+        System.out.println("[MASTERY DEBUG CALCULATION] concept=" + conceptName + ", attempts=" + attempts + ", corrects=" + corrects + ", accuracy=" + accuracy + "%, status=" + status);
 
         ConceptMastery savedCm = conceptRepository.save(cm);
 
@@ -201,12 +203,26 @@ public class KnowledgeService {
 
         profileRepository.save(kp);
 
-        // Sync with StudentProfile to preserve compatibility with existing UI/cards
+        // Sync with StudentProfile (defensive lookup: findByUserId with findById fallback)
         Optional<StudentProfile> profOpt = studentProfileRepository.findByUserId(userId);
+        if (profOpt.isEmpty()) {
+            profOpt = studentProfileRepository.findById(userId);
+        }
+
         if (profOpt.isPresent()) {
             StudentProfile prof = profOpt.get();
             
             String sName = (subjectName != null && !subjectName.isBlank()) ? subjectName : "General";
+
+            // Calculate subject-specific health score
+            double subjectHealthScore = healthScore;
+            List<ConceptMastery> subjectConcepts = allConcepts.stream()
+                    .filter(c -> c.getSubjectName() != null && c.getSubjectName().equalsIgnoreCase(sName))
+                    .collect(Collectors.toList());
+            if (!subjectConcepts.isEmpty()) {
+                double subjectAccSum = subjectConcepts.stream().mapToDouble(ConceptMastery::getAccuracy).sum();
+                subjectHealthScore = Math.round((subjectAccSum / subjectConcepts.size()) * 10.0) / 10.0;
+            }
 
             Map<String, List<String>> weakMap = prof.getWeakConcepts() != null ? prof.getWeakConcepts() : new HashMap<>();
             weakMap.put(sName, weakList);
@@ -217,10 +233,14 @@ public class KnowledgeService {
             prof.setStrongConcepts(strongMap);
 
             Map<String, Double> masteryMap = prof.getConceptMastery() != null ? prof.getConceptMastery() : new HashMap<>();
-            masteryMap.put(sName, healthScore);
+            masteryMap.put(sName, subjectHealthScore);
             prof.setConceptMastery(masteryMap);
 
             studentProfileRepository.save(prof);
+
+            System.out.println("[PROFILE DEBUG AFTER] userId=" + userId + ", subject=" + sName + ", updatedMastery=" + subjectHealthScore + "%, strongCount=" + strongList.size() + ", weakCount=" + weakList.size());
+        } else {
+            System.err.println("[PROFILE DEBUG WARNING] Could not find StudentProfile for userId=" + userId + " to persist mastery summary.");
         }
 
         // Trigger real-time recommendation engine generation

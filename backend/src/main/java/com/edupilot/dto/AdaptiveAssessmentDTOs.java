@@ -84,6 +84,8 @@ public class AdaptiveAssessmentDTOs {
         private String difficulty;
         private String questionText;
         private List<String> options;
+        private Integer correctOptionIndex;
+        private String conceptualExplanation;
 
         public QuestionItemDTO() {}
 
@@ -94,6 +96,17 @@ public class AdaptiveAssessmentDTOs {
             this.difficulty = difficulty;
             this.questionText = questionText;
             this.options = options;
+        }
+
+        public QuestionItemDTO(String questionId, String subject, String concept, String difficulty, String questionText, List<String> options, Integer correctOptionIndex, String conceptualExplanation) {
+            this.questionId = questionId;
+            this.subject = subject;
+            this.concept = concept;
+            this.difficulty = difficulty;
+            this.questionText = questionText;
+            this.options = options;
+            this.correctOptionIndex = correctOptionIndex;
+            this.conceptualExplanation = conceptualExplanation;
         }
 
         public String getQuestionId() { return questionId; }
@@ -108,6 +121,10 @@ public class AdaptiveAssessmentDTOs {
         public void setQuestionText(String questionText) { this.questionText = questionText; }
         public List<String> getOptions() { return options; }
         public void setOptions(List<String> options) { this.options = options; }
+        public Integer getCorrectOptionIndex() { return correctOptionIndex; }
+        public void setCorrectOptionIndex(Integer correctOptionIndex) { this.correctOptionIndex = correctOptionIndex; }
+        public String getConceptualExplanation() { return conceptualExplanation; }
+        public void setConceptualExplanation(String conceptualExplanation) { this.conceptualExplanation = conceptualExplanation; }
     }
 
     public static class AdaptiveNextResponse {
@@ -175,6 +192,7 @@ public class AdaptiveAssessmentDTOs {
     public static class AdaptiveSubmitResponse {
         private String adaptiveSessionId;
         private boolean isCorrect;
+        private Integer correctOptionIndex;
         private String explanation;
         private boolean completed;
         private String updatedConceptStatus;
@@ -193,10 +211,23 @@ public class AdaptiveAssessmentDTOs {
             this.nextDifficulty = nextDifficulty;
         }
 
+        public AdaptiveSubmitResponse(String adaptiveSessionId, boolean isCorrect, Integer correctOptionIndex, String explanation, boolean completed, String updatedConceptStatus, double updatedConceptConfidence, String nextDifficulty) {
+            this.adaptiveSessionId = adaptiveSessionId;
+            this.isCorrect = isCorrect;
+            this.correctOptionIndex = correctOptionIndex;
+            this.explanation = explanation;
+            this.completed = completed;
+            this.updatedConceptStatus = updatedConceptStatus;
+            this.updatedConceptConfidence = updatedConceptConfidence;
+            this.nextDifficulty = nextDifficulty;
+        }
+
         public String getAdaptiveSessionId() { return adaptiveSessionId; }
         public void setAdaptiveSessionId(String adaptiveSessionId) { this.adaptiveSessionId = adaptiveSessionId; }
         public boolean isIsCorrect() { return isCorrect; }
         public void setIsCorrect(boolean isCorrect) { this.isCorrect = isCorrect; }
+        public Integer getCorrectOptionIndex() { return correctOptionIndex; }
+        public void setCorrectOptionIndex(Integer correctOptionIndex) { this.correctOptionIndex = correctOptionIndex; }
         public String getExplanation() { return explanation; }
         public void setExplanation(String explanation) { this.explanation = explanation; }
         public boolean isCompleted() { return completed; }

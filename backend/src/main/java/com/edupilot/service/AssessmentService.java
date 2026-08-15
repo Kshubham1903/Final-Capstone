@@ -99,11 +99,115 @@ public class AssessmentService {
         return resultList;
     }
 
+    public List<QuizGenerationService.QuestionBlueprintSpec> buildAdaptiveBlueprint(String subjectName, String userId) {
+        List<QuizGenerationService.QuestionBlueprintSpec> blueprint = new ArrayList<>();
+        List<String> blueprintConcepts = RecommendationService.getSubjectBlueprintConcepts(subjectName);
+
+        if (blueprintConcepts == null || blueprintConcepts.isEmpty()) {
+            blueprintConcepts = List.of("Core Principles", "Foundational Concepts", "Advanced Applications");
+        }
+
+        List<ConceptMastery> userConcepts = null;
+        if (userId != null && !userId.isBlank() && !"anonymous_student".equals(userId)) {
+            userConcepts = conceptRepository.findByUserId(userId);
+        }
+
+        Map<String, ConceptMastery> cmMap = new HashMap<>();
+        if (userConcepts != null) {
+            for (ConceptMastery cm : userConcepts) {
+                String cmSubject = cm.getSubjectName();
+                if (cmSubject == null || cmSubject.equalsIgnoreCase(subjectName)) {
+                    if (cm.getTopic() != null) cmMap.put(cm.getTopic().trim().toLowerCase(), cm);
+                    if (cm.getConceptName() != null) cmMap.put(cm.getConceptName().trim().toLowerCase(), cm);
+                }
+            }
+        }
+
+        List<String> weakConcepts = new ArrayList<>();
+        List<String> strongConcepts = new ArrayList<>();
+        List<String> neutralConcepts = new ArrayList<>();
+
+        for (String concept : blueprintConcepts) {
+            ConceptMastery cm = cmMap.get(concept.toLowerCase());
+            if (cm != null) {
+                if (cm.getAccuracy() < 50.0 || cm.getStatus() == ConceptMastery.ConceptStatus.WEAK) {
+                    weakConcepts.add(concept);
+                } else if (cm.getAccuracy() >= 75.0 || cm.getStatus() == ConceptMastery.ConceptStatus.STRONG) {
+                    strongConcepts.add(concept);
+                } else {
+                    neutralConcepts.add(concept);
+                }
+            } else {
+                neutralConcepts.add(concept);
+            }
+        }
+
+        // FIRST-TIME / BASELINE STUDENT: No clear performance data
+        if (weakConcepts.isEmpty() && strongConcepts.isEmpty()) {
+            QuizQuestion.Difficulty[] diffPattern = {
+                QuizQuestion.Difficulty.EASY,
+                QuizQuestion.Difficulty.EASY,
+                QuizQuestion.Difficulty.EASY,
+                QuizQuestion.Difficulty.MEDIUM,
+                QuizQuestion.Difficulty.MEDIUM,
+                QuizQuestion.Difficulty.MEDIUM,
+                QuizQuestion.Difficulty.MEDIUM,
+                QuizQuestion.Difficulty.HARD,
+                QuizQuestion.Difficulty.HARD,
+                QuizQuestion.Difficulty.HARD
+            };
+
+            for (int i = 0; i < 10; i++) {
+                String c = blueprintConcepts.get(i % blueprintConcepts.size());
+                blueprint.add(new QuizGenerationService.QuestionBlueprintSpec(i + 1, c, diffPattern[i]));
+            }
+            return blueprint;
+        }
+
+        // STUDENT WITH PERFORMANCE DATA: Prioritize weak concepts (~6 slots), balance with neutral/strong (~4 slots)
+        List<String> assignedConcepts = new ArrayList<>();
+
+        if (!weakConcepts.isEmpty()) {
+            for (int i = 0; i < 6; i++) {
+                assignedConcepts.add(weakConcepts.get(i % weakConcepts.size()));
+            }
+        } else {
+            for (int i = 0; i < 6; i++) {
+                assignedConcepts.add(neutralConcepts.get(i % neutralConcepts.size()));
+            }
+        }
+
+        List<String> pool = new ArrayList<>();
+        if (!strongConcepts.isEmpty()) pool.addAll(strongConcepts);
+        if (!neutralConcepts.isEmpty()) pool.addAll(neutralConcepts);
+        if (pool.isEmpty()) pool.addAll(blueprintConcepts);
+
+        for (int i = 0; i < 4; i++) {
+            assignedConcepts.add(pool.get(i % pool.size()));
+        }
+
+        for (int i = 0; i < 10; i++) {
+            String c = assignedConcepts.get(i);
+            boolean isWeak = weakConcepts.contains(c);
+            QuizQuestion.Difficulty diff;
+            if (i < 3) {
+                diff = isWeak ? QuizQuestion.Difficulty.EASY : QuizQuestion.Difficulty.MEDIUM;
+            } else if (i < 7) {
+                diff = isWeak ? QuizQuestion.Difficulty.MEDIUM : QuizQuestion.Difficulty.MEDIUM;
+            } else {
+                diff = isWeak ? QuizQuestion.Difficulty.MEDIUM : QuizQuestion.Difficulty.HARD;
+            }
+            blueprint.add(new QuizGenerationService.QuestionBlueprintSpec(i + 1, c, diff));
+        }
+
+        return blueprint;
+    }
+
     public AssessmentSessionResponse startAssessmentSession(AssessmentStartRequest req) {
         String branch = req.getBranch() != null ? req.getBranch() : "Computer Science & Engineering";
         int semester = req.getSemester() > 0 ? req.getSemester() : 3;
         String subjectCode = req.getSubjectCode() != null ? req.getSubjectCode().trim().toUpperCase() : "CS301";
-        int count = req.getQuestionCount() > 0 ? req.getQuestionCount() : 5;
+        int count = 10; // Batch architecture generates 10 questions in ONE Groq call
         String userId = req.getUserId() != null ? req.getUserId() : "anonymous_student";
 
         String subjectName = req.getSubjectName() != null && !req.getSubjectName().isBlank()
@@ -116,6 +220,21 @@ public class AssessmentService {
             }
         }
 
+        // Build 10-question adaptive blueprint
+        List<QuizGenerationService.QuestionBlueprintSpec> blueprint = buildAdaptiveBlueprint(subjectName, userId);
+
+        // Pre-generate 10-question batch via ONE Groq request
+        Map<String, Object> genContext = new HashMap<>();
+        genContext.put("adaptiveSummary", "Baseline 10-question initial assessment");
+        List<QuizQuestion> generatedBatch = quizGenerationService.generateBatchDiagnosticQuestionsViaGroq(subjectName, blueprint, genContext);
+
+        List<String> questionIds = new ArrayList<>();
+        List<String> fingerprints = new ArrayList<>();
+        for (QuizQuestion q : generatedBatch) {
+            questionIds.add(q.getId());
+            fingerprints.add(q.getQuestionFingerprint() != null ? q.getQuestionFingerprint() : q.getQuestionText());
+        }
+
         AssessmentSession session = new AssessmentSession();
         session.setUserId(userId);
         session.setStudentProfileId(userId);
@@ -123,12 +242,14 @@ public class AssessmentService {
         session.setSemester(semester);
         session.setSubjectCode(subjectCode);
         session.setSubjectName(subjectName);
-        session.setQuestionIds(new ArrayList<>());
-        session.setTotalQuestions(count);
-        session.setTotalMarks(count * 2);
+        session.setQuestionIds(questionIds);
+        session.setUsedQuestionFingerprints(fingerprints);
+        session.setTotalQuestions(10);
+        session.setTotalMarks(20);
         session.setStatus(AssessmentSession.Status.IN_PROGRESS);
         session.setStartTime(LocalDateTime.now());
         session.setQuestionCount(0);
+        session.setCurrentQuestionId(questionIds.isEmpty() ? null : questionIds.get(0));
         session.setActiveQuestionSubmitted(false);
 
         AssessmentSession savedSession = sessionRepository.save(session);
@@ -139,9 +260,9 @@ public class AssessmentService {
         resp.setSemester(semester);
         resp.setSubjectCode(subjectCode);
         resp.setSubjectName(subjectName);
-        resp.setTotalQuestions(count);
-        resp.setTotalMarks(count * 2);
-        resp.setQuestions(new ArrayList<>()); // 1-by-1 questions fetched via /api/assessment/initial/next
+        resp.setTotalQuestions(10);
+        resp.setTotalMarks(20);
+        resp.setQuestions(new ArrayList<>());
 
         return resp;
     }
@@ -412,16 +533,32 @@ public class AssessmentService {
         String subjectName = req.getSubjectName() != null && !req.getSubjectName().isBlank()
                 ? req.getSubjectName().trim() : diagSession.getSubjectName();
 
-        AdaptiveSession session = new AdaptiveSession(null, req.getDiagnosticSessionId(), effectiveUserId, diagSession.getStudentProfileId(), req.getSubjectCode(), subjectName, targetConcepts);
-        session.setMaxQuestions(5);
-        session.setStatus(AdaptiveSession.Status.IN_PROGRESS);
+        // Build Stage 2 10-question adaptive blueprint
+        List<QuizGenerationService.QuestionBlueprintSpec> blueprint = buildAdaptiveBlueprint(subjectName, effectiveUserId);
 
-        if (diagSession.getUsedQuestionFingerprints() != null) {
-            System.out.println("[AssessmentService] Stage 1 used fingerprint count = " + diagSession.getUsedQuestionFingerprints().size());
-            List<String> inheritedFingerprints = new ArrayList<>(diagSession.getUsedQuestionFingerprints());
-            session.setUsedQuestionFingerprints(inheritedFingerprints);
-            System.out.println("[AssessmentService] Adaptive inherited fingerprint count = " + session.getUsedQuestionFingerprints().size());
+        Map<String, Object> genContext = new HashMap<>();
+        genContext.put("adaptiveSummary", "Stage 2 10-question adaptive assessment batch");
+        List<QuizQuestion> generatedBatch = quizGenerationService.generateBatchDiagnosticQuestionsViaGroq(subjectName, blueprint, genContext);
+
+        targetConcepts.clear();
+        List<String> questionIds = new ArrayList<>();
+        List<String> fingerprints = new ArrayList<>();
+        for (QuizQuestion q : generatedBatch) {
+            questionIds.add(q.getId());
+            fingerprints.add(q.getQuestionFingerprint() != null ? q.getQuestionFingerprint() : q.getQuestionText());
+            if (!targetConcepts.contains(q.getConcept())) {
+                targetConcepts.add(q.getConcept());
+            }
         }
+
+        AdaptiveSession session = new AdaptiveSession(null, req.getDiagnosticSessionId(), effectiveUserId, diagSession.getStudentProfileId(), req.getSubjectCode(), subjectName, targetConcepts);
+        session.setUsedQuestionIds(questionIds);
+        session.setUsedQuestionFingerprints(fingerprints);
+        session.setMaxQuestions(10);
+        session.setQuestionCount(0);
+        session.setCurrentQuestionId(questionIds.isEmpty() ? null : questionIds.get(0));
+        session.setActiveQuestionSubmitted(false);
+        session.setStatus(AdaptiveSession.Status.IN_PROGRESS);
 
         AdaptiveSession saved = adaptiveSessionRepository.save(session);
 
@@ -443,123 +580,35 @@ public class AssessmentService {
                 throw new SecurityException("Unauthorized session access: User does not own adaptive session " + req.getAdaptiveSessionId());
             }
 
-            if (session.getStatus() != AdaptiveSession.Status.IN_PROGRESS) {
-                return new AdaptiveAssessmentDTOs.AdaptiveNextResponse(session.getId(), true, null, 10, 10, session.getCurrentConcept(), session.getCurrentDifficulty().name());
-            }
+            int count = session.getQuestionCount();
+            List<String> qIds = session.getUsedQuestionIds();
 
-            // Strict 10-Question Session Invariant: Stage 2 serves 5 questions (Q6-Q10)
-            if (session.getQuestionCount() >= 5) {
+            System.out.println("[SESSION DEBUG BEFORE getAdaptiveNextQuestion] sessionId=" + session.getId() + ", currentQuestionIndex=" + count + ", completedCount=" + count + ", isComplete=" + (session.getStatus() == AdaptiveSession.Status.COMPLETED));
+
+            if (session.getStatus() != AdaptiveSession.Status.IN_PROGRESS || qIds == null || count >= qIds.size() || count >= 10) {
                 session.setStatus(AdaptiveSession.Status.COMPLETED);
                 adaptiveSessionRepository.save(session);
-                return new AdaptiveAssessmentDTOs.AdaptiveNextResponse(session.getId(), true, null, 10, 10, session.getCurrentConcept(), session.getCurrentDifficulty().name());
+                return new AdaptiveAssessmentDTOs.AdaptiveNextResponse(session.getId(), true, null, 10, 10, session.getCurrentConcept(), session.getCurrentDifficulty() != null ? session.getCurrentDifficulty().name() : "MEDIUM");
             }
 
-            // Check if there is an active unsubmitted question
-            if (session.getCurrentQuestionId() != null && !session.isActiveQuestionSubmitted()) {
-                Optional<QuizQuestion> qOpt = quizQuestionRepository.findById(session.getCurrentQuestionId());
-                if (qOpt.isPresent()) {
-                    QuizQuestion q = qOpt.get();
-                    AdaptiveAssessmentDTOs.QuestionItemDTO dto = new AdaptiveAssessmentDTOs.QuestionItemDTO(q.getId(), q.getSubject(), q.getConcept(), q.getDifficulty().name(), q.getQuestionText(), q.getOptions());
-                    int overallQNum = 5 + session.getQuestionCount() + 1;
-                    System.out.println("[AdaptiveAssessment] Returning active unsubmitted question: sessionId=" + session.getId() + ", questionNumber=" + overallQNum + ", questionId=" + q.getId());
-                    return new AdaptiveAssessmentDTOs.AdaptiveNextResponse(session.getId(), false, dto, overallQNum, 10, q.getConcept(), q.getDifficulty().name());
-                }
-            }
+            String activeQId = qIds.get(count);
+            QuizQuestion newQuestion = quizQuestionRepository.findById(activeQId)
+                    .orElseThrow(() -> new IllegalStateException("Question ID " + activeQId + " not found in database"));
 
-            // Select target concept for this Stage 2 question from targetConcepts or subject blueprint
-            String nextTargetConcept = null;
-            if (session.getTargetConcepts() != null && !session.getTargetConcepts().isEmpty()) {
-                int idx = session.getQuestionCount() % session.getTargetConcepts().size();
-                nextTargetConcept = session.getTargetConcepts().get(idx);
-            }
-            if (nextTargetConcept == null || !RecommendationService.isConceptValidForSubject(session.getSubjectName(), nextTargetConcept)) {
-                List<String> blueprint = RecommendationService.getSubjectBlueprintConcepts(session.getSubjectName());
-                nextTargetConcept = blueprint.get(session.getQuestionCount() % blueprint.size());
-            }
-
-            // Determine target difficulty for nextTargetConcept
-            List<ConceptMastery> userConcepts = conceptRepository.findByUserId(session.getUserId());
-            Map<String, ConceptMastery> cmMap = new HashMap<>();
-            if (userConcepts != null) {
-                for (ConceptMastery cm : userConcepts) {
-                    if (cm.getTopic() != null) cmMap.put(cm.getTopic().trim().toLowerCase(), cm);
-                    if (cm.getConceptName() != null) cmMap.put(cm.getConceptName().trim().toLowerCase(), cm);
-                }
-            }
-
-            ConceptMastery cmTarget = cmMap.get(nextTargetConcept.toLowerCase());
-            QuizQuestion.Difficulty targetDifficulty = session.getCurrentDifficulty();
-            if (cmTarget != null) {
-                if (cmTarget.getAccuracy() < 40.0) {
-                    targetDifficulty = QuizQuestion.Difficulty.EASY;
-                } else if (cmTarget.getAccuracy() >= 80.0 && cmTarget.getAttemptCount() >= 2) {
-                    targetDifficulty = QuizQuestion.Difficulty.HARD;
-                } else {
-                    targetDifficulty = QuizQuestion.Difficulty.MEDIUM;
-                }
-            }
-
-            List<String> combinedExclusions = new ArrayList<>();
-            if (session.getUsedQuestionFingerprints() != null) {
-                combinedExclusions.addAll(session.getUsedQuestionFingerprints());
-            }
-
-            if (session.getUserId() != null && session.getSubjectName() != null) {
-                List<AdaptiveSession> pastSessions = adaptiveSessionRepository.findTop5ByUserIdAndSubjectNameOrderByStartTimeDesc(session.getUserId(), session.getSubjectName());
-                if (pastSessions != null) {
-                    for (AdaptiveSession past : pastSessions) {
-                        if (!past.getId().equals(session.getId()) && past.getUsedQuestionFingerprints() != null) {
-                            for (String fp : past.getUsedQuestionFingerprints()) {
-                                if (!combinedExclusions.contains(fp)) {
-                                    combinedExclusions.add(fp);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            List<String> boundedExclusions = combinedExclusions.size() > 10 
-                    ? combinedExclusions.subList(combinedExclusions.size() - 10, combinedExclusions.size())
-                    : combinedExclusions;
-
-            Map<String, Object> genContext = new HashMap<>();
-            if (cmTarget != null) genContext.put("mastery", cmTarget.getAccuracy());
-            genContext.put("excludeQuestions", boundedExclusions);
-
-            boolean isValidConcept = RecommendationService.isConceptValidForSubject(session.getSubjectName(), nextTargetConcept);
-
-            if (!isValidConcept) {
-                System.err.println("[AdaptiveAssessment] INVALID CONCEPT MISMATCH REJECTED BEFORE GROQ: Subject '" + session.getSubjectName() + "' cannot evaluate concept '" + nextTargetConcept + "'");
-                throw new IllegalArgumentException("Subject/Concept Mismatch: Subject '" + session.getSubjectName() + "' does not contain concept '" + nextTargetConcept + "'");
-            }
-
-            int questionCountBefore = session.getQuestionCount();
-
-            // Groq generates EXACTLY ONE question for the target concept and difficulty
-            QuizQuestion newQuestion = quizGenerationService.generateOneDiagnosticQuestionViaGroq(session.getSubjectName(), nextTargetConcept, targetDifficulty, genContext);
-
-            session.setCurrentConcept(nextTargetConcept);
-            session.setCurrentDifficulty(targetDifficulty);
+            session.setCurrentConcept(newQuestion.getConcept());
+            session.setCurrentDifficulty(newQuestion.getDifficulty());
             session.setCurrentQuestionId(newQuestion.getId());
             session.setActiveQuestionSubmitted(false);
-            String targetFp = (newQuestion.getQuestionFingerprint() != null && !newQuestion.getQuestionFingerprint().isBlank())
-                    ? newQuestion.getQuestionFingerprint() : newQuestion.getQuestionText();
-            if (session.getUsedQuestionIds() == null) session.setUsedQuestionIds(new ArrayList<>());
-            if (!session.getUsedQuestionIds().contains(newQuestion.getId())) {
-                session.getUsedQuestionIds().add(newQuestion.getId());
-            }
-            if (session.getUsedQuestionFingerprints() == null) session.setUsedQuestionFingerprints(new ArrayList<>());
-            if (!session.getUsedQuestionFingerprints().contains(targetFp)) {
-                session.getUsedQuestionFingerprints().add(targetFp);
-            }
             adaptiveSessionRepository.save(session);
 
-            int generatedQuestionNumber = 5 + questionCountBefore + 1;
-            System.out.println("[AdaptiveAssessment] sessionId=" + session.getId() + ", questionCountBefore=" + questionCountBefore + ", generatedQuestionNumber=" + generatedQuestionNumber + ", questionCountAfter=" + session.getQuestionCount() + ", fingerprint=" + targetFp);
+            int overallQNum = count + 1;
+            System.out.println("[SESSION DEBUG AFTER getAdaptiveNextQuestion] sessionId=" + session.getId() + ", responseQuestionNumber=" + overallQNum + ", responseQuestionId=" + newQuestion.getId() + ", isComplete=false");
 
-            AdaptiveAssessmentDTOs.QuestionItemDTO dto = new AdaptiveAssessmentDTOs.QuestionItemDTO(newQuestion.getId(), newQuestion.getSubject(), newQuestion.getConcept(), newQuestion.getDifficulty().name(), newQuestion.getQuestionText(), newQuestion.getOptions());
-            return new AdaptiveAssessmentDTOs.AdaptiveNextResponse(session.getId(), false, dto, generatedQuestionNumber, 10, nextTargetConcept, targetDifficulty.name());
+            AdaptiveAssessmentDTOs.QuestionItemDTO dto = new AdaptiveAssessmentDTOs.QuestionItemDTO(
+                    newQuestion.getId(), newQuestion.getSubject(), newQuestion.getConcept(), newQuestion.getDifficulty().name(),
+                    newQuestion.getQuestionText(), newQuestion.getOptions(), newQuestion.getCorrectOptionIndex(), newQuestion.getConceptualExplanation()
+            );
+            return new AdaptiveAssessmentDTOs.AdaptiveNextResponse(session.getId(), false, dto, overallQNum, 10, newQuestion.getConcept(), newQuestion.getDifficulty().name());
         }
     }
 
@@ -617,7 +666,7 @@ public class AssessmentService {
         }
 
         // Difficulty selection adjustment rule:
-        QuizQuestion.Difficulty nextDiff = session.getCurrentDifficulty();
+        QuizQuestion.Difficulty nextDiff = session.getCurrentDifficulty() != null ? session.getCurrentDifficulty() : QuizQuestion.Difficulty.MEDIUM;
         if (isCorrect) {
             if (req.getResponseTimeSeconds() < 15.0 && nextDiff != QuizQuestion.Difficulty.HARD) {
                 nextDiff = nextDiff == QuizQuestion.Difficulty.EASY ? QuizQuestion.Difficulty.MEDIUM : QuizQuestion.Difficulty.HARD;
@@ -629,7 +678,6 @@ public class AssessmentService {
         }
         session.setCurrentDifficulty(nextDiff);
 
-        // Session invariant: Stage 2 completes after 5 questions (overall Q10)
         boolean completed = session.getQuestionCount() >= session.getMaxQuestions();
         if (completed) {
             session.setStatus(AdaptiveSession.Status.COMPLETED);
@@ -640,6 +688,7 @@ public class AssessmentService {
         return new AdaptiveAssessmentDTOs.AdaptiveSubmitResponse(
                 session.getId(),
                 isCorrect,
+                question.getCorrectOptionIndex(),
                 question.getConceptualExplanation(),
                 completed,
                 updatedStatus,
@@ -649,7 +698,7 @@ public class AssessmentService {
     }
 
     // =========================================================================
-    // PHASE 6: TRUE ONE-BY-ONE GROQ INITIAL DIAGNOSTIC METHODS
+    // PHASE 6: GROQ INITIAL DIAGNOSTIC BATCH METHODS
     // =========================================================================
 
     public AdaptiveAssessmentDTOs.AdaptiveNextResponse getInitialNextQuestion(AdaptiveAssessmentDTOs.AdaptiveNextRequest req, String authenticatedUserId) {
@@ -669,89 +718,27 @@ public class AssessmentService {
                 throw new SecurityException("Unauthorized session access: User does not own assessment session " + req.getAdaptiveSessionId());
             }
 
-            int stage1Limit = session.getTotalQuestions() > 0 ? session.getTotalQuestions() : 5;
+            int count = session.getQuestionCount();
+            List<String> qIds = session.getQuestionIds();
 
-            if (session.getStatus() != AssessmentSession.Status.IN_PROGRESS || session.getQuestionCount() >= stage1Limit) {
-                return new AdaptiveAssessmentDTOs.AdaptiveNextResponse(session.getId(), true, null, session.getQuestionCount(), 10, "Complete", "MEDIUM");
+            if (session.getStatus() != AssessmentSession.Status.IN_PROGRESS || qIds == null || count >= qIds.size() || count >= 10) {
+                return new AdaptiveAssessmentDTOs.AdaptiveNextResponse(session.getId(), true, null, 10, 10, "Complete", "MEDIUM");
             }
 
-            // Return active unsubmitted question if user is fetching active item again
-            if (session.getCurrentQuestionId() != null && !session.isActiveQuestionSubmitted()) {
-                Optional<QuizQuestion> qOpt = quizQuestionRepository.findById(session.getCurrentQuestionId());
-                if (qOpt.isPresent()) {
-                    QuizQuestion q = qOpt.get();
-                    AdaptiveAssessmentDTOs.QuestionItemDTO dto = new AdaptiveAssessmentDTOs.QuestionItemDTO(q.getId(), q.getSubject(), q.getConcept(), q.getDifficulty().name(), q.getQuestionText(), q.getOptions());
-                    return new AdaptiveAssessmentDTOs.AdaptiveNextResponse(session.getId(), false, dto, session.getQuestionCount() + 1, 10, q.getConcept(), q.getDifficulty().name());
-                }
-            }
-
-            // Authoritative Dynamic Subject-Aware Diagnostic Blueprint Concepts
-            List<String> blueprintConcepts = RecommendationService.getSubjectBlueprintConcepts(session.getSubjectName());
-
-            int conceptIndex = session.getQuestionCount() % blueprintConcepts.size();
-            String targetConcept = blueprintConcepts.get(conceptIndex);
-
-            // Determine difficulty: start at MEDIUM baseline
-            QuizQuestion.Difficulty targetDifficulty = QuizQuestion.Difficulty.MEDIUM;
-
-            List<String> combinedExclusions = new ArrayList<>();
-            if (session.getUsedQuestionFingerprints() != null) {
-                combinedExclusions.addAll(session.getUsedQuestionFingerprints());
-            }
-
-            if (effectiveUserId != null && session.getSubjectName() != null) {
-                List<AssessmentSession> pastSessions = sessionRepository.findTop5ByUserIdAndSubjectNameOrderByStartTimeDesc(effectiveUserId, session.getSubjectName());
-                if (pastSessions != null) {
-                    for (AssessmentSession past : pastSessions) {
-                        if (!past.getId().equals(session.getId()) && past.getUsedQuestionFingerprints() != null) {
-                            for (String fp : past.getUsedQuestionFingerprints()) {
-                                if (!combinedExclusions.contains(fp)) {
-                                    combinedExclusions.add(fp);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            List<String> boundedExclusions = combinedExclusions.size() > 10 
-                    ? combinedExclusions.subList(combinedExclusions.size() - 10, combinedExclusions.size())
-                    : combinedExclusions;
-
-            Map<String, Object> genContext = new HashMap<>();
-            genContext.put("excludeQuestions", boundedExclusions);
-
-            boolean isValidConcept = RecommendationService.isConceptValidForSubject(session.getSubjectName(), targetConcept);
-
-            if (!isValidConcept) {
-                System.err.println("[InitialAssessment] INVALID CONCEPT MISMATCH REJECTED BEFORE GROQ: Subject '" + session.getSubjectName() + "' cannot evaluate concept '" + targetConcept + "'");
-                throw new IllegalArgumentException("Subject/Concept Mismatch: Subject '" + session.getSubjectName() + "' does not contain concept '" + targetConcept + "'");
-            }
-
-            int questionCountBefore = session.getQuestionCount();
-
-            // Groq generates EXACTLY ONE question for the blueprint concept (NO DB or domain-bank fallback)
-            QuizQuestion newQuestion = quizGenerationService.generateOneDiagnosticQuestionViaGroq(session.getSubjectName(), targetConcept, targetDifficulty, genContext);
+            String activeQId = qIds.get(count);
+            QuizQuestion newQuestion = quizQuestionRepository.findById(activeQId)
+                    .orElseThrow(() -> new IllegalStateException("Question ID " + activeQId + " not found in database"));
 
             session.setCurrentQuestionId(newQuestion.getId());
             session.setActiveQuestionSubmitted(false);
-            String initialFp = (newQuestion.getQuestionFingerprint() != null && !newQuestion.getQuestionFingerprint().isBlank())
-                    ? newQuestion.getQuestionFingerprint() : newQuestion.getQuestionText();
-            if (session.getQuestionIds() == null) session.setQuestionIds(new ArrayList<>());
-            if (!session.getQuestionIds().contains(newQuestion.getId())) {
-                session.getQuestionIds().add(newQuestion.getId());
-            }
-            if (session.getUsedQuestionFingerprints() == null) session.setUsedQuestionFingerprints(new ArrayList<>());
-            if (!session.getUsedQuestionFingerprints().contains(initialFp)) {
-                session.getUsedQuestionFingerprints().add(initialFp);
-            }
             sessionRepository.save(session);
 
-            int generatedQuestionNumber = questionCountBefore + 1;
-            System.out.println("[InitialAssessment] sessionId=" + session.getId() + ", questionCountBefore=" + questionCountBefore + ", generatedQuestionNumber=" + generatedQuestionNumber + ", questionCountAfter=" + session.getQuestionCount() + ", fingerprint=" + initialFp);
-
-            AdaptiveAssessmentDTOs.QuestionItemDTO dto = new AdaptiveAssessmentDTOs.QuestionItemDTO(newQuestion.getId(), newQuestion.getSubject(), newQuestion.getConcept(), newQuestion.getDifficulty().name(), newQuestion.getQuestionText(), newQuestion.getOptions());
-            return new AdaptiveAssessmentDTOs.AdaptiveNextResponse(session.getId(), false, dto, generatedQuestionNumber, 10, targetConcept, targetDifficulty.name());
+            int currentQNum = count + 1;
+            AdaptiveAssessmentDTOs.QuestionItemDTO dto = new AdaptiveAssessmentDTOs.QuestionItemDTO(
+                    newQuestion.getId(), newQuestion.getSubject(), newQuestion.getConcept(), newQuestion.getDifficulty().name(),
+                    newQuestion.getQuestionText(), newQuestion.getOptions(), newQuestion.getCorrectOptionIndex(), newQuestion.getConceptualExplanation()
+            );
+            return new AdaptiveAssessmentDTOs.AdaptiveNextResponse(session.getId(), false, dto, currentQNum, 10, newQuestion.getConcept(), newQuestion.getDifficulty().name());
         }
     }
 
@@ -778,6 +765,8 @@ public class AssessmentService {
             throw new IllegalStateException("Question " + req.getQuestionId() + " answer has already been submitted.");
         }
 
+        System.out.println("[SESSION DEBUG BEFORE submitInitialAnswer] sessionId=" + session.getId() + ", currentQuestionIndex=" + session.getQuestionCount() + ", completedCount=" + session.getQuestionCount() + ", isComplete=" + (session.getStatus() == AssessmentSession.Status.COMPLETED));
+
         QuizQuestion question = quizQuestionRepository.findById(req.getQuestionId())
                 .orElseThrow(() -> new IllegalArgumentException("Question not found: " + req.getQuestionId()));
 
@@ -801,7 +790,7 @@ public class AssessmentService {
         if (session.getUserAnswers() == null) session.setUserAnswers(new ArrayList<>());
         session.getUserAnswers().add(new AssessmentResult.UserAnswer(question.getId(), question.getConcept(), req.getSelectedOption(), isCorrect, isCorrect ? 2 : 0));
 
-        int totalQuestions = session.getTotalQuestions() > 0 ? session.getTotalQuestions() : 5;
+        int totalQuestions = session.getTotalQuestions() > 0 ? session.getTotalQuestions() : 10;
         boolean completed = session.getQuestionCount() >= totalQuestions;
 
         if (completed) {
@@ -838,8 +827,6 @@ public class AssessmentService {
             AssessmentResult savedResult = resultRepository.save(result);
 
             try {
-                // 1-by-1 submission has already updated individual ConceptMastery per question.
-                // Sync high-level KnowledgeProfile summary without re-processing individual answers.
                 knowledgeService.syncKnowledgeProfileSummary(effectiveUserId, session.getSubjectName());
             } catch (Exception ex) {
                 System.err.println("Failed knowledge profile processing: " + ex.getMessage());
@@ -855,9 +842,12 @@ public class AssessmentService {
         String updatedStatus = updatedCmOpt.isPresent() && updatedCmOpt.get().getStatus() != null ? updatedCmOpt.get().getStatus().name() : "UNCERTAIN";
         double updatedConf = updatedCmOpt.isPresent() ? updatedCmOpt.get().getConfidenceScore() : 25.0;
 
+        System.out.println("[SESSION DEBUG AFTER submitInitialAnswer] sessionId=" + session.getId() + ", currentQuestionIndex=" + session.getQuestionCount() + ", completedCount=" + session.getQuestionCount() + ", isComplete=" + completed);
+
         return new AdaptiveAssessmentDTOs.AdaptiveSubmitResponse(
                 session.getId(),
                 isCorrect,
+                question.getCorrectOptionIndex(),
                 question.getConceptualExplanation(),
                 completed,
                 updatedStatus,
