@@ -6,6 +6,7 @@ import { TodaysLearningCardProps } from "./types";
 import { fetchTodayPlan, completePlannerTask, startStudySession, regeneratePlan } from "../../services/api";
 import StudySessionTrackerModal from "./StudySessionTrackerModal";
 import ConceptRemediationModal from "./ConceptRemediationModal";
+import StudyResourceModal from "./StudyResourceModal";
 
 export default function TodaysLearningCard({ profile }: TodaysLearningCardProps) {
   const [planData, setPlanData] = useState<any>(null);
@@ -276,9 +277,9 @@ export default function TodaysLearningCard({ profile }: TodaysLearningCardProps)
         </div>
       )}
 
-      {/* Active Study Session Modal Tracker */}
+      {/* Active Study Session Modal Tracker & Dynamic Resource Hub */}
       {activeSession && (
-        <StudySessionTrackerModal
+        <StudyResourceModal
           sessionData={activeSession}
           onClose={() => setActiveSession(null)}
           onSessionFinished={() => loadPlan()}
