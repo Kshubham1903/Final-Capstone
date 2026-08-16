@@ -1,4 +1,38 @@
 # EduPilot Backend Runner Script
+
+# Ensure GROQ_API_KEY and LLM_PROVIDER process environment variables are resolved
+if (-not $env:GROQ_API_KEY) {
+    $userKey = [System.Environment]::GetEnvironmentVariable('GROQ_API_KEY', 'User')
+    $machineKey = [System.Environment]::GetEnvironmentVariable('GROQ_API_KEY', 'Machine')
+    if ($userKey) { $env:GROQ_API_KEY = $userKey }
+    elseif ($machineKey) { $env:GROQ_API_KEY = $machineKey }
+    elseif (Test-Path "$PSScriptRoot\.env") {
+        Get-Content "$PSScriptRoot\.env" | ForEach-Object {
+            if ($_ -match '^\s*GROQ_API_KEY\s*=\s*(.*)\s*$') { $env:GROQ_API_KEY = $matches[1].Trim('"''') }
+        }
+    } elseif (Test-Path "$PSScriptRoot\..\.env") {
+        Get-Content "$PSScriptRoot\..\.env" | ForEach-Object {
+            if ($_ -match '^\s*GROQ_API_KEY\s*=\s*(.*)\s*$') { $env:GROQ_API_KEY = $matches[1].Trim('"''') }
+        }
+    }
+}
+
+if (-not $env:LLM_PROVIDER) {
+    $userProv = [System.Environment]::GetEnvironmentVariable('LLM_PROVIDER', 'User')
+    $machineProv = [System.Environment]::GetEnvironmentVariable('LLM_PROVIDER', 'Machine')
+    if ($userProv) { $env:LLM_PROVIDER = $userProv }
+    elseif ($machineProv) { $env:LLM_PROVIDER = $machineProv }
+    elseif (Test-Path "$PSScriptRoot\.env") {
+        Get-Content "$PSScriptRoot\.env" | ForEach-Object {
+            if ($_ -match '^\s*LLM_PROVIDER\s*=\s*(.*)\s*$') { $env:LLM_PROVIDER = $matches[1].Trim('"''') }
+        }
+    } elseif (Test-Path "$PSScriptRoot\..\.env") {
+        Get-Content "$PSScriptRoot\..\.env" | ForEach-Object {
+            if ($_ -match '^\s*LLM_PROVIDER\s*=\s*(.*)\s*$') { $env:LLM_PROVIDER = $matches[1].Trim('"''') }
+        }
+    } else { $env:LLM_PROVIDER = 'groq' }
+}
+
 $port = if ($env:SERVER_PORT) { [int]$env:SERVER_PORT } else { 8080 }
 
 # 1. Check for any process currently listening on the target port and attempt termination

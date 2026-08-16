@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { 
+import {
   BrainCircuit, X, Clock, CheckCircle2, AlertCircle, ArrowRight, ArrowLeft, Send, Award, RefreshCw, Layers, Check, HelpCircle
 } from "lucide-react";
-import { 
-  startDiagnosticAssessment, 
-  submitDiagnosticAssessment, 
+import {
+  startDiagnosticAssessment,
+  submitDiagnosticAssessment,
   fetchSubjectsByBranchAndSemester,
   startAdaptiveDiagnosticSession,
   fetchNextAdaptiveQuestion,
@@ -30,7 +30,7 @@ export default function AssessmentRunner({
   const [step, setStep] = useState<"SELECT_SUBJECT" | "TESTING" | "RESULT" | "ADAPTIVE_TESTING" | "ADAPTIVE_RESULT">(
     initialSubjectCode ? "TESTING" : "SELECT_SUBJECT"
   );
-  
+
   const [selectedSubjectCode, setSelectedSubjectCode] = useState(initialSubjectCode);
   const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
@@ -98,7 +98,7 @@ export default function AssessmentRunner({
   const handleStartSession = async (subjCode: string) => {
     setStartingTest(true);
     const userId = getStudentUserId();
-    
+
     try {
       const sess = await startDiagnosticAssessment({
         userId,
@@ -389,7 +389,7 @@ export default function AssessmentRunner({
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="glass-panel p-6 rounded-3xl border border-white/10 shadow-2xl w-full max-w-3xl space-y-6 my-auto max-h-[90vh] overflow-y-auto">
-        
+
         {/* Top Header */}
         <div className="flex justify-between items-center border-b border-white/5 pb-4">
           <div className="flex items-center gap-3">
@@ -404,7 +404,7 @@ export default function AssessmentRunner({
             </div>
           </div>
 
-          <button 
+          <button
             onClick={onClose}
             className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-secondary-theme hover:text-main-theme font-bold cursor-pointer"
           >
@@ -574,7 +574,7 @@ export default function AssessmentRunner({
         {/* STEP 3: ASSESSMENT RESULT EVALUATION */}
         {step === "RESULT" && assessmentResult && (
           <div className="space-y-6">
-            
+
             {/* Hero Result Banner */}
             <div className="glass-panel p-6 rounded-2xl border border-white/10 bg-gradient-to-r from-purple-900/20 via-transparent to-emerald-900/20 text-center space-y-3">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border mb-1 border-white/10 bg-white/5">
@@ -646,13 +646,12 @@ export default function AssessmentRunner({
                 <div className="flex flex-wrap gap-2 pt-1">
                   {assessmentResult.conceptEvaluations ? (
                     assessmentResult.conceptEvaluations.map((evalItem: any) => (
-                      <div 
-                        key={evalItem.concept} 
-                        className={`px-3 py-1 rounded-xl text-[11px] font-bold border flex items-center gap-2 ${
-                          evalItem.requiresAdaptiveTesting 
-                            ? "bg-amber-500/10 border-amber-500/30 text-amber-300" 
+                      <div
+                        key={evalItem.concept}
+                        className={`px-3 py-1 rounded-xl text-[11px] font-bold border flex items-center gap-2 ${evalItem.requiresAdaptiveTesting
+                            ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
                             : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
-                        }`}
+                          }`}
                       >
                         <span>{evalItem.concept}</span>
                         <span className="text-[9px] uppercase px-1.5 py-0.2 rounded bg-black/40 font-mono">
@@ -826,8 +825,8 @@ export default function AssessmentRunner({
                   else if (status === "UNCERTAIN") badgeStyle = "bg-amber-500/20 text-amber-300 border-amber-500/30 font-bold";
 
                   return (
-                    <div 
-                      key={cEntry.conceptName} 
+                    <div
+                      key={cEntry.conceptName}
                       className="p-3 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between text-xs"
                     >
                       <div>

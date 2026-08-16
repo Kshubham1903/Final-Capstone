@@ -1,27 +1,27 @@
 import React, { useState, useEffect, useRef } from "react";
 import Layout from "../../../components/Layout";
-import { 
-  GraduationCap, 
-  BrainCircuit, 
-  HelpCircle, 
-  ArrowRight, 
-  Check, 
-  X, 
-  AlertCircle, 
-  Sparkles, 
-  CheckCircle2, 
+import {
+  GraduationCap,
+  BrainCircuit,
+  HelpCircle,
+  ArrowRight,
+  Check,
+  X,
+  AlertCircle,
+  Sparkles,
+  CheckCircle2,
   ArrowLeft,
   Timer
 } from "lucide-react";
 import { StudentProfile } from "../../../services/mockData";
-import { 
-  fetchQuizQuestions, 
-  submitQuizAnswer, 
-  fetchProfile, 
-  checkBackendConnection, 
-  generateAiQuizQuestions, 
-  fetchStudentRecommendations, 
-  startConceptRemediation, 
+import {
+  fetchQuizQuestions,
+  submitQuizAnswer,
+  fetchProfile,
+  checkBackendConnection,
+  generateAiQuizQuestions,
+  fetchStudentRecommendations,
+  startConceptRemediation,
   submitConceptRemediation,
   startDiagnosticAssessment,
   fetchNextInitialDiagnosticQuestion,
@@ -34,7 +34,7 @@ import {
 
 export default function Quizzes() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
-  
+
   // Synchronous URL search parameter parsing as source of truth for initialization
   const urlSearch = typeof window !== "undefined" ? window.location.search : "";
   const urlParams = new URLSearchParams(urlSearch);
@@ -48,7 +48,7 @@ export default function Quizzes() {
   const [currentDiff, setCurrentDiff] = useState<"EASY" | "MEDIUM" | "HARD">("EASY");
   const [questionCount, setQuestionCount] = useState(0);
   const [correctAnswers, setCorrectAnswers] = useState(0);
-  
+
   // Active Question
   const [quizQuestions, setQuizQuestions] = useState<any[]>([]);
   const [activeQuestion, setActiveQuestion] = useState<any>(null);
@@ -446,7 +446,7 @@ export default function Quizzes() {
 
     const persistedSeen = getPersistedSeenIds(subj);
     const cumulativeExclusions = [...persistedSeen];
-    
+
     // Fetch initial targeted question pool from backend
     let sessionPool: any[] = [];
     try {
@@ -501,8 +501,8 @@ export default function Quizzes() {
   const getRecommendationForSubject = (subj: string) => {
     if (!recommendations || recommendations.length === 0) return null;
 
-    const rec = recommendations.find(r => 
-      (r.subjectName && r.subjectName.toLowerCase() === subj.toLowerCase()) || 
+    const rec = recommendations.find(r =>
+      (r.subjectName && r.subjectName.toLowerCase() === subj.toLowerCase()) ||
       (r.subjectCode && r.subjectCode.toLowerCase() === subj.toLowerCase())
     );
 
@@ -701,7 +701,7 @@ export default function Quizzes() {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("edupilot:assessment-completed"));
       }
-      
+
       const conn = await checkBackendConnection();
       if (conn) {
         const updated = await fetchProfile(profile.id || "");
@@ -737,7 +737,7 @@ export default function Quizzes() {
   const applyResultsToProfileLocal = () => {
     const accuracy = correctAnswers / 10;
     const masteryChange = accuracy >= 0.75 ? 8.0 : accuracy >= 0.5 ? 4.0 : -2.0;
-    
+
     const updatedMastery = { ...profile.conceptMastery };
     const currentVal = updatedMastery[activeSubject] || 50;
     updatedMastery[activeSubject] = Math.min(Math.max(currentVal + masteryChange, 0), 100);
@@ -751,7 +751,7 @@ export default function Quizzes() {
     // Calculate local SGI (simulate locally)
     const mockData = require("../../../services/mockData");
     updatedProfile.studentGrowthIndex = mockData.calculateLocalSgi(updatedProfile);
-    
+
     if (accuracy >= 0.75) {
       const subjStrongs = updatedProfile.strongConcepts[activeSubject] || [];
       const newConcept = activeQuestion.concept;
@@ -775,7 +775,7 @@ export default function Quizzes() {
   return (
     <Layout>
       <div className="space-y-8">
-        
+
         {/* Header Title */}
         <div>
           <h1 className="text-3xl font-extrabold text-main-theme flex items-center gap-2">
@@ -800,7 +800,7 @@ export default function Quizzes() {
               {profile.subjects.map((subj) => {
                 const rec = getRecommendationForSubject(subj);
                 const isThisSubjectLoading = isGeneratingAi && generatingSubject === subj;
-                
+
                 return (
                   <div key={subj} className="glass-panel p-6 rounded-2xl border border-white/5 flex flex-col justify-between space-y-5 relative overflow-hidden">
                     {/* Dynamic Loader Overlay */}
@@ -810,7 +810,7 @@ export default function Quizzes() {
                         <span className="text-[10px] font-bold text-purple-theme uppercase tracking-wider">Structuring Test...</span>
                       </div>
                     )}
-                    
+
                     <div className="space-y-4">
                       {/* Header Info & Mastery */}
                       <div className="flex items-start justify-between">
@@ -830,11 +830,10 @@ export default function Quizzes() {
                         <div className="bg-purple-950/20 border border-purple-500/10 rounded-xl p-3.5 space-y-2">
                           <div className="flex justify-between items-center">
                             <span className="text-[9px] font-bold text-purple-theme tracking-wide uppercase">Recommended for You</span>
-                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                              rec.priority === "High" ? "bg-red-500/10 text-red-400 border border-red-500/10" :
-                              rec.priority === "Medium" ? "bg-amber-500/10 text-amber-400 border border-amber-500/10" :
-                              "bg-emerald-500/10 text-emerald-400 border border-emerald-500/10"
-                            }`}>
+                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${rec.priority === "High" ? "bg-red-500/10 text-red-400 border border-red-500/10" :
+                                rec.priority === "Medium" ? "bg-amber-500/10 text-amber-400 border border-amber-500/10" :
+                                  "bg-emerald-500/10 text-emerald-400 border border-emerald-500/10"
+                              }`}>
                               {rec.priority} Priority
                             </span>
                           </div>
@@ -973,21 +972,20 @@ export default function Quizzes() {
         {/* IN QUIZ PANEL */}
         {quizStarted && !quizFinished && !isExhausted && activeQuestion && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-            
+
             {/* Left Column: Active Question Form (2/3 width) */}
             <div className="lg:col-span-2 glass-panel p-8 rounded-2xl border border-white/10 space-y-6">
-              
+
               {/* Question Header Status */}
               <div className="flex justify-between items-center border-b border-white/5 pb-4">
                 <span className="text-[10px] font-bold text-secondary-theme uppercase tracking-widest">
                   Question {questionCount + 1} of {quizQuestions.length > 0 ? quizQuestions.length : 10}
                 </span>
-                
+
                 <div className="flex items-center gap-3">
-                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                    currentDiff === "EASY" ? "bg-emerald-500/10 text-emerald-theme" :
-                    currentDiff === "MEDIUM" ? "bg-cyan-500/10 text-cyan-theme" : "bg-pink-500/10 text-pink-theme"
-                  }`}>
+                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${currentDiff === "EASY" ? "bg-emerald-500/10 text-emerald-theme" :
+                      currentDiff === "MEDIUM" ? "bg-cyan-500/10 text-cyan-theme" : "bg-pink-500/10 text-pink-theme"
+                    }`}>
                     {currentDiff} DIFFICULTY
                   </span>
                   <span className="text-xs text-secondary-theme flex items-center gap-1.5">
@@ -999,7 +997,7 @@ export default function Quizzes() {
 
               {/* Progress Bar */}
               <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
-                <div 
+                <div
                   className="bg-gradient-to-r from-purple-500 to-pink-500 h-full transition-all duration-300"
                   style={{ width: `${((questionCount + 1) / (quizQuestions.length > 0 ? quizQuestions.length : 10)) * 100}%` }}
                 />
@@ -1068,11 +1066,10 @@ export default function Quizzes() {
 
               {/* Conceptual Review Explanation */}
               {isAnswered && (
-                <div className={`p-4 rounded-xl text-xs space-y-2 border ${
-                  (questionFeedback?.isCorrect ?? (selectedOption === activeQuestion?.correctOptionIndex))
+                <div className={`p-4 rounded-xl text-xs space-y-2 border ${(questionFeedback?.isCorrect ?? (selectedOption === activeQuestion?.correctOptionIndex))
                     ? "bg-emerald-500/5 border-emerald-500/20"
                     : "bg-red-500/5 border-red-500/20"
-                }`}>
+                  }`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 font-bold">
                       {(questionFeedback?.isCorrect ?? (selectedOption === activeQuestion?.correctOptionIndex)) ? (
@@ -1157,11 +1154,10 @@ export default function Quizzes() {
         {/* QUIZ COMPLETION SUMMARY */}
         {quizStarted && quizFinished && (
           <div className="w-full max-w-3xl mx-auto glass-panel p-8 rounded-2xl border border-white/10 space-y-6 text-center">
-            <div className={`h-16 w-16 rounded-full flex items-center justify-center mx-auto border ${
-              isVerificationMode 
+            <div className={`h-16 w-16 rounded-full flex items-center justify-center mx-auto border ${isVerificationMode
                 ? (remediationResult?.passed ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-theme" : "bg-amber-500/10 border-amber-500/20 text-amber-400")
                 : "bg-emerald-500/10 border-emerald-500/20 text-emerald-theme"
-            }`}>
+              }`}>
               {isVerificationMode && !remediationResult?.passed ? (
                 <AlertCircle className="h-8 w-8 text-amber-400" />
               ) : (
@@ -1170,11 +1166,10 @@ export default function Quizzes() {
             </div>
 
             <div className="space-y-2">
-              <h2 className={`text-2xl font-bold tracking-wider ${
-                isVerificationMode && !remediationResult?.passed ? "text-amber-400" : "text-gradient-purple"
-              }`}>
-                {isVerificationMode 
-                  ? (remediationResult?.passed ? "Concept Successfully Remediated!" : "Remediation Test Complete") 
+              <h2 className={`text-2xl font-bold tracking-wider ${isVerificationMode && !remediationResult?.passed ? "text-amber-400" : "text-gradient-purple"
+                }`}>
+                {isVerificationMode
+                  ? (remediationResult?.passed ? "Concept Successfully Remediated!" : "Remediation Test Complete")
                   : "10-Question Diagnostic Complete"}
               </h2>
               <p className="text-xs text-secondary-theme">
@@ -1184,9 +1179,8 @@ export default function Quizzes() {
                 {activeSubject} {displayTargetConcept ? `— ${displayTargetConcept}` : ""}
               </p>
               {isVerificationMode && remediationResult?.message && (
-                <p className={`text-xs font-semibold max-w-md mx-auto pt-1 leading-relaxed ${
-                  remediationResult.passed ? "text-emerald-400" : "text-amber-400"
-                }`}>
+                <p className={`text-xs font-semibold max-w-md mx-auto pt-1 leading-relaxed ${remediationResult.passed ? "text-emerald-400" : "text-amber-400"
+                  }`}>
                   {remediationResult.message}
                 </p>
               )}

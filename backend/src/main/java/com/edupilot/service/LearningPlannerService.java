@@ -68,9 +68,63 @@ public class LearningPlannerService {
         LocalDate today = LocalDate.now();
 
         List<Recommendation> activeRecs = recommendationRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, Recommendation.Status.ACTIVE);
-        List<Recommendation> pendingRecs = recommendationRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, Recommendation.Status.VERIFICATION_PENDING);
+        List<Recommendation> rawPendingRecs = recommendationRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, Recommendation.Status.VERIFICATION_PENDING);
+
+        // State Reconciliation: Filter out stale VERIFICATION_PENDING recommendations
+        List<Recommendation> validPendingRecs = new ArrayList<>();
+        List<com.edupilot.model.ConceptMastery> userCmList = conceptMasteryRepository.findByUserId(userId);
+
+        for (Recommendation pRec : rawPendingRecs) {
+            String normConcept = RecommendationService.normalizeConceptName(pRec.getConceptName(), pRec.getSubjectName());
+
+            // 1. Check if expired
+            if (pRec.getExpiresAt() != null && pRec.getExpiresAt().isBefore(LocalDateTime.now())) {
+                pRec.setStatus(Recommendation.Status.DISMISSED);
+                recommendationRepository.save(pRec);
+                continue;
+            }
+
+            // 2. Check if concept mastery is already achieved
+            boolean isMastered = false;
+            if (userCmList != null) {
+                for (com.edupilot.model.ConceptMastery cm : userCmList) {
+                    if (cm.getConceptName() != null && normConcept.equalsIgnoreCase(RecommendationService.normalizeConceptName(cm.getConceptName(), cm.getSubjectName()))) {
+                        if (cm.getMasteryLevel() == com.edupilot.model.ConceptMastery.MasteryLevel.MASTER 
+                            || cm.getStatus() == com.edupilot.model.ConceptMastery.ConceptStatus.STRONG 
+                            || cm.getAccuracy() >= 80.0) {
+                            isMastered = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (isMastered) {
+                pRec.setStatus(Recommendation.Status.COMPLETED);
+                recommendationRepository.save(pRec);
+                continue;
+            }
+
+            // 3. Check if a newer ACTIVE recommendation exists for the exact same concept
+            boolean hasNewerActive = activeRecs.stream().anyMatch(a -> {
+                if (a.getCreatedAt() != null && pRec.getCreatedAt() != null && a.getCreatedAt().isAfter(pRec.getCreatedAt())) {
+                    String activeNorm = RecommendationService.normalizeConceptName(a.getConceptName(), a.getSubjectName());
+                    return normConcept.equalsIgnoreCase(activeNorm);
+                }
+                return false;
+            });
+
+            if (hasNewerActive) {
+                pRec.setStatus(Recommendation.Status.COMPLETED);
+                recommendationRepository.save(pRec);
+                continue;
+            }
+
+            validPendingRecs.add(pRec);
+        }
+
         List<Recommendation> recs = new ArrayList<>(activeRecs);
-        recs.addAll(pendingRecs);
+        recs.addAll(validPendingRecs);
         
         // Filter for weak/revision recommendations (CRITICAL and HIGH priority)
         List<Recommendation> weakRecs = recs.stream()

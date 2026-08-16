@@ -1680,3 +1680,20 @@ export async function fetchStudentContext(studentId: string, concept?: string): 
   }
   return null;
 }
+
+export async function fetchStudyResources(subject: string, concept: string): Promise<any> {
+  try {
+    const params = new URLSearchParams();
+    if (subject) params.append("subject", subject);
+    if (concept) params.append("concept", concept);
+    const res = await fetch(`${getBackendUrl()}/api/study-resources?${params.toString()}`, {
+      headers: getAuthHeaders()
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (err) {
+    console.warn("Failed to fetch study resources:", err);
+  }
+  return null;
+}

@@ -69,6 +69,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/dashboard-test/**").permitAll()
                         .requestMatchers("/api/subject-progress/**").permitAll()
                         .requestMatchers("/api/concept-remediation/**").permitAll()
+                        .requestMatchers("/api/study-resources/**").permitAll()
                         .requestMatchers("/api/students/health").permitAll()
                         .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider())
