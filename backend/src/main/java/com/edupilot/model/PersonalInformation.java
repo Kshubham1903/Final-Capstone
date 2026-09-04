@@ -215,4 +215,150 @@ public class PersonalInformation {
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
     }
+
+    // Form A Academic & Student Profile Fields
+    private String academicYear;
+    private String division;
+    private String previousProgrammingExperience;
+    private double previousSemesterSgpa;
+    private double previousSemesterPercentage;
+    private double mathematicsScore;
+    private double programmingScore;
+    private double dataStructuresScore;
+    private double dbmsScore;
+    private double attendancePercentage;
+    private int numberOfBacklogs;
+    private int programmingConfidence;
+    private int dataStructuresConfidence;
+    private int dbmsConfidence;
+    private int mathematicsConfidence;
+    private int algorithmsConfidence;
+
+    public String getAcademicYear() {
+        return academicYear;
+    }
+
+    public void setAcademicYear(String academicYear) {
+        this.academicYear = academicYear;
+    }
+
+    public String getDivision() {
+        return division;
+    }
+
+    public void setDivision(String division) {
+        this.division = division;
+    }
+
+    public String getPreviousProgrammingExperience() {
+        return previousProgrammingExperience;
+    }
+
+    public void setPreviousProgrammingExperience(String previousProgrammingExperience) {
+        this.previousProgrammingExperience = previousProgrammingExperience;
+    }
+
+    public double getPreviousSemesterSgpa() {
+        return previousSemesterSgpa;
+    }
+
+    public void setPreviousSemesterSgpa(double previousSemesterSgpa) {
+        this.previousSemesterSgpa = previousSemesterSgpa;
+    }
+
+    public double getPreviousSemesterPercentage() {
+        return previousSemesterPercentage;
+    }
+
+    public void setPreviousSemesterPercentage(double previousSemesterPercentage) {
+        this.previousSemesterPercentage = previousSemesterPercentage;
+    }
+
+    public double getMathematicsScore() {
+        return mathematicsScore;
+    }
+
+    public void setMathematicsScore(double mathematicsScore) {
+        this.mathematicsScore = mathematicsScore;
+    }
+
+    public double getProgrammingScore() {
+        return programmingScore;
+    }
+
+    public void setProgrammingScore(double programmingScore) {
+        this.programmingScore = programmingScore;
+    }
+
+    public double getDataStructuresScore() {
+        return dataStructuresScore;
+    }
+
+    public void setDataStructuresScore(double dataStructuresScore) {
+        this.dataStructuresScore = dataStructuresScore;
+    }
+
+    public double getDbmsScore() {
+        return dbmsScore;
+    }
+
+    public void setDbmsScore(double dbmsScore) {
+        this.dbmsScore = dbmsScore;
+    }
+
+    public double getAttendancePercentage() {
+        return attendancePercentage;
+    }
+
+    public void setAttendancePercentage(double attendancePercentage) {
+        this.attendancePercentage = attendancePercentage;
+    }
+
+    public int getNumberOfBacklogs() {
+        return numberOfBacklogs;
+    }
+
+    public void setNumberOfBacklogs(int numberOfBacklogs) {
+        this.numberOfBacklogs = numberOfBacklogs;
+    }
+
+    public int getProgrammingConfidence() {
+        return programmingConfidence;
+    }
+
+    public void setProgrammingConfidence(int programmingConfidence) {
+        this.programmingConfidence = programmingConfidence;
+    }
+
+    public int getDataStructuresConfidence() {
+        return dataStructuresConfidence;
+    }
+
+    public void setDataStructuresConfidence(int dataStructuresConfidence) {
+        this.dataStructuresConfidence = dataStructuresConfidence;
+    }
+
+    public int getDbmsConfidence() {
+        return dbmsConfidence;
+    }
+
+    public void setDbmsConfidence(int dbmsConfidence) {
+        this.dbmsConfidence = dbmsConfidence;
+    }
+
+    public int getMathematicsConfidence() {
+        return mathematicsConfidence;
+    }
+
+    public void setMathematicsConfidence(int mathematicsConfidence) {
+        this.mathematicsConfidence = mathematicsConfidence;
+    }
+
+    public int getAlgorithmsConfidence() {
+        return algorithmsConfidence;
+    }
+
+    public void setAlgorithmsConfidence(int algorithmsConfidence) {
+        this.algorithmsConfidence = algorithmsConfidence;
+    }
 }
