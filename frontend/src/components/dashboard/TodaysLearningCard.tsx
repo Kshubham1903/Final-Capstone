@@ -5,12 +5,15 @@ import {
 import { TodaysLearningCardProps } from "./types";
 import { fetchTodayPlan, completePlannerTask, startStudySession, regeneratePlan } from "../../services/api";
 import StudySessionTrackerModal from "./StudySessionTrackerModal";
+import ConceptRemediationModal from "./ConceptRemediationModal";
+import StudyResourceModal from "./StudyResourceModal";
 
 export default function TodaysLearningCard({ profile }: TodaysLearningCardProps) {
   const [planData, setPlanData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
   const [activeSession, setActiveSession] = useState<any>(null);
+  const [remediationTask, setRemediationTask] = useState<any>(null);
   const [showAllTasks, setShowAllTasks] = useState(false);
 
   const userId = profile?.userId || profile?.id || localStorage.getItem("edupilot_user_id") || "";
@@ -201,8 +204,16 @@ export default function TodaysLearningCard({ profile }: TodaysLearningCardProps)
                       ) : !isCompleted ? (
                         <div className="flex items-center gap-1.5">
                           <button
+                            onClick={() => setRemediationTask(task)}
+                            className="px-2.5 py-1 rounded-lg bg-pink-600/30 hover:bg-pink-600/50 text-pink-300 text-[10px] font-bold border border-pink-500/30 flex items-center gap-1 transition-all cursor-pointer shadow-sm"
+                            title="Take 5-Question Concept Remediation Test"
+                          >
+                            <Sparkles className="h-3 w-3 fill-current" />
+                            <span>Remediate Concept</span>
+                          </button>
+                          <button
                             onClick={() => handleStartSession(task)}
-                            className="px-2.5 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 text-[10px] font-bold border border-purple-500/30 flex items-center gap-1 transition-all cursor-pointer"
+                            className="px-2 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 text-[10px] font-bold border border-purple-500/30 flex items-center gap-1 transition-all cursor-pointer"
                           >
                             <Play className="h-3 w-3 fill-current" />
                             <span>Start Study</span>
@@ -266,12 +277,36 @@ export default function TodaysLearningCard({ profile }: TodaysLearningCardProps)
         </div>
       )}
 
-      {/* Active Study Session Modal Tracker */}
+      {/* Active Study Session Modal Tracker & Dynamic Resource Hub */}
       {activeSession && (
-        <StudySessionTrackerModal
+        <StudyResourceModal
           sessionData={activeSession}
           onClose={() => setActiveSession(null)}
           onSessionFinished={() => loadPlan()}
+        />
+      )}
+
+      {/* Concept Remediation Test Modal */}
+      {remediationTask && (
+        <ConceptRemediationModal
+          studentId={userId}
+          task={remediationTask}
+          onClose={() => setRemediationTask(null)}
+          onFinished={(remediated) => {
+            if (remediated && remediationTask?.taskId) {
+              // Optimistically filter out remediated task
+              setPlanData((prev: any) => {
+                if (!prev || !prev.tasks) return prev;
+                const remaining = prev.tasks.filter((t: any) => t.taskId !== remediationTask.taskId);
+                return {
+                  ...prev,
+                  tasks: remaining,
+                  totalTasks: remaining.length
+                };
+              });
+            }
+            loadPlan();
+          }}
         />
       )}
 

@@ -91,11 +91,11 @@ public class StudentService {
         }
         Optional<StudentProfile> opt = profileRepository.findById(idOrUserId);
         if (opt.isPresent()) {
-            return opt.get();
+            return ensureSubjectMastery(opt.get());
         }
         opt = profileRepository.findByUserId(idOrUserId);
         if (opt.isPresent()) {
-            return opt.get();
+            return ensureSubjectMastery(opt.get());
         }
 
         // Initialize new StudentProfile for this userId
@@ -782,47 +782,80 @@ public class StudentService {
         return Collections.emptyList();
     }
 
+
     private double validateDoubleField(Object raw, String fieldName, double min, double max) {
-        if (raw == null) {
-            throw new IllegalArgumentException(fieldName + " is required.");
+    if (raw == null) {
+        throw new IllegalArgumentException(fieldName + " is required.");
+    }
+    double val;
+    if (raw instanceof Number) {
+        val = ((Number) raw).doubleValue();
+    } else if (raw instanceof String) {
+        try {
+            val = Double.parseDouble((String) raw);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(fieldName + " must be a valid numeric value.");
         }
-        double val;
-        if (raw instanceof Number) {
-            val = ((Number) raw).doubleValue();
-        } else if (raw instanceof String) {
-            try {
-                val = Double.parseDouble((String) raw);
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException(fieldName + " must be a valid numeric value.");
+    } else {
+        throw new IllegalArgumentException(fieldName + " is invalid.");
+    }
+    if (val < min || val > max) {
+        throw new IllegalArgumentException(
+            fieldName + " must be between " + min + " and " + max + " inclusive."
+        );
+    }
+    return val;
+}
+
+private int validateIntField(Object raw, String fieldName, int min, int max) {
+    if (raw == null) {
+        throw new IllegalArgumentException(fieldName + " is required.");
+    }
+    int val;
+    if (raw instanceof Number) {
+        val = ((Number) raw).intValue();
+    } else if (raw instanceof String) {
+        try {
+            val = Integer.parseInt((String) raw);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(fieldName + " must be a valid integer.");
+        }
+    } else {
+        throw new IllegalArgumentException(fieldName + " is invalid.");
+    }
+    if (val < min || val > max) {
+        throw new IllegalArgumentException(
+            fieldName + " must be between " + min + " and " + max + " inclusive."
+        );
+    }
+    return val;
+}
+
+private StudentProfile ensureSubjectMastery(StudentProfile profile) {
+    if (profile != null && profile.getSubjects() != null && !profile.getSubjects().isEmpty()) {
+        Map<String, Double> masteryMap =
+            profile.getConceptMastery() != null
+                ? profile.getConceptMastery()
+                : new HashMap<>();
+
+        boolean updated = false;
+
+        for (String subj : profile.getSubjects()) {
+            if (subj != null && !subj.trim().isEmpty() && !masteryMap.containsKey(subj)) {
+                masteryMap.put(subj, 0.0);
+                updated = true;
             }
-        } else {
-            throw new IllegalArgumentException(fieldName + " is invalid.");
         }
-        if (val < min || val > max) {
-            throw new IllegalArgumentException(fieldName + " must be between " + min + " and " + max + " inclusive.");
+
+        if (updated) {
+            profile.setConceptMastery(masteryMap);
+            return profileRepository.save(profile);
         }
-        return val;
     }
 
-    private int validateIntField(Object raw, String fieldName, int min, int max) {
-        if (raw == null) {
-            throw new IllegalArgumentException(fieldName + " is required.");
-        }
-        int val;
-        if (raw instanceof Number) {
-            val = ((Number) raw).intValue();
-        } else if (raw instanceof String) {
-            try {
-                val = Integer.parseInt((String) raw);
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException(fieldName + " must be a valid integer.");
-            }
-        } else {
-            throw new IllegalArgumentException(fieldName + " is invalid.");
-        }
-        if (val < min || val > max) {
-            throw new IllegalArgumentException(fieldName + " must be between " + min + " and " + max + " inclusive.");
-        }
-        return val;
-    }
+    return profile;
+}
+
+    
+    
 }

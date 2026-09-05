@@ -29,7 +29,7 @@ export default function AcademicProfileCard({ profile, predPerformanceLevel }: A
   const predictedCgpa = profile?.predictedCgpa ?? 0.0;
   const sgi = profile?.studentGrowthIndex ?? 0.0;
   const riskLevel = profile?.academicRiskLevel || "LOW";
-  const subjects = profile?.subjects || ["Data Structures & Algorithms", "Database Management Systems", "Artificial Intelligence"];
+  const subjects = profile?.subjects || [];
 
   const getRiskBadgeColor = (risk: string) => {
     switch (risk) {

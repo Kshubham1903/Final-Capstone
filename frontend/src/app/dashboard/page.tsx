@@ -15,6 +15,8 @@ import DashboardHeader from "../../components/dashboard/DashboardHeader";
 import WelcomeCard from "../../components/dashboard/WelcomeCard";
 import TodaysLearningCard from "../../components/dashboard/TodaysLearningCard";
 import LearningProgressCard from "../../components/dashboard/LearningProgressCard";
+import SubjectKnowledgeTest from "../../components/dashboard/SubjectKnowledgeTest";
+import SubjectProgressPanel from "../../components/dashboard/SubjectProgressPanel";
 
 export default function StudentDashboard() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
@@ -23,6 +25,7 @@ export default function StudentDashboard() {
   const [isBackendConnected, setIsBackendConnected] = useState(false);
   const [isLoadingAI, setIsLoadingAI] = useState(true);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [selectedSubjectForHistory, setSelectedSubjectForHistory] = useState<{ name: string; mastery: number } | null>(null);
 
   const loadData = async () => {
     setIsLoadingAI(true);
@@ -140,16 +143,32 @@ export default function StudentDashboard() {
           {/* Left Column (2/3 width) - Focus areas & Mastery progress */}
           <div className="lg:col-span-2 space-y-6">
             
+            {/* Subject Knowledge Check Baseline Test */}
+            <SubjectKnowledgeTest profile={profile} />
+
             {/* Today's Learning Focus (Primary Highlight) */}
             <TodaysLearningCard profile={profile} />
 
             {/* Subject Mastery Progress chart */}
-            <LearningProgressCard profile={profile} />
+            <LearningProgressCard 
+              profile={profile} 
+              onSelectSubject={(subj, val) => setSelectedSubjectForHistory({ name: subj, mastery: val })}
+            />
 
           </div>
 
           {/* Right Column (1/3 width) - Compact academic status & top insights */}
           <div className="space-y-6">
+
+            {/* Subject Progress History Panel (Appears when bar is clicked) */}
+            {selectedSubjectForHistory && (
+              <SubjectProgressPanel
+                studentId={profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") || "" : "")}
+                subject={selectedSubjectForHistory.name}
+                currentMastery={selectedSubjectForHistory.mastery}
+                onClose={() => setSelectedSubjectForHistory(null)}
+              />
+            )}
             
             {/* Compact Academic Profile Card */}
             <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-4 bg-gradient-to-br from-purple-900/5 to-pink-900/5">

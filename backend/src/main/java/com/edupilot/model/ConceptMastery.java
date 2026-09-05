@@ -16,6 +16,7 @@ public class ConceptMastery {
     private String topic;
     private String conceptName;
     private MasteryLevel masteryLevel = MasteryLevel.UNKNOWN;
+    private ConceptStatus status = ConceptStatus.UNASSESSED;
     private double accuracy = 0.0;
     private double confidenceScore = 0.0;
     private int attemptCount = 0;
@@ -32,6 +33,13 @@ public class ConceptMastery {
         INTERMEDIATE,
         PROFICIENT,
         MASTER
+    }
+
+    public enum ConceptStatus {
+        UNASSESSED,
+        UNCERTAIN,
+        WEAK,
+        STRONG
     }
 
     public ConceptMastery() {
@@ -191,5 +199,13 @@ public class ConceptMastery {
 
     public void setMasteryScore(double masteryScore) {
         this.masteryScore = masteryScore;
+    }
+
+    public ConceptStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(ConceptStatus status) {
+        this.status = status;
     }
 }

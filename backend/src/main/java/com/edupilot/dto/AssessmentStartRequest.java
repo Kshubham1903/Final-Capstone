@@ -7,6 +7,8 @@ public class AssessmentStartRequest {
     private String subjectCode = "CS301";
     private int questionCount = 5;
 
+    private String subjectName;
+
     public AssessmentStartRequest() {
     }
 
@@ -40,6 +42,14 @@ public class AssessmentStartRequest {
 
     public void setSubjectCode(String subjectCode) {
         this.subjectCode = subjectCode;
+    }
+
+    public String getSubjectName() {
+        return subjectName;
+    }
+
+    public void setSubjectName(String subjectName) {
+        this.subjectName = subjectName;
     }
 
     public int getQuestionCount() {

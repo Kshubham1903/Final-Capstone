@@ -20,7 +20,7 @@ public class GroqProvider implements LLMProvider {
     @Value("${llm.temperature:0.7}")
     private double temperature;
 
-    @Value("${llm.max-tokens:4096}")
+    @Value("${llm.max-tokens:1200}")
     private int maxTokens;
 
     private static final String GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
@@ -43,11 +43,28 @@ public class GroqProvider implements LLMProvider {
         }
         messages.add(Map.of("role", "user", "content", userMessage != null ? userMessage : ""));
 
+        int effectiveMaxTokens = maxTokens;
+        if (context != null && context.containsKey("maxTokens")) {
+            try {
+                effectiveMaxTokens = Integer.parseInt(context.get("maxTokens").toString());
+            } catch (Exception ignored) {}
+        }
+
+        int promptChars = (systemPrompt != null ? systemPrompt.length() : 0) + (userMessage != null ? userMessage.length() : 0);
+        int estPromptTokens = promptChars / 4;
+        String purpose = (context != null && context.get("purpose") != null) ? context.get("purpose").toString() : "GENERAL";
+
+        System.out.println("[GroqProvider] model = " + modelName +
+                ", maxTokens = " + effectiveMaxTokens +
+                ", promptChars = " + promptChars +
+                ", estimatedPromptTokens = " + estPromptTokens +
+                ", requestPurpose = " + purpose);
+
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", modelName);
         requestBody.put("messages", messages);
         requestBody.put("temperature", temperature);
-        requestBody.put("max_tokens", maxTokens);
+        requestBody.put("max_tokens", effectiveMaxTokens);
         requestBody.put("response_format", Map.of("type", "json_object"));
 
         HttpHeaders headers = new HttpHeaders();
@@ -78,7 +95,29 @@ public class GroqProvider implements LLMProvider {
             System.err.println("[GroqProvider] HTTP " + status + ": " + rawBody);
 
             if (status == 429) {
-                return buildStructuredError("RATE_LIMITED", "Groq rate limit exceeded.", "Wait a few seconds and retry, or reduce question count per request.");
+                String retryAfterHeader = hsce.getResponseHeaders() != null ? hsce.getResponseHeaders().getFirst("Retry-After") : null;
+                long retryDelayMs = 2000;
+                if (retryAfterHeader != null) {
+                    try {
+                        retryDelayMs = (long) (Double.parseDouble(retryAfterHeader) * 1000);
+                    } catch (Exception ignored) {}
+                }
+
+                boolean isTpd = (rawBody != null && (
+                        rawBody.toLowerCase().contains("per day") ||
+                        rawBody.toLowerCase().contains("tpd") ||
+                        rawBody.toLowerCase().contains("rpd") ||
+                        rawBody.toLowerCase().contains("daily"))) ||
+                        retryDelayMs >= 60000;
+
+                String rateLimitType = isTpd ? "RATE_LIMIT_TPD" : "RATE_LIMIT_TPM";
+
+                return buildStructuredError(
+                    rateLimitType,
+                    "Groq rate limit exceeded (" + rateLimitType + "). retryAfterMs=" + retryDelayMs,
+                    isTpd ? "Groq daily token quota (TPD) reached. Assessment question not consumed. Please retry after quota reset."
+                          : "Groq is temporarily rate limited (TPM). Please retry after the indicated delay."
+                );
             }
             return buildStructuredError("HTTP_ERROR_" + status, "Groq API request failed: " + hsce.getStatusText(), rawBody != null ? rawBody : "No details available.");
 

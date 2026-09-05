@@ -12,6 +12,7 @@ public class ConceptMasteryResponse {
     private String topic;
     private String conceptName;
     private String masteryLevel;
+    private String status;
     private double accuracy;
     private double confidenceScore;
     private int attemptCount;
@@ -31,6 +32,7 @@ public class ConceptMasteryResponse {
             this.topic = cm.getTopic();
             this.conceptName = cm.getConceptName();
             this.masteryLevel = cm.getMasteryLevel() != null ? cm.getMasteryLevel().name() : "UNKNOWN";
+            this.status = cm.getStatus() != null ? cm.getStatus().name() : "UNASSESSED";
             this.accuracy = cm.getAccuracy();
             this.confidenceScore = cm.getConfidenceScore();
             this.attemptCount = cm.getAttemptCount();
@@ -142,5 +144,13 @@ public class ConceptMasteryResponse {
 
     public void setRecommendedAction(String recommendedAction) {
         this.recommendedAction = recommendedAction;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

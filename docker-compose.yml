@@ -47,6 +47,8 @@ services:
       - SPRING_DATA_REDIS_HOST=redis
       - SPRING_DATA_REDIS_PORT=6379
       - AI_SERVICE_URL=http://ai-service:8000
+      - GEMINI_API_KEY=${GEMINI_API_KEY:}
+      - GROQ_API_KEY=${GROQ_API_KEY:}
 
   # Next.js Web Frontend Service
   frontend:

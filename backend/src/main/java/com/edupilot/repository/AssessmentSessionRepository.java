@@ -11,4 +11,5 @@ import java.util.Optional;
 public interface AssessmentSessionRepository extends MongoRepository<AssessmentSession, String> {
     List<AssessmentSession> findByUserId(String userId);
     Optional<AssessmentSession> findTopByUserIdOrderByStartTimeDesc(String userId);
+    List<AssessmentSession> findTop5ByUserIdAndSubjectNameOrderByStartTimeDesc(String userId, String subjectName);
 }

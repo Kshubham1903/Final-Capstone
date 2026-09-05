@@ -28,6 +28,49 @@ public class AssessmentResultResponse {
     private List<AssessmentResult.UserAnswer> userAnswers;
     private LocalDateTime createdAt;
 
+    // Adaptive Assessment Handoff Bridge Fields
+    private boolean adaptiveEligible = false;
+    private List<String> targetAdaptiveConcepts;
+    private List<ConceptEvaluationDTO> conceptEvaluations;
+
+    public static class ConceptEvaluationDTO {
+        private String concept;
+        private double accuracy;
+        private int attempts;
+        private String masteryLevel;
+        private double confidence;
+        private String status;
+        private boolean requiresAdaptiveTesting;
+
+        public ConceptEvaluationDTO() {
+        }
+
+        public ConceptEvaluationDTO(String concept, double accuracy, int attempts, String masteryLevel, double confidence, String status, boolean requiresAdaptiveTesting) {
+            this.concept = concept;
+            this.accuracy = accuracy;
+            this.attempts = attempts;
+            this.masteryLevel = masteryLevel;
+            this.confidence = confidence;
+            this.status = status;
+            this.requiresAdaptiveTesting = requiresAdaptiveTesting;
+        }
+
+        public String getConcept() { return concept; }
+        public void setConcept(String concept) { this.concept = concept; }
+        public double getAccuracy() { return accuracy; }
+        public void setAccuracy(double accuracy) { this.accuracy = accuracy; }
+        public int getAttempts() { return attempts; }
+        public void setAttempts(int attempts) { this.attempts = attempts; }
+        public String getMasteryLevel() { return masteryLevel; }
+        public void setMasteryLevel(String masteryLevel) { this.masteryLevel = masteryLevel; }
+        public double getConfidence() { return confidence; }
+        public void setConfidence(double confidence) { this.confidence = confidence; }
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+        public boolean isRequiresAdaptiveTesting() { return requiresAdaptiveTesting; }
+        public void setRequiresAdaptiveTesting(boolean requiresAdaptiveTesting) { this.requiresAdaptiveTesting = requiresAdaptiveTesting; }
+    }
+
     public AssessmentResultResponse() {
     }
 
@@ -214,5 +257,29 @@ public class AssessmentResultResponse {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public boolean isAdaptiveEligible() {
+        return adaptiveEligible;
+    }
+
+    public void setAdaptiveEligible(boolean adaptiveEligible) {
+        this.adaptiveEligible = adaptiveEligible;
+    }
+
+    public List<String> getTargetAdaptiveConcepts() {
+        return targetAdaptiveConcepts;
+    }
+
+    public void setTargetAdaptiveConcepts(List<String> targetAdaptiveConcepts) {
+        this.targetAdaptiveConcepts = targetAdaptiveConcepts;
+    }
+
+    public List<ConceptEvaluationDTO> getConceptEvaluations() {
+        return conceptEvaluations;
+    }
+
+    public void setConceptEvaluations(List<ConceptEvaluationDTO> conceptEvaluations) {
+        this.conceptEvaluations = conceptEvaluations;
     }
 }

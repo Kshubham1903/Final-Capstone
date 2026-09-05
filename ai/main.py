@@ -444,8 +444,6 @@ def is_generic(q_text: str) -> bool:
     low = q_text.lower()
     return any(pat in low for pat in GENERIC_TEMPLATE_PATTERNS)
 
-from domain_banks import DOMAIN_KNOWLEDGE_BANKS
-
 def shuffle_options_and_update_index(item: dict) -> dict:
     original_options = list(item["options"])
     original_idx = item.get("correctOptionIndex", 0)
