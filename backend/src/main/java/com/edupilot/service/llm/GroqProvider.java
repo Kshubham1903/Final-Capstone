@@ -1,5 +1,6 @@
 package com.edupilot.service.llm;
 
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -136,5 +137,14 @@ public class GroqProvider implements LLMProvider {
     @Override
     public String getProviderName() {
         return "Groq (" + modelName + ")";
+    }
+
+    @PostConstruct
+    public void logGroqConfig() {
+        System.out.println("========== GROQ CONFIG ==========");
+        System.out.println("Groq API Key Loaded: " + (apiKey != null && !apiKey.isBlank()));
+        System.out.println("Groq API Key Length: " + (apiKey != null ? apiKey.length() : 0));
+        System.out.println("Groq Model: " + modelName);
+        System.out.println("=================================");
     }
 }

@@ -167,6 +167,68 @@ public class QuizGenerationService {
         public void setDifficulty(QuizQuestion.Difficulty difficulty) { this.difficulty = difficulty; }
     }
 
+    private String stripMarkdownFences(String input) {
+        if (input == null || input.isBlank()) return "";
+        String text = input.trim();
+
+        int firstFence = text.indexOf("```");
+        if (firstFence != -1) {
+            int contentStart = text.indexOf('\n', firstFence);
+            if (contentStart != -1) {
+                int lastFence = text.lastIndexOf("```");
+                if (lastFence > contentStart) {
+                    text = text.substring(contentStart + 1, lastFence).trim();
+                } else {
+                    text = text.substring(contentStart + 1).trim();
+                }
+            } else {
+                text = text.substring(firstFence + 3).trim();
+                if (text.endsWith("```")) {
+                    text = text.substring(0, text.length() - 3).trim();
+                }
+            }
+        }
+
+        int firstBrace = text.indexOf('{');
+        int firstBracket = text.indexOf('[');
+
+        if (firstBrace != -1 && (firstBracket == -1 || firstBrace < firstBracket)) {
+            int lastBrace = text.lastIndexOf('}');
+            if (lastBrace > firstBrace) {
+                text = text.substring(firstBrace, lastBrace + 1).trim();
+            }
+        } else if (firstBracket != -1) {
+            int lastBracket = text.lastIndexOf(']');
+            if (lastBracket > firstBracket) {
+                text = text.substring(firstBracket, lastBracket + 1).trim();
+            }
+        }
+
+        return text;
+    }
+
+    private static class BatchParseResult {
+        private final List<QuizQuestion> questions;
+        private final String errorReason;
+
+        public BatchParseResult(List<QuizQuestion> questions) {
+            this.questions = questions;
+            this.errorReason = null;
+        }
+
+        public BatchParseResult(String errorReason) {
+            this.questions = Collections.emptyList();
+            this.errorReason = errorReason;
+        }
+
+        public boolean isSuccess() {
+            return errorReason == null && questions != null && !questions.isEmpty();
+        }
+
+        public List<QuizQuestion> getQuestions() { return questions; }
+        public String getErrorReason() { return errorReason; }
+    }
+
     public List<QuizQuestion> generateBatchDiagnosticQuestionsViaGroq(String subject, List<QuestionBlueprintSpec> blueprint, Map<String, Object> context) {
         if (blueprint == null || blueprint.isEmpty()) {
             throw new IllegalArgumentException("Blueprint cannot be null or empty");
@@ -196,12 +258,12 @@ public class QuizGenerationService {
                 "1. You MUST respond with ONLY a single valid JSON object. Do NOT include markdown code blocks (such as ```json), preambles, or commentary.\n" +
                 "2. All keys and string values MUST use strict double quotes (\"). NEVER use single quotes (') or unescaped control characters.\n" +
                 "3. Ensure all brackets, braces, and double quotes are perfectly closed and valid RFC-8259 syntax.\n" +
-                "4. Follow the exact JSON structure specified below.";
+                "4. Output MUST contain a top-level key \"questions\" with an array of EXACTLY " + blueprint.size() + " question objects matching the requested blueprint.";
 
         StringBuilder baseUserPrompt = new StringBuilder();
         baseUserPrompt.append("Generate EXACTLY ").append(blueprint.size()).append(" multiple-choice diagnostic questions for subject \"").append(subject)
-                .append("\" strictly following the 10-question blueprint below.\n\n")
-                .append("10-QUESTION BLUEPRINT:\n");
+                .append("\" strictly following the ").append(blueprint.size()).append("-question blueprint below.\n\n")
+                .append(blueprint.size()).append("-QUESTION BLUEPRINT:\n");
 
         for (QuestionBlueprintSpec spec : blueprint) {
             baseUserPrompt.append("Question ").append(spec.getPosition())
@@ -211,7 +273,7 @@ public class QuizGenerationService {
 
         baseUserPrompt.append("\nRequirements:\n")
                 .append("- Generate EXACTLY ").append(blueprint.size()).append(" questions matching blueprint items 1 through ").append(blueprint.size()).append(" in exact sequential order.\n")
-                .append("- Question 1 MUST match blueprint item 1, Question 2 MUST match blueprint item 2, ..., Question 10 MUST match blueprint item 10.\n")
+                .append("- Question 1 MUST match blueprint item 1, Question 2 MUST match blueprint item 2, ..., Question ").append(blueprint.size()).append(" MUST match blueprint item ").append(blueprint.size()).append(".\n")
                 .append("- Do NOT change the assigned concept or difficulty for any question.\n")
                 .append("- Each question must test genuine conceptual understanding.\n")
                 .append("- Exactly 4 distinct answer options per question, with only one correct option.\n")
@@ -243,26 +305,27 @@ public class QuizGenerationService {
         int promptChars = systemPrompt.length() + baseUserPrompt.length();
         int estTokens = promptChars / 4;
 
-        // PART 15 Logging requirement: Safe structured log before sending batch request
-        System.out.println("========== GROQ BATCH REQUEST ==========");
-        System.out.println("Purpose: DIAGNOSTIC_BATCH_10");
-        System.out.println("Subject: " + subject);
-        System.out.println("Batch Size: " + blueprint.size());
-        if (genContext.containsKey("adaptiveSummary")) {
-            System.out.println("Adaptive Profile: " + genContext.get("adaptiveSummary"));
-        }
-        System.out.println("Blueprint:");
-        for (QuestionBlueprintSpec spec : blueprint) {
-            System.out.println("Q" + spec.getPosition() + ": " + spec.getConcept() + " / " + spec.getDifficulty().name());
-        }
-        System.out.println("Prompt Characters: " + promptChars);
-        System.out.println("Estimated Prompt Tokens: " + estTokens);
-        System.out.println("========================================");
-
         int maxRetries = 2;
         String lastError = "Groq API returned empty or invalid batch output";
 
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            System.out.println("========== GROQ BATCH REQUEST ==========");
+            System.out.println("Purpose: DIAGNOSTIC_BATCH_10");
+            System.out.println("Subject: " + subject);
+            System.out.println("Model Configured: llama-3.3-70b-versatile");
+            System.out.println("Requested Blueprint Size: " + blueprint.size());
+            System.out.println("Attempt: " + attempt + " of " + maxRetries);
+            if (genContext.containsKey("adaptiveSummary")) {
+                System.out.println("Adaptive Profile: " + genContext.get("adaptiveSummary"));
+            }
+            System.out.println("Blueprint:");
+            for (QuestionBlueprintSpec spec : blueprint) {
+                System.out.println("Q" + spec.getPosition() + ": " + spec.getConcept() + " / " + spec.getDifficulty().name());
+            }
+            System.out.println("Prompt Characters: " + promptChars);
+            System.out.println("Estimated Prompt Tokens: " + estTokens);
+            System.out.println("========================================");
+
             StringBuilder currentPrompt = new StringBuilder(baseUserPrompt);
             if (attempt > 1) {
                 currentPrompt.append("\n\nSTRICT JSON RETRY NOTICE (Attempt ").append(attempt).append(" of ").append(maxRetries).append("):\n")
@@ -277,17 +340,20 @@ public class QuizGenerationService {
                     throw new IllegalStateException("Groq daily token quota (TPD) reached. Please retry after quota resets.");
                 }
 
-                List<QuizQuestion> parsedBatch = parseBatchQuestions(rawResponse, subject, blueprint);
-                if (!parsedBatch.isEmpty() && parsedBatch.size() == blueprint.size()) {
-                    List<QuizQuestion> savedBatch = questionRepository.saveAll(parsedBatch);
-                    System.out.println("========== GROQ BATCH RESPONSE ==========");
-                    System.out.println("Groq response received");
-                    System.out.println("Question count: " + savedBatch.size());
-                    System.out.println("Validation result: SUCCESS");
-                    System.out.println("=========================================");
+                BatchParseResult parseResult = parseBatchQuestionsResult(rawResponse, subject, blueprint);
+
+                System.out.println("========== GROQ BATCH RESPONSE ==========");
+                System.out.println("Groq response received (Attempt " + attempt + ")");
+                System.out.println("Response Structure: " + (rawResponse != null ? (rawResponse.trim().startsWith("[") ? "DIRECT_JSON_ARRAY" : "JSON_OBJECT") : "NULL"));
+                System.out.println("Parsed question count: " + parseResult.getQuestions().size());
+                System.out.println("Validation result: " + (parseResult.isSuccess() ? "SUCCESS" : "FAILURE (" + parseResult.getErrorReason() + ")"));
+                System.out.println("=========================================");
+
+                if (parseResult.isSuccess()) {
+                    List<QuizQuestion> savedBatch = questionRepository.saveAll(parseResult.getQuestions());
                     return savedBatch;
                 } else {
-                    lastError = "Parsed batch size (" + parsedBatch.size() + ") did not match requested blueprint size (" + blueprint.size() + ")";
+                    lastError = parseResult.getErrorReason();
                 }
             } catch (Exception ex) {
                 lastError = ex.getMessage();
@@ -299,90 +365,143 @@ public class QuizGenerationService {
         throw new IllegalStateException("Groq API 10-question batch generation failed after " + maxRetries + " attempts. Last error: " + lastError);
     }
 
-    private List<QuizQuestion> parseBatchQuestions(String rawJson, String subject, List<QuestionBlueprintSpec> blueprint) {
-        List<QuizQuestion> result = new ArrayList<>();
-        if (rawJson == null || rawJson.isBlank()) return result;
-
-        String cleanJson = rawJson.trim();
-        if (cleanJson.startsWith("```json")) {
-            cleanJson = cleanJson.substring(7);
-        } else if (cleanJson.startsWith("```")) {
-            cleanJson = cleanJson.substring(3);
+    private BatchParseResult parseBatchQuestionsResult(String rawJson, String subject, List<QuestionBlueprintSpec> blueprint) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return new BatchParseResult("Groq returned null or blank response");
         }
-        if (cleanJson.endsWith("```")) {
-            cleanJson = cleanJson.substring(0, cleanJson.length() - 3);
-        }
-        cleanJson = cleanJson.trim();
 
+        String cleanJson = stripMarkdownFences(rawJson);
+        if (cleanJson.isBlank()) {
+            return new BatchParseResult("Stripped response content was empty");
+        }
+
+        JsonNode root;
         try {
-            JsonNode root = objectMapper.readTree(cleanJson);
-            if (root.has("success") && !root.get("success").asBoolean(true)) {
-                System.err.println("[QuizGenerationService] Groq error payload in batch parse: " + root.toString());
-                return result;
-            }
-
-            JsonNode questionsNode = root.get("questions");
-            if (questionsNode == null || !questionsNode.isArray() || questionsNode.size() != blueprint.size()) {
-                System.err.println("[QuizGenerationService] Invalid questions array in batch response. Expected " + blueprint.size() + ", got: " + (questionsNode != null && questionsNode.isArray() ? questionsNode.size() : "none"));
-                return result;
-            }
-
-            Set<String> seenTexts = new HashSet<>();
-
-            for (int i = 0; i < questionsNode.size(); i++) {
-                JsonNode qNode = questionsNode.get(i);
-                QuestionBlueprintSpec spec = blueprint.get(i);
-
-                if (!qNode.has("questionText") || !qNode.has("options") || !qNode.get("options").isArray()) {
-                    System.err.println("[QuizGenerationService] Question " + (i+1) + " missing questionText or options array");
-                    return new ArrayList<>();
-                }
-
-                String questionText = qNode.path("questionText").asText().trim();
-                if (questionText.isEmpty() || seenTexts.contains(questionText.toLowerCase())) {
-                    System.err.println("[QuizGenerationService] Duplicate or empty questionText at index " + i + ": " + questionText);
-                    return new ArrayList<>();
-                }
-                seenTexts.add(questionText.toLowerCase());
-
-                List<String> options = new ArrayList<>();
-                qNode.get("options").forEach(opt -> options.add(opt.asText().trim()));
-                if (options.size() != 4) {
-                    System.err.println("[QuizGenerationService] Question " + (i+1) + " options size is not 4: " + options.size());
-                    return new ArrayList<>();
-                }
-
-                int correctIdx = qNode.path("correctOptionIndex").asInt(0);
-                if (correctIdx < 0 || correctIdx > 3) {
-                    correctIdx = 0;
-                }
-
-                String explanation = qNode.path("conceptualExplanation").asText("Conceptual explanation for " + spec.getConcept()).trim();
-                if (explanation.isEmpty()) {
-                    explanation = "Conceptual explanation for " + spec.getConcept();
-                }
-
-                QuizQuestion question = QuizQuestion.builder()
-                        .subject(subject)
-                        .concept(spec.getConcept())
-                        .difficulty(spec.getDifficulty())
-                        .questionText(questionText)
-                        .options(options)
-                        .correctOptionIndex(correctIdx)
-                        .conceptualExplanation(explanation)
-                        .build();
-
-                question.setQuestionSource("GROQ_DIAGNOSTIC_BATCH");
-                question.setGenerationVersion(3);
-                String fp = "fp_" + Math.abs(question.getQuestionText().hashCode());
-                question.setQuestionFingerprint(fp);
-
-                result.add(question);
-            }
+            root = objectMapper.readTree(cleanJson);
         } catch (Exception e) {
-            System.err.println("[QuizGenerationService] Failed to parse batch Groq response: " + e.getMessage());
+            String excerpt = rawJson.length() > 150 ? rawJson.substring(0, 150) + "..." : rawJson;
+            return new BatchParseResult("Invalid JSON syntax: " + e.getMessage() + " (Raw excerpt: " + excerpt + ")");
         }
-        return result;
+
+        if (root.has("success") && !root.get("success").asBoolean(true)) {
+            String errType = root.path("error").path("type").asText("UNKNOWN");
+            String errMsg = root.path("error").path("message").asText("Groq error payload");
+            return new BatchParseResult("Groq API error [" + errType + "]: " + errMsg);
+        }
+
+        JsonNode questionsNode = null;
+        if (root.isArray()) {
+            questionsNode = root;
+        } else if (root.isObject()) {
+            if (root.has("questions") && root.get("questions").isArray()) {
+                questionsNode = root.get("questions");
+            } else if (root.has("quiz") && root.get("quiz").isArray()) {
+                questionsNode = root.get("quiz");
+            } else if (root.has("data") && root.get("data").isArray()) {
+                questionsNode = root.get("data");
+            } else if (root.has("items") && root.get("items").isArray()) {
+                questionsNode = root.get("items");
+            } else if (root.has("questionList") && root.get("questionList").isArray()) {
+                questionsNode = root.get("questionList");
+            } else {
+                Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
+                while (fields.hasNext()) {
+                    Map.Entry<String, JsonNode> entry = fields.next();
+                    if (entry.getValue().isArray()) {
+                        questionsNode = entry.getValue();
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (questionsNode == null || !questionsNode.isArray()) {
+            return new BatchParseResult("Wrong response structure: Expected JSON array or object containing 'questions' array, got root shape: " + root.getNodeType());
+        }
+
+        int expectedCount = blueprint != null ? blueprint.size() : 10;
+        if (questionsNode.size() != expectedCount) {
+            return new BatchParseResult("Wrong question count: Groq returned " + questionsNode.size() + " questions, expected exactly " + expectedCount);
+        }
+
+        List<QuizQuestion> result = new ArrayList<>();
+        Set<String> seenTexts = new HashSet<>();
+
+        for (int i = 0; i < questionsNode.size(); i++) {
+            JsonNode qNode = questionsNode.get(i);
+            QuestionBlueprintSpec spec = (blueprint != null && i < blueprint.size()) ? blueprint.get(i) : null;
+
+            String questionText = "";
+            if (qNode.has("questionText")) questionText = qNode.path("questionText").asText().trim();
+            else if (qNode.has("question")) questionText = qNode.path("question").asText().trim();
+            else if (qNode.has("text")) questionText = qNode.path("text").asText().trim();
+
+            if (questionText.isEmpty()) {
+                return new BatchParseResult("Missing required field 'questionText' in question #" + (i + 1));
+            }
+
+            if (seenTexts.contains(questionText.toLowerCase())) {
+                return new BatchParseResult("Duplicate question text in question #" + (i + 1) + ": " + questionText);
+            }
+            seenTexts.add(questionText.toLowerCase());
+
+            JsonNode optionsNode = null;
+            if (qNode.has("options") && qNode.get("options").isArray()) optionsNode = qNode.get("options");
+            else if (qNode.has("choices") && qNode.get("choices").isArray()) optionsNode = qNode.get("choices");
+            else if (qNode.has("answers") && qNode.get("answers").isArray()) optionsNode = qNode.get("answers");
+
+            if (optionsNode == null) {
+                return new BatchParseResult("Missing required array 'options' in question #" + (i + 1));
+            }
+
+            List<String> options = new ArrayList<>();
+            optionsNode.forEach(opt -> options.add(opt.asText().trim()));
+            if (options.size() != 4) {
+                return new BatchParseResult("Invalid options count in question #" + (i + 1) + ": expected 4, got " + options.size());
+            }
+
+            int correctIdx = 0;
+            if (qNode.has("correctOptionIndex")) correctIdx = qNode.path("correctOptionIndex").asInt(0);
+            else if (qNode.has("correct_option_index")) correctIdx = qNode.path("correct_option_index").asInt(0);
+            else if (qNode.has("correctIndex")) correctIdx = qNode.path("correctIndex").asInt(0);
+            else if (qNode.has("answerIndex")) correctIdx = qNode.path("answerIndex").asInt(0);
+            else if (qNode.has("correctOption")) correctIdx = qNode.path("correctOption").asInt(0);
+
+            if (correctIdx < 0 || correctIdx > 3) correctIdx = 0;
+
+            String conceptName = (spec != null) ? spec.getConcept() : qNode.path("concept").asText("Core Principle").trim();
+            if (conceptName.isEmpty()) conceptName = "Core Principle";
+
+            String explanation = "";
+            if (qNode.has("conceptualExplanation")) explanation = qNode.path("conceptualExplanation").asText().trim();
+            else if (qNode.has("explanation")) explanation = qNode.path("explanation").asText().trim();
+            else if (qNode.has("reasoning")) explanation = qNode.path("reasoning").asText().trim();
+
+            if (explanation.isEmpty()) {
+                explanation = "Conceptual explanation for " + conceptName;
+            }
+
+            QuizQuestion.Difficulty diff = (spec != null) ? spec.getDifficulty() : QuizQuestion.Difficulty.MEDIUM;
+
+            QuizQuestion question = QuizQuestion.builder()
+                    .subject(subject)
+                    .concept(conceptName)
+                    .difficulty(diff)
+                    .questionText(questionText)
+                    .options(options)
+                    .correctOptionIndex(correctIdx)
+                    .conceptualExplanation(explanation)
+                    .build();
+
+            question.setQuestionSource("GROQ_DIAGNOSTIC_BATCH");
+            question.setGenerationVersion(3);
+            String fp = "fp_" + Math.abs(question.getQuestionText().hashCode());
+            question.setQuestionFingerprint(fp);
+
+            result.add(question);
+        }
+
+        return new BatchParseResult(result);
     }
 
     public QuizQuestion generateOneDiagnosticQuestionViaGroq(String subject, String concept, QuizQuestion.Difficulty difficulty, Map<String, Object> context) {
@@ -584,16 +703,8 @@ public class QuizGenerationService {
         List<QuizQuestion> result = new ArrayList<>();
         if (rawJson == null || rawJson.isBlank()) return result;
 
-        String cleanJson = rawJson.trim();
-        if (cleanJson.startsWith("```json")) {
-            cleanJson = cleanJson.substring(7);
-        } else if (cleanJson.startsWith("```")) {
-            cleanJson = cleanJson.substring(3);
-        }
-        if (cleanJson.endsWith("```")) {
-            cleanJson = cleanJson.substring(0, cleanJson.length() - 3);
-        }
-        cleanJson = cleanJson.trim();
+        String cleanJson = stripMarkdownFences(rawJson);
+        if (cleanJson.isBlank()) return result;
 
         try {
             JsonNode root = objectMapper.readTree(cleanJson);
@@ -603,28 +714,68 @@ public class QuizGenerationService {
                 return result;
             }
 
-            JsonNode questionsNode = root.get("questions");
+            JsonNode questionsNode = null;
+            if (root.isArray()) {
+                questionsNode = root;
+            } else if (root.isObject()) {
+                if (root.has("questions") && root.get("questions").isArray()) {
+                    questionsNode = root.get("questions");
+                } else if (root.has("quiz") && root.get("quiz").isArray()) {
+                    questionsNode = root.get("quiz");
+                } else if (root.has("data") && root.get("data").isArray()) {
+                    questionsNode = root.get("data");
+                } else if (root.has("items") && root.get("items").isArray()) {
+                    questionsNode = root.get("items");
+                } else {
+                    Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
+                    while (fields.hasNext()) {
+                        Map.Entry<String, JsonNode> entry = fields.next();
+                        if (entry.getValue().isArray()) {
+                            questionsNode = entry.getValue();
+                            break;
+                        }
+                    }
+                }
+            }
+
             if (questionsNode == null || !questionsNode.isArray() || questionsNode.isEmpty()) {
                 System.err.println("[QuizGenerationService] No valid 'questions' array in Groq response: " + cleanJson);
                 return result;
             }
 
             for (JsonNode q : questionsNode) {
-                if (!q.has("questionText") || !q.has("options") || !q.get("options").isArray()) continue;
+                String questionText = "";
+                if (q.has("questionText")) questionText = q.path("questionText").asText().trim();
+                else if (q.has("question")) questionText = q.path("question").asText().trim();
+                else if (q.has("text")) questionText = q.path("text").asText().trim();
+
+                if (questionText.isEmpty()) continue;
+
+                JsonNode optionsNode = null;
+                if (q.has("options") && q.get("options").isArray()) optionsNode = q.get("options");
+                else if (q.has("choices") && q.get("choices").isArray()) optionsNode = q.get("choices");
+                else if (q.has("answers") && q.get("answers").isArray()) optionsNode = q.get("answers");
+
+                if (optionsNode == null) continue;
 
                 List<String> options = new ArrayList<>();
-                q.get("options").forEach(opt -> options.add(opt.asText()));
+                optionsNode.forEach(opt -> options.add(opt.asText().trim()));
 
                 if (options.size() != 4) continue;
 
+                int correctIdx = 0;
+                if (q.has("correctOptionIndex")) correctIdx = q.path("correctOptionIndex").asInt(0);
+                else if (q.has("correct_option_index")) correctIdx = q.path("correct_option_index").asInt(0);
+                else if (q.has("correctIndex")) correctIdx = q.path("correctIndex").asInt(0);
+
                 QuizQuestion question = QuizQuestion.builder()
                         .subject(subject)
-                        .concept(q.path("concept").asText(subject + " Core"))
+                        .concept(q.path("concept").asText(subject + " Core").trim())
                         .difficulty(difficulty)
-                        .questionText(q.path("questionText").asText())
+                        .questionText(questionText)
                         .options(options)
-                        .correctOptionIndex(q.path("correctOptionIndex").asInt(0))
-                        .conceptualExplanation(q.path("conceptualExplanation").asText("Conceptual explanation for " + subject))
+                        .correctOptionIndex(correctIdx)
+                        .conceptualExplanation(q.path("conceptualExplanation").asText("Conceptual explanation for " + subject).trim())
                         .build();
 
                 question.setQuestionSource("GROQ_AI_GENERATED");

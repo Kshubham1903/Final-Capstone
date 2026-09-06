@@ -193,8 +193,9 @@ export default function Quizzes() {
         subjectName: subj,
         questionCount: 5
       });
-      if (!startRes || !startRes.sessionId) {
-        setGroqError("Failed to initialize diagnostic session. Please check connection.");
+      if (!startRes || !startRes.sessionId || startRes.sessionId.startsWith("sess_local_")) {
+        setGroqError("Failed to initialize valid diagnostic session on backend.");
+        setRetryAction(() => () => startAiQuiz(subj));
         return;
       }
 
@@ -202,6 +203,7 @@ export default function Quizzes() {
       await loadNextInitialQuestion(startRes.sessionId);
     } catch (err: any) {
       setGroqError(err.message || "Diagnostic session setup failed.");
+      setRetryAction(() => () => startAiQuiz(subj));
     } finally {
       setIsGeneratingAi(false);
       setGeneratingSubject(null);
@@ -209,7 +211,11 @@ export default function Quizzes() {
   };
 
   const loadNextInitialQuestion = async (sessId: string) => {
-    if (!sessId) return;
+    if (!sessId || sessId.startsWith("sess_local_")) {
+      setGroqError("Invalid diagnostic session ID. Please restart the session.");
+      setRetryAction(() => () => startAiQuiz(activeSubject || "Computer Science"));
+      return;
+    }
 
     if (adaptiveNextRequestInFlightRef.current) {
       console.warn(`[AdaptiveQuiz] Next initial question request already in flight for session ${sessId}. Ignoring duplicate call.`);
@@ -231,7 +237,12 @@ export default function Quizzes() {
 
       if (res.error || !res.question) {
         setGroqError(res.message || "Groq question generation failed.");
-        setRetryAction(() => () => loadNextInitialQuestion(sessId));
+        const isSessionInvalid = !sessId || sessId.startsWith("sess_local_") || (res.message && res.message.toLowerCase().includes("session not found"));
+        if (isSessionInvalid) {
+          setRetryAction(() => () => startAiQuiz(activeSubject || "Computer Science"));
+        } else {
+          setRetryAction(() => () => loadNextInitialQuestion(sessId));
+        }
         return;
       }
 
@@ -905,10 +916,14 @@ export default function Quizzes() {
               <button
                 onClick={() => {
                   setGroqError(null);
-                  if (retryAction) {
+                  if (diagnosticSessionId && diagnosticSessionId.startsWith("sess_local_")) {
+                    startAiQuiz(activeSubject);
+                  } else if (retryAction) {
                     retryAction();
                   } else if (diagnosticSessionId) {
                     loadNextInitialQuestion(diagnosticSessionId);
+                  } else {
+                    startAiQuiz(activeSubject);
                   }
                 }}
                 className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-purple-600/30 cursor-pointer"

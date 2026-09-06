@@ -853,57 +853,25 @@ export async function startDiagnosticAssessment(payload: {
   questionCount?: number;
 }): Promise<any> {
   const online = await checkBackendConnection();
-  if (online) {
-    try {
-      const res = await fetch(`${getBackendUrl()}/api/assessment/start`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch (err) {
-      console.warn("Error starting diagnostic assessment on backend:", err);
-    }
+  if (!online) {
+    throw new Error("Backend service is offline. Cannot start diagnostic assessment session.");
   }
 
-  // Fallback diagnostic session
-  return {
-    sessionId: "sess_local_" + Date.now(),
-    branch: payload.branch,
-    semester: payload.semester,
-    subjectCode: payload.subjectCode,
-    subjectName: "Data Structures & Algorithms",
-    totalQuestions: 3,
-    totalMarks: 6,
-    questions: [
-      {
-        questionId: "q1",
-        topic: "Binary Search Trees",
-        questionText: "What is the worst-case time complexity of searching in an unbalanced Binary Search Tree?",
-        options: ["O(1)", "O(log N)", "O(N)", "O(N log N)"],
-        marks: 2,
-        difficulty: "MEDIUM"
-      },
-      {
-        questionId: "q2",
-        topic: "Sorting Algorithms",
-        questionText: "Which sorting algorithm is guaranteed O(N log N) time in worst case and is stable?",
-        options: ["Quick Sort", "Merge Sort", "Heap Sort", "Selection Sort"],
-        marks: 2,
-        difficulty: "EASY"
-      },
-      {
-        questionId: "q3",
-        topic: "Graph Theory",
-        questionText: "Which graph traversal algorithm uses a Queue data structure?",
-        options: ["Depth First Search (DFS)", "Breadth First Search (BFS)", "Dijkstra Algorithm", "Kruskal Algorithm"],
-        marks: 2,
-        difficulty: "EASY"
-      }
-    ]
-  };
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/assessment/start`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => null);
+    if (res.ok && data) {
+      return data;
+    }
+    throw new Error(data?.message || `Failed to start diagnostic assessment session (HTTP ${res.status}).`);
+  } catch (err: any) {
+    console.error("Error starting diagnostic assessment on backend:", err);
+    throw new Error(err.message || "Failed to start diagnostic assessment session.");
+  }
 }
 
 export async function submitDiagnosticAssessment(payload: {

@@ -72,46 +72,6 @@ public class AssessmentService {
 
             questionRepository.saveAll(qList);
         }
-
-        if (questionRepository.findBySubjectCodeAndIsActiveTrue("DS-LL-PRE01").isEmpty()) {
-            List<AssessmentQuestion> list = new ArrayList<>();
-            // Topic 1
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D1.1", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Introduction / Node Structure", "What is a linked list?", List.of("A collection of elements stored only in consecutive memory locations", "A collection of nodes connected using links/references", "A fixed-size collection of elements", "A collection containing only integer values"), 1, "A linked list is a dynamic collection of nodes connected by links/references.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D1.2", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Introduction / Node Structure", "Which two components are commonly present in a node of a singly linked list?", List.of("Data and next/reference", "Index and size", "Key and array", "Head and tail"), 0, "A singly linked list node contains data and a reference to the next node.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D1.3", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Introduction / Node Structure", "What does the head reference normally point to in a singly linked list?", List.of("The last node", "The first node", "The middle node", "The number of nodes"), 1, "The head reference points to the first node of a linked list.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D1.4", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Introduction / Node Structure", "Consider: 10 → 20 → 30 → NULL. What does NULL indicate?", List.of("The list contains an error", "The next node is 0", "There is no next node", "The list contains three nodes"), 2, "NULL indicates the end of the linked list (no next node).", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D1.5", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Introduction / Node Structure", "What is one major advantage of a linked list over a fixed-size array?", List.of("Constant-time random access", "Dynamic size and flexible insertion/deletion", "Contiguous memory allocation", "No additional memory for links"), 1, "Linked lists offer dynamic sizing and efficient insertions/deletions.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-
-            // Topic 2
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D2.1", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Node Creation", "If a linked list is initially empty, what should the head reference normally contain?", List.of("1", "0", "NULL", "The address of the last node"), 2, "An empty linked list is represented by a head reference containing NULL.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D2.2", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Node Creation", "Suppose a new node is created: Node newNode = new Node(10). What does 10 represent?", List.of("Node address", "Data stored in the node", "Position of the node", "Number of links"), 1, "The parameter 10 represents the data stored inside the node.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D2.3", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Node Creation", "If a newly created node is currently the only node in a singly linked list, its next reference should normally be:", List.of("The address of itself", "The address of head", "NULL", "The address of the previous node"), 2, "A single node's next pointer should be NULL as there are no subsequent nodes.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D2.4", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Node Creation", "To insert a newly created node at the beginning of a singly linked list, which statement is conceptually correct?", List.of("newNode.next = head", "head.next = head", "newNode = NULL", "head = NULL"), 0, "Point the new node's next to the current head.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D2.5", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Node Creation", "After inserting a new node at the beginning, what should happen to head?", List.of("It remains unchanged", "It points to the new node", "It points to the last node", "It becomes NULL"), 1, "The head must be updated to point to the new node.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-
-            // Topic 3
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D3.1", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Traversal", "What is traversal of a linked list?", List.of("Removing every node", "Visiting/processing nodes sequentially", "Sorting the nodes", "Creating a new list"), 1, "Traversal means visiting each node in the list sequentially.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D3.2", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Traversal", "For a singly linked list, traversal normally begins at:", List.of("NULL", "Tail", "Head", "Middle node"), 2, "Singly linked list traversal starts from the head.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D3.3", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Traversal", "Given: 10 → 20 → 30 → NULL. What is the normal forward traversal output?", List.of("30, 20, 10", "10, 20, 30", "20, 10, 30", "10, 30, 20"), 1, "Normal forward traversal prints elements in order: 10, 20, 30.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D3.4", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Traversal", "Which condition is commonly used to continue traversal until the end of a singly linked list?", List.of("current == head", "current != NULL", "current == NULL", "current > head"), 1, "The loop continues while current is not NULL.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D3.5", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Traversal", "What is the time complexity of traversing all n nodes of a singly linked list?", List.of("O(1)", "O(log n)", "O(n)", "O(n²)"), 2, "Traversal of n nodes takes O(n) linear time.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-
-            // Topic 4
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D4.1", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Insertion", "What does insertion mean in a linked list?", List.of("Searching for a node", "Adding a new node", "Removing a node", "Traversing the list"), 1, "Insertion adds a new node to the linked list.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D4.2", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Insertion", "Given: 10 → 20 → 30. A node containing 5 is inserted at the beginning. What is the result?", List.of("10 → 20 → 30 → 5", "5 → 10 → 20 → 30", "10 → 5 → 20 → 30", "10 → 20 → 5 → 30"), 1, "Inserting 5 at the front results in 5 pointing to 10.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D4.3", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Insertion", "Given: 10 → 20 → 30. A node containing 25 is inserted between 20 and 30. What is the result?", List.of("25 → 10 → 20 → 30", "10 → 20 → 25 → 30", "10 → 25 → 20 → 30", "10 → 20 → 30 → 25"), 1, "Inserting 25 between 20 and 30 results in 10 → 20 → 25 → 30.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D4.4", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Insertion", "When inserting a node between two nodes in a singly linked list, which references need to be updated?", List.of("Only the new node's data", "The relevant next/reference links", "Only the head", "Only the tail"), 1, "The next pointers of the preceding node and the new node must be updated.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D4.5", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Insertion", "If a node is inserted at the beginning of a non-empty singly linked list, how many existing nodes need their next reference changed?", List.of("Every node", "No existing node", "Only the old head node", "Only the last node"), 1, "No existing node's next reference is changed; only the new node's next pointer points to the old head.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-
-            // Topic 5
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D5.1", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Deletion", "What does deletion mean in a linked list?", List.of("Adding a node", "Removing a node", "Traversing a node", "Creating a node"), 1, "Deletion removes a node from the list.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D5.2", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Deletion", "Given: 10 → 20 → 30. If node 20 is deleted, what is the resulting list?", List.of("20 → 10 → 30", "10 → 30", "10 → 20", "30 → 20 → 10"), 1, "Deleting 20 yields 10 pointing directly to 30.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D5.3", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Deletion", "When deleting a middle node from a singly linked list, the previous node should generally:", List.of("Point to NULL", "Point to the node after the deleted node", "Become the head", "Also be deleted"), 1, "The previous node's next must be updated to skip the deleted node.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D5.4", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Deletion", "If the only node in a linked list is deleted, what should head become?", List.of("The deleted node", "1", "NULL", "The previous node"), 2, "If the single node is deleted, the head becomes NULL.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-            list.add(new AssessmentQuestion("DS-LL-PRE01-D5.5", "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures", "Deletion", "Consider: 10 → 20 → 30 → 40. If node 30 is deleted, which sequence should remain?", List.of("10 → 20 → 40", "10 → 30 → 40", "20 → 30 → 40", "10 → 20 → 30"), 0, "Deleting 30 yields 10 → 20 → 40.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
-
-            questionRepository.saveAll(list);
-        }
     }
 
     public List<Map<String, Object>> getAvailableAssessmentSubjects(String branch, int semester) {
@@ -182,34 +142,98 @@ public class AssessmentService {
             }
         }
 
-        Collections.shuffle(bucketCritical);
-        Collections.shuffle(bucketPractice);
-        Collections.shuffle(bucketUnassessed);
-        Collections.shuffle(bucketMastered);
+        // FIRST-TIME / BASELINE STUDENT: No clear performance data
+        if (weakConcepts.isEmpty() && strongConcepts.isEmpty()) {
+            QuizQuestion.Difficulty[] diffPattern = {
+                QuizQuestion.Difficulty.EASY,
+                QuizQuestion.Difficulty.EASY,
+                QuizQuestion.Difficulty.EASY,
+                QuizQuestion.Difficulty.MEDIUM,
+                QuizQuestion.Difficulty.MEDIUM,
+                QuizQuestion.Difficulty.MEDIUM,
+                QuizQuestion.Difficulty.MEDIUM,
+                QuizQuestion.Difficulty.HARD,
+                QuizQuestion.Difficulty.HARD,
+                QuizQuestion.Difficulty.HARD
+            };
 
-        List<AssessmentQuestion> selected = new ArrayList<>();
-        for (AssessmentQuestion q : bucketCritical) {
-            if (selected.size() < count) selected.add(q);
-        }
-        for (AssessmentQuestion q : bucketPractice) {
-            if (selected.size() < count) selected.add(q);
-        }
-        for (AssessmentQuestion q : bucketUnassessed) {
-            if (selected.size() < count) selected.add(q);
-        }
-        for (AssessmentQuestion q : bucketMastered) {
-            if (selected.size() < count) selected.add(q);
-        }
-
-        if (selected.isEmpty()) {
-            Collections.shuffle(questions);
-            selected = questions.stream().limit(count).collect(Collectors.toList());
+            for (int i = 0; i < 10; i++) {
+                String c = blueprintConcepts.get(i % blueprintConcepts.size());
+                blueprint.add(new QuizGenerationService.QuestionBlueprintSpec(i + 1, c, diffPattern[i]));
+            }
+            return blueprint;
         }
 
-        List<String> questionIds = selected.stream().map(AssessmentQuestion::getId).collect(Collectors.toList());
-        int totalMarks = selected.stream().mapToInt(AssessmentQuestion::getMarks).sum();
+        // STUDENT WITH PERFORMANCE DATA: Prioritize weak concepts (~6 slots), balance with neutral/strong (~4 slots)
+        List<String> assignedConcepts = new ArrayList<>();
 
-        String subjectName = selected.isEmpty() ? "General Computer Science" : selected.get(0).getSubjectName();
+        if (!weakConcepts.isEmpty()) {
+            for (int i = 0; i < 6; i++) {
+                assignedConcepts.add(weakConcepts.get(i % weakConcepts.size()));
+            }
+        } else {
+            for (int i = 0; i < 6; i++) {
+                assignedConcepts.add(neutralConcepts.get(i % neutralConcepts.size()));
+            }
+        }
+
+        List<String> pool = new ArrayList<>();
+        if (!strongConcepts.isEmpty()) pool.addAll(strongConcepts);
+        if (!neutralConcepts.isEmpty()) pool.addAll(neutralConcepts);
+        if (pool.isEmpty()) pool.addAll(blueprintConcepts);
+
+        for (int i = 0; i < 4; i++) {
+            assignedConcepts.add(pool.get(i % pool.size()));
+        }
+
+        for (int i = 0; i < 10; i++) {
+            String c = assignedConcepts.get(i);
+            boolean isWeak = weakConcepts.contains(c);
+            QuizQuestion.Difficulty diff;
+            if (i < 3) {
+                diff = isWeak ? QuizQuestion.Difficulty.EASY : QuizQuestion.Difficulty.MEDIUM;
+            } else if (i < 7) {
+                diff = isWeak ? QuizQuestion.Difficulty.MEDIUM : QuizQuestion.Difficulty.MEDIUM;
+            } else {
+                diff = isWeak ? QuizQuestion.Difficulty.MEDIUM : QuizQuestion.Difficulty.HARD;
+            }
+            blueprint.add(new QuizGenerationService.QuestionBlueprintSpec(i + 1, c, diff));
+        }
+
+        return blueprint;
+    }
+
+    public AssessmentSessionResponse startAssessmentSession(AssessmentStartRequest req) {
+        String branch = req.getBranch() != null ? req.getBranch() : "Computer Science & Engineering";
+        int semester = req.getSemester() > 0 ? req.getSemester() : 3;
+        String subjectCode = req.getSubjectCode() != null ? req.getSubjectCode().trim().toUpperCase() : "CS301";
+        int count = 10; // Batch architecture generates 10 questions in ONE Groq call
+        String userId = req.getUserId() != null ? req.getUserId() : "anonymous_student";
+
+        String subjectName = req.getSubjectName() != null && !req.getSubjectName().isBlank()
+                ? req.getSubjectName().trim() : null;
+        if (subjectName == null) {
+            subjectName = "Data Structures & Algorithms";
+            Optional<Subject> sOpt = subjectRepository.findBySubjectCode(subjectCode);
+            if (sOpt.isPresent()) {
+                subjectName = sOpt.get().getSubjectName();
+            }
+        }
+
+        // Build 10-question adaptive blueprint
+        List<QuizGenerationService.QuestionBlueprintSpec> blueprint = buildAdaptiveBlueprint(subjectName, userId);
+
+        // Pre-generate 10-question batch via ONE Groq request
+        Map<String, Object> genContext = new HashMap<>();
+        genContext.put("adaptiveSummary", "Baseline 10-question initial assessment");
+        List<QuizQuestion> generatedBatch = quizGenerationService.generateBatchDiagnosticQuestionsViaGroq(subjectName, blueprint, genContext);
+
+        List<String> questionIds = new ArrayList<>();
+        List<String> fingerprints = new ArrayList<>();
+        for (QuizQuestion q : generatedBatch) {
+            questionIds.add(q.getId());
+            fingerprints.add(q.getQuestionFingerprint() != null ? q.getQuestionFingerprint() : q.getQuestionText());
+        }
 
         AssessmentSession session = new AssessmentSession();
         session.setUserId(userId);
@@ -246,10 +270,6 @@ public class AssessmentService {
     public AssessmentResultResponse submitAssessment(AssessmentSubmissionRequest req) {
         AssessmentSession session = sessionRepository.findById(req.getSessionId())
                 .orElseThrow(() -> new IllegalArgumentException("Invalid assessment session ID: " + req.getSessionId()));
-
-        if (session.getStatus() == AssessmentSession.Status.COMPLETED) {
-            throw new IllegalStateException("This assessment session has already been submitted.");
-        }
 
         List<AssessmentQuestion> questions = questionRepository.findAllById(session.getQuestionIds());
         Map<String, AssessmentQuestion> questionMap = questions.stream().collect(Collectors.toMap(AssessmentQuestion::getId, q -> q));
