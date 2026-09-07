@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import AssessmentFeedbackCard from "./AssessmentFeedbackCard";
 import { 
   CheckCircle2, 
   HelpCircle, 
@@ -391,16 +392,14 @@ export default function SubjectKnowledgeTest({ profile }: SubjectKnowledgeTestPr
           ==================================================================== */}
       {viewState === "RESULT" && currentResult && (
         <div className="space-y-5 animate-fade-in">
-          <div className="p-6 rounded-2xl bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 text-center space-y-2">
-            <Award className="h-10 w-10 text-purple-300 mx-auto" />
-            <h3 className="text-base font-black text-main-theme">Knowledge Check Complete!</h3>
-            <div className="text-3xl font-black text-emerald-400">
-              {currentResult.overallPercentage.toFixed(1)}% Overall Score
-            </div>
-            <p className="text-xs text-secondary-theme">
-              {currentResult.totalCorrect} out of {currentResult.totalQuestions} questions answered correctly across {Object.keys(currentResult.subjectScorePercentage || {}).length} subjects.
-            </p>
-          </div>
+          
+          <AssessmentFeedbackCard
+            studentId={studentId}
+            topic={Object.keys(currentResult.subjectScorePercentage || {})[0] || "Subject Knowledge"}
+            score={currentResult.totalCorrect}
+            totalQuestions={currentResult.totalQuestions}
+            percentage={currentResult.overallPercentage}
+          />
 
           <div className="space-y-3">
             <h4 className="text-xs font-extrabold text-main-theme uppercase tracking-wider">Per-Subject Performance Breakdown</h4>

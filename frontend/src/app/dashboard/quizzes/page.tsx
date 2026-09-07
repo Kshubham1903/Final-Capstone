@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import Layout from "../../../components/Layout";
+import AssessmentFeedbackCard from "../../../components/dashboard/AssessmentFeedbackCard";
 import {
   GraduationCap,
   BrainCircuit,
@@ -1185,21 +1186,21 @@ export default function Quizzes() {
                 }`}>
                 {isVerificationMode
                   ? (remediationResult?.passed ? "Concept Successfully Remediated!" : "Remediation Test Complete")
-                  : "10-Question Diagnostic Complete"}
+                  : "Assessment Complete"}
               </h2>
-              <p className="text-xs text-secondary-theme">
-                You correctly answered <strong className="text-purple-theme font-bold">{correctAnswers} out of {quizQuestions.length > 0 ? quizQuestions.length : 5} questions</strong> for:
-              </p>
               <p className="text-base font-bold text-main-theme">
                 {activeSubject} {displayTargetConcept ? `— ${displayTargetConcept}` : ""}
               </p>
-              {isVerificationMode && remediationResult?.message && (
-                <p className={`text-xs font-semibold max-w-md mx-auto pt-1 leading-relaxed ${remediationResult.passed ? "text-emerald-400" : "text-amber-400"
-                  }`}>
-                  {remediationResult.message}
-                </p>
-              )}
             </div>
+
+            {/* Assessment Feedback & Adaptation Section */}
+            <AssessmentFeedbackCard
+              studentId={profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") || "" : "")}
+              topic={displayTargetConcept || activeSubject || "Assessment"}
+              score={correctAnswers}
+              totalQuestions={quizQuestions.length > 0 ? quizQuestions.length : 5}
+              customFeedback={isVerificationMode && remediationResult?.message ? remediationResult.message : undefined}
+            />
 
             {/* Diagnostic Indicators */}
             <div className="grid grid-cols-2 gap-4 pt-2">

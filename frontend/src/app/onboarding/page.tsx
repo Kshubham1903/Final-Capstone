@@ -408,7 +408,7 @@ export default function Onboarding() {
   const handleSubmitAssessment = async () => {
     setError("");
     if (Object.keys(answers).length < questions.length) {
-      setError("Please answer all 25 questions before submitting.");
+      setError(`Please answer all ${questions.length} questions before submitting.`);
       return;
     }
 

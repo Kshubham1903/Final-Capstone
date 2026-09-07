@@ -17,6 +17,9 @@ import TodaysLearningCard from "../../components/dashboard/TodaysLearningCard";
 import LearningProgressCard from "../../components/dashboard/LearningProgressCard";
 import SubjectKnowledgeTest from "../../components/dashboard/SubjectKnowledgeTest";
 import SubjectProgressPanel from "../../components/dashboard/SubjectProgressPanel";
+import LearningPreferencesCard from "../../components/dashboard/LearningPreferencesCard";
+import LearningGainCard from "../../components/dashboard/LearningGainCard";
+import EvaluationMetricsCard from "../../components/dashboard/EvaluationMetricsCard";
 
 export default function StudentDashboard() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
@@ -211,6 +214,15 @@ export default function StudentDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* Calculated Learning Preferences Card (P vector from Student State API) */}
+            <LearningPreferencesCard profile={profile} />
+
+            {/* Normalized Learning Gain Metric Card (Pre vs Post Gain) */}
+            <LearningGainCard profile={profile} />
+
+            {/* Evaluation Analytics Card (Completion Rate & Time to Mastery) */}
+            <EvaluationMetricsCard profile={profile} />
 
             {/* Key AI Insights Card */}
             <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-4">

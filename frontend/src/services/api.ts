@@ -1665,3 +1665,95 @@ export async function fetchStudyResources(subject: string, concept: string): Pro
   }
   return null;
 }
+
+export async function fetchStudentState(studentId: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/students/${studentId}/state`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to fetch student state vector:", err);
+    }
+  }
+  return null;
+}
+
+export async function fetchLearningGain(studentId: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/students/${studentId}/learning-gain`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to fetch student learning gain:", err);
+    }
+  }
+  return null;
+}
+
+export async function fetchStudentStateHistory(studentId: string): Promise<any[]> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/students/${studentId}/state/history`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to fetch student state history:", err);
+    }
+  }
+  return [];
+}
+
+export async function fetchEvaluationMetrics(studentId: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/students/${studentId}/evaluation`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to fetch evaluation metrics:", err);
+    }
+  }
+  return null;
+}
+
+export async function postStudentSatisfaction(
+  studentId: string, 
+  rating: number, 
+  feedbackType: string = "LEARNING_ACTIVITY", 
+  comment?: string
+): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/students/${studentId}/satisfaction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ rating, feedbackType, comment })
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to post student satisfaction rating:", err);
+    }
+  }
+  return null;
+}

@@ -10,6 +10,7 @@ import {
   ShieldCheck
 } from "lucide-react";
 import { startConceptRemediation, submitConceptRemediation } from "../../services/api";
+import AssessmentFeedbackCard from "./AssessmentFeedbackCard";
 
 interface ConceptRemediationModalProps {
   studentId: string;
@@ -124,30 +125,15 @@ export default function ConceptRemediationModal({
           </div>
         ) : result ? (
           /* Result View */
-          <div className="py-6 text-center space-y-5">
-            <div className="flex justify-center">
-              {result.passed ? (
-                <div className="h-16 w-16 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center text-emerald-400">
-                  <ShieldCheck className="h-10 w-10" />
-                </div>
-              ) : (
-                <div className="h-16 w-16 rounded-full bg-amber-500/20 border-2 border-amber-500 flex items-center justify-center text-amber-400">
-                  <XCircle className="h-10 w-10" />
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <h4 className={`text-lg font-black ${result.passed ? "text-emerald-400" : "text-amber-400"}`}>
-                {result.passed ? "Concept Successfully Remediated!" : "Remediation Needs Further Practice"}
-              </h4>
-              <p className="text-sm font-extrabold text-main-theme">
-                Score: {result.correctCount} / {result.totalQuestions} ({Math.round(result.percentage)}%)
-              </p>
-              <p className="text-xs text-secondary-theme max-w-sm mx-auto pt-1 leading-relaxed">
-                {result.message}
-              </p>
-            </div>
+          <div className="py-4 space-y-5 text-center">
+            <AssessmentFeedbackCard
+              studentId={studentId}
+              topic={concept}
+              score={result.correctCount}
+              totalQuestions={result.totalQuestions}
+              percentage={result.percentage}
+              customFeedback={result.message}
+            />
 
             <button
               onClick={() => {
