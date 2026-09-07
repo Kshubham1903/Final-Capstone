@@ -51,24 +51,39 @@ public class AssessmentService {
 
     @PostConstruct
     public void initDefaultQuestionBank() {
-        if (questionRepository.count() == 0) {
+        if (questionRepository.findBySubjectCodeAndIsActiveTrue("DS-LL-PRE01").size() < 25) {
             List<AssessmentQuestion> qList = new ArrayList<>();
 
-            // CS301: Data Structures & Algorithms
-            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "CS301", "Data Structures & Algorithms", "Binary Search Trees", "What is the worst-case time complexity of searching in an unbalanced Binary Search Tree?", List.of("O(1)", "O(log N)", "O(N)", "O(N log N)"), 2, "In an unbalanced BST (skewed tree), search degrades to linear scan O(N).", AssessmentQuestion.Difficulty.MEDIUM, 2, "MCQ", true));
-            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "CS301", "Data Structures & Algorithms", "Sorting Algorithms", "Which of the following sorting algorithms offers stable O(N log N) time complexity in worst case?", List.of("Quick Sort", "Merge Sort", "Heap Sort", "Selection Sort"), 1, "Merge Sort is guaranteed O(N log N) worst-case time and is stable.", AssessmentQuestion.Difficulty.EASY, 2, "MCQ", true));
-            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "CS301", "Data Structures & Algorithms", "Graph Theory", "Which graph traversal algorithm uses a Queue data structure?", List.of("Depth First Search (DFS)", "Breadth First Search (BFS)", "Dijkstra Algorithm", "Kruskal Algorithm"), 1, "BFS uses a Queue (FIFO) to visit node neighbors level by level.", AssessmentQuestion.Difficulty.EASY, 2, "MCQ", true));
-            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "CS301", "Data Structures & Algorithms", "Dynamic Programming", "What key property makes a problem suitable for Dynamic Programming?", List.of("Greedy Choice Property", "Overlapping Subproblems & Optimal Substructure", "Divide & Conquer only", "Randomized state space"), 1, "Dynamic Programming optimizes problems with overlapping subproblems and optimal substructure.", AssessmentQuestion.Difficulty.HARD, 2, "MCQ", true));
-            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "CS301", "Data Structures & Algorithms", "Hash Tables", "In hash tables, what technique resolves collisions by storing multiple entries in linked nodes at the same bucket index?", List.of("Open Addressing", "Separate Chaining", "Linear Probing", "Quadratic Probing"), 1, "Separate Chaining maintains a linked list of entries at each bucket index.", AssessmentQuestion.Difficulty.MEDIUM, 2, "MCQ", true));
+            // 8 EASY Questions
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Arrays & Linked Lists", "What is the time complexity to insert an element at the beginning of a singly Linked List when the head pointer is given?", List.of("O(1)", "O(N)", "O(log N)", "O(N^2)"), 0, "Inserting at the head of a singly linked list requires updating the new node's next pointer and head pointer, taking constant time O(1).", AssessmentQuestion.Difficulty.EASY, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Stacks & Queues", "Which data structure is most suitable for implementing a Queue where insertions occur at one end and deletions at the other in O(1) time?", List.of("Singly Linked List with Head and Tail pointers", "Array without dynamic resizing", "Binary Search Tree", "Stack"), 0, "A Linked List with head and tail pointers allows O(1) enqueue at tail and O(1) dequeue at head.", AssessmentQuestion.Difficulty.EASY, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Stacks & Queues", "What is the access order principle governing a Stack data structure?", List.of("First-In-First-Out (FIFO)", "Last-In-First-Out (LIFO)", "Random Access", "Highest-Priority-First"), 1, "A Stack operates on Last-In-First-Out (LIFO) order.", AssessmentQuestion.Difficulty.EASY, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Arrays & Linked Lists", "What is the average time complexity of accessing an element at a given index in a standard static Array?", List.of("O(N)", "O(1)", "O(log N)", "O(N^2)"), 1, "Arrays provide direct indexing via memory offset in constant time O(1).", AssessmentQuestion.Difficulty.EASY, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Sorting Algorithms", "Which sorting algorithm guarantees stable O(N log N) time complexity in its worst case?", List.of("Quick Sort", "Merge Sort", "Heap Sort", "Selection Sort"), 1, "Merge Sort is guaranteed O(N log N) worst-case time and preserves relative order of equal keys (stable).", AssessmentQuestion.Difficulty.EASY, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Graph Theory & Dynamic Programming", "Which graph traversal algorithm utilizes a Queue (FIFO) data structure?", List.of("Depth First Search (DFS)", "Breadth First Search (BFS)", "Dijkstra Algorithm", "Kruskal Algorithm"), 1, "BFS visits vertices level by level using a Queue.", AssessmentQuestion.Difficulty.EASY, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Sorting Algorithms", "What is the time complexity of Binary Search on a sorted array of N elements?", List.of("O(N)", "O(N log N)", "O(log N)", "O(1)"), 2, "Binary Search halves the search space each step, yielding logarithmic time O(log N).", AssessmentQuestion.Difficulty.EASY, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Arrays & Linked Lists", "What is the worst-case number of key comparisons required in a Linear Search on an unsorted array of length N?", List.of("1", "log N", "N / 2", "N"), 3, "Linear Search compares up to N elements if the target is at the end or missing.", AssessmentQuestion.Difficulty.EASY, 1, "MCQ", true));
 
-            // CS302: Database Management Systems
-            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "CS302", "Database Management Systems", "Relational Algebra", "Which SQL command is used to ensure ACID compliance transaction atomicity commit?", List.of("COMMIT", "ROLLBACK", "SAVEPOINT", "GRANT"), 0, "COMMIT saves all transaction changes permanently to the database log.", AssessmentQuestion.Difficulty.EASY, 2, "MCQ", true));
-            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "CS302", "Database Management Systems", "Normalization", "A relation is in 3NF if it is in 2NF and has no:", List.of("Partial dependencies", "Transitive dependencies", "Multi-valued dependencies", "Join dependencies"), 1, "3NF requires eliminating transitive functional dependencies.", AssessmentQuestion.Difficulty.MEDIUM, 2, "MCQ", true));
-            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "CS302", "Database Management Systems", "Indexing", "Which indexing structure is commonly used by RDBMS for efficient B-tree disk block retrieval?", List.of("B+ Tree", "Red-Black Tree", "AVL Tree", "Trie"), 0, "B+ Trees store all records in leaf nodes, making range queries and disk block retrieval optimal.", AssessmentQuestion.Difficulty.HARD, 2, "MCQ", true));
+            // 9 MEDIUM Questions
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Arrays & Linked Lists", "Floyd's Cycle-Finding Algorithm (Slow and Fast Pointers) detects a loop in a Linked List in what time and space complexity?", List.of("Time: O(N), Space: O(1)", "Time: O(N^2), Space: O(1)", "Time: O(N), Space: O(N)", "Time: O(log N), Space: O(1)"), 0, "Floyd's algorithm traverses the list using O(1) auxiliary space and detects cycles in O(N) time.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Arrays & Linked Lists", "What is a key structural advantage of a Doubly Linked List over a Singly Linked List?", List.of("Bidirectional traversal and O(1) node deletion given node pointer", "Lower memory consumption per node", "Cache locality optimization", "Random access by index in O(1) time"), 0, "Doubly Linked List node contains next and prev pointers allowing O(1) deletion given pointer to target node.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Binary Search Trees", "In hash tables, what collision resolution technique stores multiple key-value pairs in a linked list at the same bucket index?", List.of("Open Addressing", "Separate Chaining", "Linear Probing", "Quadratic Probing"), 1, "Separate Chaining maintains a linked list at each array bucket to resolve collisions.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Binary Search Trees", "What is the worst-case search time complexity in an unbalanced (skewed) Binary Search Tree?", List.of("O(1)", "O(log N)", "O(N)", "O(N log N)"), 2, "An unbalanced BST degrades into a linear linked list with worst-case search time O(N).", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Sorting Algorithms", "Which in-place sorting algorithm constructs a max-heap to sort an array in O(N log N) worst-case time?", List.of("Quick Sort", "Insertion Sort", "Heap Sort", "Bubble Sort"), 2, "Heap Sort uses a max-heap structure to achieve guaranteed O(N log N) time in-place.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Graph Theory & Dynamic Programming", "Which graph traversal technique naturally uses a Stack (or function call stack) to explore as deep as possible before backtracking?", List.of("Breadth-First Search (BFS)", "Depth-First Search (DFS)", "Kruskal's Algorithm", "Prim's Algorithm"), 1, "DFS uses LIFO call stack or explicit stack to traverse deep into graph branches.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Stacks & Queues", "How can a Queue be implemented using two Stacks such that enqueue and dequeue operations achieve amortized O(1) time?", List.of("By pushing to Stack1 and popping from Stack2 (transferring when Stack2 is empty)", "By keeping Stack1 sorted at all times", "By alternating enqueues between Stack1 and Stack2", "It is impossible to implement a Queue with two Stacks"), 0, "Pushing to Stack1 and popping from Stack2 yields amortized O(1) time per operation.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Stacks & Queues", "In a Circular Array implementation of a Queue of size N, what formula updates the rear pointer upon enqueuing an item?", List.of("rear = rear + 1", "rear = (rear + 1) % N", "rear = (rear - 1) % N", "rear = rear * 2"), 1, "Modular arithmetic (rear + 1) % N wraps the index back to 0 when reaching array end.", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Binary Search Trees", "What is the maximum tree height of a self-balancing AVL Tree containing N nodes?", List.of("O(N)", "O(log N)", "O(N^2)", "O(1)"), 1, "AVL tree balance factor guarantees tree height is bounded by O(log N).", AssessmentQuestion.Difficulty.MEDIUM, 1, "MCQ", true));
 
-            // CS601: Artificial Intelligence & Machine Learning
-            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 6, "CS601", "Artificial Intelligence & Machine Learning", "Neural Networks", "Which activation function suffers from the vanishing gradient problem in deep networks?", List.of("ReLU", "Leaky ReLU", "Sigmoid", "ELU"), 2, "Sigmoid function squashes inputs into (0,1), causing derivatives to vanish near zero during backpropagation.", AssessmentQuestion.Difficulty.MEDIUM, 2, "MCQ", true));
-            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 6, "CS601", "Artificial Intelligence & Machine Learning", "Supervised Learning", "Which evaluation metric is ideal for highly imbalanced classification datasets?", List.of("Accuracy", "F1-Score / PR-AUC", "Mean Squared Error", "R-squared"), 1, "F1-Score (harmonic mean of Precision & Recall) evaluates performance under class imbalance better than Accuracy.", AssessmentQuestion.Difficulty.MEDIUM, 2, "MCQ", true));
+            // 8 HARD Questions
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Arrays & Linked Lists", "In a Circular Singly Linked List with N nodes, what is the time complexity to delete the last node if only the head pointer is maintained?", List.of("O(N) traversal to locate second-to-last node", "O(1) time with 0 pointer updates", "O(log N) traversal", "O(N^2) operations"), 0, "Deleting the last node requires traversing N-1 nodes to locate the second-to-last node.", AssessmentQuestion.Difficulty.HARD, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Graph Theory & Dynamic Programming", "What core properties must a computational problem exhibit for Dynamic Programming to be applicable?", List.of("Greedy Choice Property only", "Overlapping Subproblems & Optimal Substructure", "Divide & Conquer without subproblem reuse", "Randomized state transitions"), 1, "Dynamic Programming applies to problems exhibiting overlapping subproblems and optimal substructure.", AssessmentQuestion.Difficulty.HARD, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Graph Theory & Dynamic Programming", "Using a Min-Heap Priority Queue, what is the worst-case time complexity of Dijkstra's algorithm for a graph with V vertices and E edges?", List.of("O(V^2)", "O((V + E) log V)", "O(E log E)", "O(V * E)"), 1, "Min-heap priority queue implementation achieves O((V + E) log V) time complexity.", AssessmentQuestion.Difficulty.HARD, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Graph Theory & Dynamic Programming", "What algorithmic approach is used to perform Topological Sorting on a Directed Acyclic Graph (DAG) using vertex in-degrees?", List.of("Floyd-Warshall Algorithm", "Kahn's Algorithm (BFS-based)", "Bellman-Ford Algorithm", "Tarjan's Strongly Connected Components"), 1, "Kahn's algorithm repeatedly removes vertices with in-degree 0 using BFS queue.", AssessmentQuestion.Difficulty.HARD, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Binary Search Trees", "Which combination of data structures allows implementing an LRU (Least Recently Used) Cache with O(1) get and put operations?", List.of("Doubly Linked List + Hash Map", "Singly Linked List + Binary Search Tree", "Array + Stack", "Min-Heap + Queue"), 0, "Doubly Linked List maintains access order in O(1) while Hash Map provides O(1) key lookup.", AssessmentQuestion.Difficulty.HARD, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Binary Search Trees", "In an in-order traversal of a Binary Search Tree, what is the in-order successor of a node with a non-null right child?", List.of("The left-most node in its right subtree", "The right-most node in its left subtree", "Its immediate parent node", "The root node of the tree"), 0, "The minimum value key greater than the current node is the left-most node in its right subtree.", AssessmentQuestion.Difficulty.HARD, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Sorting Algorithms", "What choice of pivot element in Quick Sort leads to its worst-case O(N^2) performance on an already sorted array?", List.of("Random element", "Median-of-three element", "Always picking the first or last element", "Middle element"), 2, "Picking the first or last element on a sorted array produces extremely unbalanced partitions (N-1 and 0).", AssessmentQuestion.Difficulty.HARD, 1, "MCQ", true));
+            qList.add(new AssessmentQuestion(null, "EduPilot Academy", "B.Tech", "Computer Science & Engineering", 3, "DS-LL-PRE01", "Data Structures & Algorithms", "Graph Theory & Dynamic Programming", "Which data structure optimizes Kruskal's Minimum Spanning Tree algorithm to detect cycles efficiently?", List.of("Disjoint Set Union (DSU) with Path Compression", "Adjacency Matrix", "Binary Max-Heap", "Segment Tree"), 0, "DSU with union-by-rank and path compression checks cycle formation in near-constant alpha(V) time.", AssessmentQuestion.Difficulty.HARD, 1, "MCQ", true));
 
             questionRepository.saveAll(qList);
         }
@@ -104,100 +119,18 @@ public class AssessmentService {
         List<String> blueprintConcepts = RecommendationService.getSubjectBlueprintConcepts(subjectName);
 
         if (blueprintConcepts == null || blueprintConcepts.isEmpty()) {
-            blueprintConcepts = List.of("Core Principles", "Foundational Concepts", "Advanced Applications");
+            blueprintConcepts = List.of("Arrays & Linked Lists", "Stacks & Queues", "Binary Search Trees", "Sorting Algorithms", "Graph Theory & Dynamic Programming");
         }
 
-        List<ConceptMastery> userConcepts = null;
-        if (userId != null && !userId.isBlank() && !"anonymous_student".equals(userId)) {
-            userConcepts = conceptRepository.findByUserId(userId);
-        }
+        // Target: 25 diagnostic questions (8 EASY, 9 MEDIUM, 8 HARD)
+        QuizQuestion.Difficulty[] diffPattern = new QuizQuestion.Difficulty[25];
+        for (int i = 0; i < 8; i++) diffPattern[i] = QuizQuestion.Difficulty.EASY;
+        for (int i = 8; i < 17; i++) diffPattern[i] = QuizQuestion.Difficulty.MEDIUM;
+        for (int i = 17; i < 25; i++) diffPattern[i] = QuizQuestion.Difficulty.HARD;
 
-        Map<String, ConceptMastery> cmMap = new HashMap<>();
-        if (userConcepts != null) {
-            for (ConceptMastery cm : userConcepts) {
-                String cmSubject = cm.getSubjectName();
-                if (cmSubject == null || cmSubject.equalsIgnoreCase(subjectName)) {
-                    if (cm.getTopic() != null) cmMap.put(cm.getTopic().trim().toLowerCase(), cm);
-                    if (cm.getConceptName() != null) cmMap.put(cm.getConceptName().trim().toLowerCase(), cm);
-                }
-            }
-        }
-
-        List<String> weakConcepts = new ArrayList<>();
-        List<String> strongConcepts = new ArrayList<>();
-        List<String> neutralConcepts = new ArrayList<>();
-
-        for (String concept : blueprintConcepts) {
-            ConceptMastery cm = cmMap.get(concept.toLowerCase());
-            if (cm != null) {
-                if (cm.getAccuracy() < 50.0 || cm.getStatus() == ConceptMastery.ConceptStatus.WEAK) {
-                    weakConcepts.add(concept);
-                } else if (cm.getAccuracy() >= 75.0 || cm.getStatus() == ConceptMastery.ConceptStatus.STRONG) {
-                    strongConcepts.add(concept);
-                } else {
-                    neutralConcepts.add(concept);
-                }
-            } else {
-                neutralConcepts.add(concept);
-            }
-        }
-
-        // FIRST-TIME / BASELINE STUDENT: No clear performance data
-        if (weakConcepts.isEmpty() && strongConcepts.isEmpty()) {
-            QuizQuestion.Difficulty[] diffPattern = {
-                QuizQuestion.Difficulty.EASY,
-                QuizQuestion.Difficulty.EASY,
-                QuizQuestion.Difficulty.EASY,
-                QuizQuestion.Difficulty.MEDIUM,
-                QuizQuestion.Difficulty.MEDIUM,
-                QuizQuestion.Difficulty.MEDIUM,
-                QuizQuestion.Difficulty.MEDIUM,
-                QuizQuestion.Difficulty.HARD,
-                QuizQuestion.Difficulty.HARD,
-                QuizQuestion.Difficulty.HARD
-            };
-
-            for (int i = 0; i < 10; i++) {
-                String c = blueprintConcepts.get(i % blueprintConcepts.size());
-                blueprint.add(new QuizGenerationService.QuestionBlueprintSpec(i + 1, c, diffPattern[i]));
-            }
-            return blueprint;
-        }
-
-        // STUDENT WITH PERFORMANCE DATA: Prioritize weak concepts (~6 slots), balance with neutral/strong (~4 slots)
-        List<String> assignedConcepts = new ArrayList<>();
-
-        if (!weakConcepts.isEmpty()) {
-            for (int i = 0; i < 6; i++) {
-                assignedConcepts.add(weakConcepts.get(i % weakConcepts.size()));
-            }
-        } else {
-            for (int i = 0; i < 6; i++) {
-                assignedConcepts.add(neutralConcepts.get(i % neutralConcepts.size()));
-            }
-        }
-
-        List<String> pool = new ArrayList<>();
-        if (!strongConcepts.isEmpty()) pool.addAll(strongConcepts);
-        if (!neutralConcepts.isEmpty()) pool.addAll(neutralConcepts);
-        if (pool.isEmpty()) pool.addAll(blueprintConcepts);
-
-        for (int i = 0; i < 4; i++) {
-            assignedConcepts.add(pool.get(i % pool.size()));
-        }
-
-        for (int i = 0; i < 10; i++) {
-            String c = assignedConcepts.get(i);
-            boolean isWeak = weakConcepts.contains(c);
-            QuizQuestion.Difficulty diff;
-            if (i < 3) {
-                diff = isWeak ? QuizQuestion.Difficulty.EASY : QuizQuestion.Difficulty.MEDIUM;
-            } else if (i < 7) {
-                diff = isWeak ? QuizQuestion.Difficulty.MEDIUM : QuizQuestion.Difficulty.MEDIUM;
-            } else {
-                diff = isWeak ? QuizQuestion.Difficulty.MEDIUM : QuizQuestion.Difficulty.HARD;
-            }
-            blueprint.add(new QuizGenerationService.QuestionBlueprintSpec(i + 1, c, diff));
+        for (int i = 0; i < 25; i++) {
+            String c = blueprintConcepts.get(i % blueprintConcepts.size());
+            blueprint.add(new QuizGenerationService.QuestionBlueprintSpec(i + 1, c, diffPattern[i]));
         }
 
         return blueprint;
@@ -207,7 +140,6 @@ public class AssessmentService {
         String branch = req.getBranch() != null ? req.getBranch() : "Computer Science & Engineering";
         int semester = req.getSemester() > 0 ? req.getSemester() : 3;
         String subjectCode = req.getSubjectCode() != null ? req.getSubjectCode().trim().toUpperCase() : "CS301";
-        int count = 10; // Batch architecture generates 10 questions in ONE Groq call
         String userId = req.getUserId() != null ? req.getUserId() : "anonymous_student";
 
         String subjectName = req.getSubjectName() != null && !req.getSubjectName().isBlank()
@@ -220,20 +152,64 @@ public class AssessmentService {
             }
         }
 
-        // Build 10-question adaptive blueprint
         List<QuizGenerationService.QuestionBlueprintSpec> blueprint = buildAdaptiveBlueprint(subjectName, userId);
 
-        // Pre-generate 10-question batch via ONE Groq request
-        Map<String, Object> genContext = new HashMap<>();
-        genContext.put("adaptiveSummary", "Baseline 10-question initial assessment");
-        List<QuizQuestion> generatedBatch = quizGenerationService.generateBatchDiagnosticQuestionsViaGroq(subjectName, blueprint, genContext);
-
+        List<AssessmentSessionResponse.QuestionItemDTO> dtoList = new ArrayList<>();
         List<String> questionIds = new ArrayList<>();
         List<String> fingerprints = new ArrayList<>();
-        for (QuizQuestion q : generatedBatch) {
-            questionIds.add(q.getId());
-            fingerprints.add(q.getQuestionFingerprint() != null ? q.getQuestionFingerprint() : q.getQuestionText());
+
+        List<QuizQuestion> generatedBatch = null;
+        try {
+            Map<String, Object> genContext = new HashMap<>();
+            genContext.put("adaptiveSummary", "Baseline 25-question initial assessment");
+            genContext.put("maxTokens", 6000);
+            genContext.put("purpose", "DIAGNOSTIC_BATCH_25");
+            generatedBatch = quizGenerationService.generateBatchDiagnosticQuestionsViaGroq(subjectName, blueprint, genContext);
+        } catch (Exception ex) {
+            System.err.println("[AssessmentService] Groq batch generation failed: " + ex.getMessage() + ". Falling back to database question bank.");
         }
+
+        if (generatedBatch != null && generatedBatch.size() >= 25) {
+            for (QuizQuestion q : generatedBatch) {
+                questionIds.add(q.getId());
+                fingerprints.add(q.getQuestionFingerprint() != null ? q.getQuestionFingerprint() : q.getQuestionText());
+
+                AssessmentSessionResponse.QuestionItemDTO qDto = new AssessmentSessionResponse.QuestionItemDTO();
+                qDto.setQuestionId(q.getId());
+                qDto.setTopic(q.getConcept() != null ? q.getConcept() : "Linked List");
+                qDto.setQuestionText(q.getQuestionText());
+                qDto.setOptions(q.getOptions());
+                qDto.setMarks(1);
+                qDto.setDifficulty(q.getDifficulty() != null ? q.getDifficulty().name() : "MEDIUM");
+                dtoList.add(qDto);
+            }
+        } else {
+            // Fallback to database question repository
+            List<AssessmentQuestion> dbQuestions = questionRepository.findBySubjectCodeAndIsActiveTrue(subjectCode);
+            if (dbQuestions.size() < 25) {
+                dbQuestions = questionRepository.findBySubjectCodeAndIsActiveTrue("DS-LL-PRE01");
+            }
+            if (dbQuestions.size() < 25) {
+                dbQuestions = questionRepository.findBySubjectCodeAndIsActiveTrue("CS301");
+            }
+            if (dbQuestions.size() < 25) {
+                dbQuestions = questionRepository.findAll();
+            }
+
+            if (dbQuestions.size() < 25) {
+                System.err.println("[AssessmentService DEFICIENCY REPORT] Database question bank contains fewer than 25 suitable diagnostic questions (found " + dbQuestions.size() + ").");
+            }
+
+            int takeCount = Math.min(25, dbQuestions.size());
+            for (int i = 0; i < takeCount; i++) {
+                AssessmentQuestion q = dbQuestions.get(i);
+                questionIds.add(q.getId());
+                fingerprints.add(q.getQuestionText());
+                dtoList.add(new AssessmentSessionResponse.QuestionItemDTO(q));
+            }
+        }
+
+        int totalQ = questionIds.size();
 
         AssessmentSession session = new AssessmentSession();
         session.setUserId(userId);
@@ -244,8 +220,8 @@ public class AssessmentService {
         session.setSubjectName(subjectName);
         session.setQuestionIds(questionIds);
         session.setUsedQuestionFingerprints(fingerprints);
-        session.setTotalQuestions(10);
-        session.setTotalMarks(20);
+        session.setTotalQuestions(totalQ);
+        session.setTotalMarks(totalQ);
         session.setStatus(AssessmentSession.Status.IN_PROGRESS);
         session.setStartTime(LocalDateTime.now());
         session.setQuestionCount(0);
@@ -260,9 +236,9 @@ public class AssessmentService {
         resp.setSemester(semester);
         resp.setSubjectCode(subjectCode);
         resp.setSubjectName(subjectName);
-        resp.setTotalQuestions(10);
-        resp.setTotalMarks(20);
-        resp.setQuestions(new ArrayList<>());
+        resp.setTotalQuestions(totalQ);
+        resp.setTotalMarks(totalQ);
+        resp.setQuestions(dtoList);
 
         return resp;
     }
@@ -274,8 +250,22 @@ public class AssessmentService {
         List<AssessmentQuestion> questions = questionRepository.findAllById(session.getQuestionIds());
         Map<String, AssessmentQuestion> questionMap = questions.stream().collect(Collectors.toMap(AssessmentQuestion::getId, q -> q));
 
+        if (questionMap.isEmpty() && session.getQuestionIds() != null && !session.getQuestionIds().isEmpty()) {
+            List<QuizQuestion> quizQuestions = quizQuestionRepository.findAllById(session.getQuestionIds());
+            for (QuizQuestion qq : quizQuestions) {
+                AssessmentQuestion aq = new AssessmentQuestion();
+                aq.setId(qq.getId());
+                aq.setTopic(qq.getConcept() != null ? qq.getConcept() : "Linked List");
+                aq.setQuestionText(qq.getQuestionText());
+                aq.setOptions(qq.getOptions());
+                aq.setCorrectOptionIndex(qq.getCorrectOptionIndex());
+                aq.setMarks(1);
+                questionMap.put(qq.getId(), aq);
+            }
+        }
+
         int totalQuestions = session.getTotalQuestions();
-        int totalMarks = session.getTotalMarks();
+        int totalMarks = totalQuestions;
         int correctAnswers = 0;
         int incorrectAnswers = 0;
         int skippedQuestions = 0;
@@ -308,8 +298,8 @@ public class AssessmentService {
                 } else if (ansItem.getSelectedOption() == q.getCorrectOptionIndex()) {
                     isCorrect = true;
                     correctAnswers++;
-                    marksObtained = q.getMarks();
-                    score += marksObtained;
+                    marksObtained = 1;
+                    score += 1;
                     topicStat.put("correct", ((Number) topicStat.get("correct")).intValue() + 1);
                 } else {
                     incorrectAnswers++;
@@ -317,6 +307,10 @@ public class AssessmentService {
 
                 userAnswersList.add(new AssessmentResult.UserAnswer(q.getId(), topic, ansItem.getSelectedOption(), isCorrect, marksObtained));
             }
+        }
+
+        if (processedQuestionIds.size() < totalQuestions) {
+            skippedQuestions += (totalQuestions - processedQuestionIds.size());
         }
 
         // Compute topic percentages

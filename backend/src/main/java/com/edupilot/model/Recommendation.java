@@ -23,6 +23,12 @@ public class Recommendation {
     private String recommendedAction;
     private int estimatedStudyTimeMinutes = 20;
     private String difficulty = "MEDIUM";
+    private String modality = "VISUAL";
+    private String pace = "NORMAL";
+    private String workload = "MEDIUM";
+    private String whatExplanation;
+    private String howExplanation;
+    private String paceExplanation;
     private double confidenceScore = 50.0;
     private double masteryScore = 50.0;
     private double accuracy = 50.0;
@@ -254,5 +260,53 @@ public class Recommendation {
 
     public void setPrevTopic(String prevTopic) {
         this.prevTopic = prevTopic;
+    }
+
+    public String getModality() {
+        return modality;
+    }
+
+    public void setModality(String modality) {
+        this.modality = modality;
+    }
+
+    public String getPace() {
+        return pace;
+    }
+
+    public void setPace(String pace) {
+        this.pace = pace;
+    }
+
+    public String getWorkload() {
+        return workload;
+    }
+
+    public void setWorkload(String workload) {
+        this.workload = workload;
+    }
+
+    public String getWhatExplanation() {
+        return whatExplanation;
+    }
+
+    public void setWhatExplanation(String whatExplanation) {
+        this.whatExplanation = whatExplanation;
+    }
+
+    public String getHowExplanation() {
+        return howExplanation;
+    }
+
+    public void setHowExplanation(String howExplanation) {
+        this.howExplanation = howExplanation;
+    }
+
+    public String getPaceExplanation() {
+        return paceExplanation;
+    }
+
+    public void setPaceExplanation(String paceExplanation) {
+        this.paceExplanation = paceExplanation;
     }
 }

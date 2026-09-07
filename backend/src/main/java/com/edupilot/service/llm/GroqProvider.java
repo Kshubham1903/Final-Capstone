@@ -95,6 +95,27 @@ public class GroqProvider implements LLMProvider {
             String rawBody = hsce.getResponseBodyAsString();
             System.err.println("[GroqProvider] HTTP " + status + ": " + rawBody);
 
+            if (status == 404 && rawBody != null && rawBody.contains("model_not_found") && !"llama-3.3-70b-versatile".equalsIgnoreCase(modelName)) {
+                System.out.println("[GroqProvider] Primary model " + modelName + " returned 404. Retrying with fallback model llama-3.3-70b-versatile...");
+                requestBody.put("model", "llama-3.3-70b-versatile");
+                HttpEntity<Map<String, Object>> fallbackEntity = new HttpEntity<>(requestBody, headers);
+                try {
+                    ResponseEntity<Map> fallbackResp = restTemplate.postForEntity(GROQ_ENDPOINT, fallbackEntity, Map.class);
+                    if (fallbackResp.getStatusCode().is2xxSuccessful() && fallbackResp.getBody() != null) {
+                        List choices = (List) fallbackResp.getBody().get("choices");
+                        if (choices != null && !choices.isEmpty()) {
+                            Map firstChoice = (Map) choices.get(0);
+                            Map message = (Map) fallbackResp.getBody().get("message");
+                            if (message != null && message.get("content") != null) {
+                                return (String) message.get("content");
+                            }
+                        }
+                    }
+                } catch (Exception fallbackEx) {
+                    System.err.println("[GroqProvider] Fallback model llama-3.3-70b-versatile also failed: " + fallbackEx.getMessage());
+                }
+            }
+
             if (status == 429) {
                 String retryAfterHeader = hsce.getResponseHeaders() != null ? hsce.getResponseHeaders().getFirst("Retry-After") : null;
                 long retryDelayMs = 2000;

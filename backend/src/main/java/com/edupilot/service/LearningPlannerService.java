@@ -157,6 +157,12 @@ public class LearningPlannerService {
             task.setConceptName(rec.getConceptName());
             task.setPriority(rec.getPriority());
             task.setEstimatedStudyTimeMinutes(rec.getEstimatedStudyTimeMinutes() > 0 ? rec.getEstimatedStudyTimeMinutes() : 20);
+            task.setModality(rec.getModality());
+            task.setPace(rec.getPace());
+            task.setWorkload(rec.getWorkload());
+            task.setWhatExplanation(rec.getWhatExplanation());
+            task.setHowExplanation(rec.getHowExplanation());
+            task.setPaceExplanation(rec.getPaceExplanation());
             task.setRecommendedOrder(order++);
             task.setReason(rec.getReason());
             task.setRecommendedAction(rec.getRecommendedAction());

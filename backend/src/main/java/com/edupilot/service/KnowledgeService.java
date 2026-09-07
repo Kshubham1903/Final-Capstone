@@ -31,6 +31,9 @@ public class KnowledgeService {
     @Autowired
     private RecommendationService recommendationService;
 
+    @Autowired
+    private StudentStateSnapshotService studentStateSnapshotService;
+
     /**
      * Process diagnostic assessment results & update persistent Knowledge Profile.
      */
@@ -50,6 +53,12 @@ public class KnowledgeService {
             }
         } else {
             syncKnowledgeProfileSummary(userId, subjectName);
+        }
+
+        try {
+            studentStateSnapshotService.captureSnapshot(userId);
+        } catch (Exception ex) {
+            System.err.println("Snapshot error: " + ex.getMessage());
         }
 
         return profileRepository.findByUserId(userId).orElse(null);

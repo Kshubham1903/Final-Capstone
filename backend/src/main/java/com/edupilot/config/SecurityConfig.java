@@ -70,7 +70,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/subject-progress/**").permitAll()
                         .requestMatchers("/api/concept-remediation/**").permitAll()
                         .requestMatchers("/api/study-resources/**").permitAll()
-                        .requestMatchers("/api/students/health").permitAll()
+                        .requestMatchers("/api/recommendations/**").permitAll()
+                        .requestMatchers("/api/planner/**").permitAll()
+                        .requestMatchers("/api/students/**").permitAll()
+                        .requestMatchers("/api/quizzes/**").permitAll()
+                        .requestMatchers("/api/assessment/**").permitAll()
                         .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
