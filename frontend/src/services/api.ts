@@ -1003,28 +1003,18 @@ export async function submitAdaptiveQuestionAnswer(payload: {
 }): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
-    try {
-      const res = await fetch(`${getBackendUrl()}/api/assessment/adaptive/submit`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch (err) {
-      console.warn("Error submitting adaptive answer:", err);
+    const res = await fetch(`${getBackendUrl()}/api/assessment/adaptive/submit`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok) {
+      return data;
     }
+    throw new Error(data.message || `Failed to submit adaptive answer (HTTP ${res.status}).`);
   }
-  return {
-    adaptiveSessionId: payload.adaptiveSessionId,
-    isCorrect: payload.selectedOption === 2,
-    explanation: "Correct! Searching in an unbalanced BST degrades to O(N) linear time.",
-    completed: false,
-    updatedConceptStatus: "UNCERTAIN",
-    updatedConceptConfidence: 50.0,
-    nextDifficulty: "HARD"
-  };
+  throw new Error("Backend service is offline. Cannot submit adaptive answer.");
 }
 
 export async function fetchNextInitialDiagnosticQuestion(payload: {
@@ -1059,33 +1049,23 @@ export async function submitInitialDiagnosticAnswer(payload: {
 }): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
-    try {
-      const res = await fetch(`${getBackendUrl()}/api/assessment/initial/submit`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          adaptiveSessionId: payload.sessionId,
-          questionId: payload.questionId,
-          selectedOption: payload.selectedOption,
-          responseTimeSeconds: payload.responseTimeSeconds
-        })
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch (err) {
-      console.warn("Error submitting initial diagnostic answer:", err);
+    const res = await fetch(`${getBackendUrl()}/api/assessment/initial/submit`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        adaptiveSessionId: payload.sessionId,
+        questionId: payload.questionId,
+        selectedOption: payload.selectedOption,
+        responseTimeSeconds: payload.responseTimeSeconds
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      return data;
     }
+    throw new Error(data.message || `Failed to submit initial diagnostic answer (HTTP ${res.status}).`);
   }
-  return {
-    adaptiveSessionId: payload.sessionId,
-    isCorrect: payload.selectedOption === 2,
-    explanation: "In an unbalanced BST, search degrades to linear scan O(N).",
-    completed: false,
-    updatedConceptStatus: "UNCERTAIN",
-    updatedConceptConfidence: 25.0,
-    nextDifficulty: "MEDIUM"
-  };
+  throw new Error("Backend service is offline. Cannot submit initial diagnostic answer.");
 }
 
 // Knowledge Intelligence Engine Master APIs
