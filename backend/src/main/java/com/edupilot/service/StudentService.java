@@ -85,7 +85,7 @@ public class StudentService {
     /**
      * Defensive helper to find profile by MongoDB document ID or User ID, or auto-create if missing.
      */
-    public StudentProfile findOrCreateProfile(String idOrUserId) {
+    public synchronized StudentProfile findOrCreateProfile(String idOrUserId) {
         if (idOrUserId == null || idOrUserId.trim().isEmpty()) {
             idOrUserId = "anonymous_student";
         }

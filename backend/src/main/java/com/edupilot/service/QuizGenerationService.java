@@ -67,7 +67,7 @@ public class QuizGenerationService {
         String userPrompt = buildUserPrompt(subject, difficulty, targetCount, callerContext);
         Map<String, Object> context = new HashMap<>();
         if (callerContext != null) context.putAll(callerContext);
-        if (!context.containsKey("maxTokens")) context.put("maxTokens", 450);
+        if (!context.containsKey("maxTokens")) context.put("maxTokens", 280);
         if (!context.containsKey("purpose")) context.put("purpose", "DASHBOARD_BATCH");
 
         int maxRetries = 2;
@@ -112,7 +112,7 @@ public class QuizGenerationService {
         int targetCount = Math.min(count > 0 ? count : 5, 5);
         String systemPrompt = buildSystemPrompt();
         String userPrompt = buildUserPromptForConcept(subject, concept, difficulty, targetCount);
-        Map<String, Object> context = Map.of("maxTokens", 450, "purpose", "CONCEPT_REMEDIATION_BATCH");
+        Map<String, Object> context = Map.of("maxTokens", 280, "purpose", "CONCEPT_REMEDIATION_BATCH");
 
         int maxRetries = 2;
         String lastError = "Unknown error";
@@ -233,7 +233,7 @@ public class QuizGenerationService {
 
     public QuizQuestion generateSingleDiagnosticQuestion(String subject, QuestionBlueprintSpec spec, Map<String, Object> context, int position, int totalQuestions) {
         Map<String, Object> subContext = context != null ? new HashMap<>(context) : new HashMap<>();
-        subContext.put("maxTokens", 450);
+        subContext.put("maxTokens", 280);
         subContext.put("purpose", "DIAGNOSTIC_QUESTION_" + position + "_OF_" + totalQuestions);
 
         QuizQuestion singleQuestion = generateSingleQuestionWithRetry(subject, spec, subContext, position, totalQuestions);
@@ -251,7 +251,7 @@ public class QuizGenerationService {
         System.out.println("[GroqDiagnostic] Question position: " + position + "/" + totalQuestions +
                 " | Concept: " + spec.getConcept() +
                 " | Difficulty: " + spec.getDifficulty().name() +
-                " | maxTokens: 450" +
+                " | maxTokens: 280" +
                 " | Prompt tokens: " + promptTok +
                 " | Completion tokens: " + compTok +
                 " | Total tokens: " + totalTok);
@@ -326,6 +326,7 @@ public class QuizGenerationService {
                 .append("- Exactly 4 distinct answer options, with only one correct option.\n")
                 .append("- Include correctOptionIndex (0, 1, 2, or 3).\n")
                 .append("- Include a brief conceptual explanation of why the correct answer is correct.\n")
+                .append("- Keep question text concise and conceptual explanation brief (1-2 sentences max).\n")
                 .append("- Do NOT duplicate existing questions.\n");
 
         List<String> excludeTexts = (List<String>) subContext.get("excludeQuestions");
@@ -368,7 +369,7 @@ public class QuizGenerationService {
             System.out.println("Concept: " + spec.getConcept());
             System.out.println("Difficulty: " + spec.getDifficulty().name());
             System.out.println("Attempt: " + attempt + " of " + maxRetries);
-            System.out.println("maxTokens: 450");
+            System.out.println("maxTokens: 280");
             System.out.println("=============================================================");
 
             StringBuilder currentPrompt = new StringBuilder(baseUserPrompt);
@@ -436,6 +437,108 @@ public class QuizGenerationService {
         }
 
         throw new IllegalStateException("Groq API question " + position + " of " + totalQuestions + " (" + spec.getConcept() + ", " + spec.getDifficulty() + ") failed after " + maxRetries + " attempts. Last error: " + lastError);
+    }
+
+    public String validateTextIntegrity(String text, String fieldName) {
+        if (text == null || text.isBlank()) {
+            return fieldName + " is missing or blank.";
+        }
+        String trimmed = text.trim();
+        if (trimmed.length() < 15) {
+            return fieldName + " is too short (minimum 15 characters required, got " + trimmed.length() + ").";
+        }
+
+        Pattern malformedPattern = Pattern.compile("\\b\\?\\b|\\?\\s*=|\\?\\s*_|\\?\\s*\\(|\\?\\s*\\)");
+        if (malformedPattern.matcher(trimmed).find()) {
+            return fieldName + " contains malformed '?' character replacing mathematical/physics symbols or variables: \"" + trimmed + "\"";
+        }
+
+        Pattern truncatedPattern = Pattern.compile("(?:\\.\\.\\.|\\b(?:and|or|the|is|are|with|in|of|for|to|a|an))\\s*$", Pattern.CASE_INSENSITIVE);
+        if (truncatedPattern.matcher(trimmed).find()) {
+            return fieldName + " appears to be truncated or incomplete at sentence end: \"" + trimmed + "\"";
+        }
+
+        return null;
+    }
+
+    public String validatePhysicsRules(String questionText, List<String> options, int correctIdx, String explanation) {
+        String fullContent = (questionText + " " + explanation).toLowerCase();
+
+        if (fullContent.contains("total internal reflection")) {
+            boolean claimsLowerToHigher = fullContent.contains("lower to higher") || 
+                                          fullContent.contains("rarer to denser") || 
+                                          fullContent.contains("optically rarer to optically denser") ||
+                                          fullContent.contains("lower refractive index to higher");
+            if (claimsLowerToHigher) {
+                return "Contradictory Physics Rule: Total Internal Reflection requires light to travel from a denser (higher refractive index) to a rarer (lower refractive index) medium. Text claims lower to higher/rarer to denser.";
+            }
+        }
+
+        return null;
+    }
+
+    public String validateDataStructureRules(String questionText, List<String> options, int correctIdx, String explanation) {
+        String fullContent = (questionText + " " + explanation).toLowerCase();
+        String correctOption = (options != null && correctIdx >= 0 && correctIdx < options.size()) ? options.get(correctIdx).toLowerCase() : "";
+
+        if ((fullContent.contains("singly linked list") || fullContent.contains("linked list")) && 
+            (fullContent.contains("head") || fullContent.contains("beginning") || fullContent.contains("start"))) {
+            if (fullContent.contains("insert") || fullContent.contains("add")) {
+                if (correctOption.contains("o(n)") && !correctOption.contains("o(1)")) {
+                    return "Contradictory Data Structure Rule: Inserting at the head of a singly linked list is O(1) time complexity, but correct option specifies O(n).";
+                }
+            }
+        }
+
+        if (fullContent.contains("array") && (fullContent.contains("random access") || fullContent.contains("access by index"))) {
+            if (correctOption.contains("o(n)") && !correctOption.contains("o(1)")) {
+                return "Contradictory Data Structure Rule: Random access in an array is O(1) time complexity, but correct option specifies O(n).";
+            }
+        }
+
+        return null;
+    }
+
+    public String validateQuestionIntegrity(QuizQuestion q, QuestionBlueprintSpec spec) {
+        if (q == null) return "Question object is null.";
+
+        String qTextErr = validateTextIntegrity(q.getQuestionText(), "questionText");
+        if (qTextErr != null) return qTextErr;
+
+        String expErr = validateTextIntegrity(q.getConceptualExplanation(), "conceptualExplanation");
+        if (expErr != null) return expErr;
+
+        List<String> opts = q.getOptions();
+        if (opts == null || opts.size() != 4) {
+            return "Options array must contain exactly 4 choices (found " + (opts == null ? 0 : opts.size()) + ").";
+        }
+
+        Set<String> uniqueOpts = new HashSet<>();
+        for (String opt : opts) {
+            if (opt == null || opt.isBlank()) return "Option text cannot be empty or null.";
+            String optErr = validateTextIntegrity(opt, "option");
+            if (optErr != null && optErr.contains("malformed")) return optErr;
+            uniqueOpts.add(opt.trim().toLowerCase());
+        }
+        if (uniqueOpts.size() != 4) {
+            return "Options must contain 4 distinct choices (found duplicates). Options: " + opts;
+        }
+
+        int correctIdx = q.getCorrectOptionIndex();
+        if (correctIdx < 0 || correctIdx > 3) {
+            return "correctOptionIndex must explicitly be an integer between 0 and 3 (got " + correctIdx + ").";
+        }
+
+        String inconsistency = validateExplanationConsistency(opts, correctIdx, q.getConceptualExplanation());
+        if (inconsistency != null) return inconsistency;
+
+        String physErr = validatePhysicsRules(q.getQuestionText(), opts, correctIdx, q.getConceptualExplanation());
+        if (physErr != null) return physErr;
+
+        String dsErr = validateDataStructureRules(q.getQuestionText(), opts, correctIdx, q.getConceptualExplanation());
+        if (dsErr != null) return dsErr;
+
+        return null;
     }
 
     private BatchParseResult parseBatchQuestionsResult(String rawJson, String subject, List<QuestionBlueprintSpec> blueprint) {
@@ -555,8 +658,9 @@ public class QuizGenerationService {
                 }
             }
 
-            if (correctIdx == 4) correctIdx = 3;
-            if (correctIdx < 0 || correctIdx > 3) correctIdx = 0;
+            if (correctIdx < 0 || correctIdx > 3) {
+                return new BatchParseResult("Question #" + (i + 1) + " validation error: Missing or invalid correctOptionIndex (" + correctIdx + "). Must explicitly be 0, 1, 2, or 3.");
+            }
 
             String conceptName = (spec != null) ? spec.getConcept() : qNode.path("concept").asText("Core Principle").trim();
             if (conceptName.isEmpty()) conceptName = "Core Principle";
@@ -566,13 +670,8 @@ public class QuizGenerationService {
             else if (qNode.has("explanation")) explanation = qNode.path("explanation").asText().trim();
             else if (qNode.has("reasoning")) explanation = qNode.path("reasoning").asText().trim();
 
-            if (explanation.isEmpty() || explanation.length() < 5) {
-                explanation = "Option " + (char)('A' + correctIdx) + " (\"" + options.get(correctIdx) + "\") is the correct answer for testing " + conceptName + ".";
-            }
-
-            String inconsistencyError = validateExplanationConsistency(options, correctIdx, explanation);
-            if (inconsistencyError != null) {
-                return new BatchParseResult("Question #" + (i + 1) + " validation error: " + inconsistencyError);
+            if (explanation.isEmpty() || explanation.length() < 15) {
+                return new BatchParseResult("Question #" + (i + 1) + " validation error: Missing or insufficient conceptualExplanation.");
             }
 
             QuizQuestion.Difficulty diff = (spec != null) ? spec.getDifficulty() : QuizQuestion.Difficulty.MEDIUM;
@@ -586,6 +685,11 @@ public class QuizGenerationService {
                     .correctOptionIndex(correctIdx)
                     .conceptualExplanation(explanation)
                     .build();
+
+            String validationError = validateQuestionIntegrity(question, spec);
+            if (validationError != null) {
+                return new BatchParseResult("Question #" + (i + 1) + " validation error: " + validationError);
+            }
 
             question.setQuestionSource("GROQ_DIAGNOSTIC_BATCH");
             question.setGenerationVersion(3);
@@ -650,7 +754,7 @@ public class QuizGenerationService {
         if (concept == null || concept.isBlank()) concept = "General Principles";
 
         Map<String, Object> genContext = context != null ? new HashMap<>(context) : new HashMap<>();
-        if (!genContext.containsKey("maxTokens")) genContext.put("maxTokens", 450);
+        if (!genContext.containsKey("maxTokens")) genContext.put("maxTokens", 280);
         if (!genContext.containsKey("purpose")) genContext.put("purpose", "DIAGNOSTIC_ONE_BY_ONE");
 
         List<String> excludeTexts = genContext.containsKey("excludeQuestions") 
@@ -678,7 +782,8 @@ public class QuizGenerationService {
                 .append("Requirements:\n")
                 .append("- Test genuine conceptual understanding of ").append(concept).append(".\n")
                 .append("- Exactly 4 distinct answer options, with only one correct option.\n")
-                .append("- Include a brief conceptual explanation.\n");
+                .append("- Include a brief conceptual explanation.\n")
+                .append("- Keep question text concise and conceptual explanation brief (1-2 sentences max).\n");
 
         if (genContext.containsKey("mastery")) {
             baseUserPrompt.append("- Student current mastery: ").append(genContext.get("mastery")).append("%.\n");

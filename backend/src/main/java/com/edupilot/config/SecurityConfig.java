@@ -75,6 +75,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/students/**").permitAll()
                         .requestMatchers("/api/quizzes/**").permitAll()
                         .requestMatchers("/api/assessment/**").permitAll()
+                        .requestMatchers("/api/knowledge/**").permitAll()
+                        .requestMatchers("/api/subjects/**").permitAll()
+                        .requestMatchers("/api/ai/**").permitAll()
                         .anyRequest().authenticated())
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

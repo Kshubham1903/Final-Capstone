@@ -27,6 +27,9 @@ public class AssessmentService {
     private StudentProfileRepository profileRepository;
 
     @Autowired
+    private StudentService studentService;
+
+    @Autowired
     private SubjectRepository subjectRepository;
 
     @Autowired
@@ -143,6 +146,7 @@ public class AssessmentService {
         int semester = req.getSemester() > 0 ? req.getSemester() : 3;
         String subjectCode = req.getSubjectCode() != null ? req.getSubjectCode().trim().toUpperCase() : "CS301";
         String userId = req.getUserId() != null ? req.getUserId() : "anonymous_student";
+        StudentProfile studentProfile = studentService.findOrCreateProfile(userId);
 
         String subjectName = req.getSubjectName() != null && !req.getSubjectName().isBlank()
                 ? req.getSubjectName().trim() : null;
@@ -873,6 +877,8 @@ public class AssessmentService {
 
         String sessionId = req.getAdaptiveSessionId();
         Object lock = sessionLocks.computeIfAbsent(sessionId, k -> new Object());
+        
+        int count;
         synchronized (lock) {
             AssessmentSession session = sessionRepository.findById(sessionId)
                     .orElseThrow(() -> new IllegalArgumentException("Initial assessment session not found: " + sessionId));
@@ -884,18 +890,23 @@ public class AssessmentService {
                 throw new SecurityException("Unauthorized session access: User does not own assessment session " + sessionId);
             }
 
-            int count = session.getQuestionCount();
+            count = session.getQuestionCount();
 
             if (session.getStatus() != AssessmentSession.Status.IN_PROGRESS || count >= 10) {
                 return new AdaptiveAssessmentDTOs.AdaptiveNextResponse(session.getId(), true, null, 10, 10, "Complete", "MEDIUM");
             }
+        }
 
-            QuizQuestion newQuestion = ensureQuestionGenerated(sessionId, count);
-            if (newQuestion == null) {
-                throw new IllegalStateException("Question at index " + count + " not found or could not be generated");
-            }
+        // Unlocked AI generation / In-flight coalesce join (NO session lock held)
+        QuizQuestion newQuestion = ensureQuestionGenerated(sessionId, count);
+        if (newQuestion == null) {
+            throw new IllegalStateException("Question at index " + count + " not found or could not be generated");
+        }
 
-            session = sessionRepository.findById(sessionId).orElse(session);
+        synchronized (lock) {
+            AssessmentSession session = sessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new IllegalArgumentException("Initial assessment session not found: " + sessionId));
+
             session.setCurrentQuestionId(newQuestion.getId());
             session.setActiveQuestionSubmitted(false);
             sessionRepository.save(session);

@@ -804,42 +804,50 @@ export default function Quizzes() {
         console.log("[SUBMIT HANDLER SUCCESS]", { sessionId: sessId, questionId: qId, position: pos });
 
       } else {
-        // Fallback for isolated legacy verification quiz
-        const isCorrect = selectedOption === activeQuestion.correctOptionIndex;
-        if (isCorrect) setCorrectAnswers(prev => prev + 1);
-
+        // Fallback for isolated legacy practice or verification quiz
         const legacyQId = activeQuestion.questionId || activeQuestion.id || `q_${questionCount}`;
         setUserAnswers(prev => [...prev, { questionId: legacyQId, selectedOptionIndex: selectedOption }]);
 
-        const payload = {
-          profileId: profile.id || "",
-          subject: activeSubject,
-          concept: activeQuestion.concept,
-          difficulty: currentDiff,
-          isCorrect: isCorrect,
-          responseTimeSeconds: secondsSpent,
-          isVerification: isVerificationMode,
-          targetConcept: displayTargetConcept || undefined
-        };
+        if (isVerificationMode && remediationSessionId) {
+          // Verification quiz answers are collected and graded on final submission via submitConceptRemediation
+          setQuestionFeedback({
+            isCorrect: true,
+            explanation: "Answer recorded for concept verification grading."
+          });
+          setIsAnswered(true);
+        } else {
+          const isCorrect = selectedOption === activeQuestion.correctOptionIndex;
+          if (isCorrect) setCorrectAnswers(prev => prev + 1);
 
-        const result = await submitQuizAnswer(payload);
-        const nextDifficulty = result.nextDifficulty as "EASY" | "MEDIUM" | "HARD";
-        const reasonText = result.reason;
+          const payload = {
+            profileId: profile.id || "",
+            subject: activeSubject,
+            concept: activeQuestion.concept,
+            difficulty: currentDiff,
+            isCorrect: isCorrect,
+            responseTimeSeconds: secondsSpent,
+            isVerification: isVerificationMode,
+            targetConcept: displayTargetConcept || undefined
+          };
 
-        setCurrentDiff(nextDifficulty);
+          const result = await submitQuizAnswer(payload);
+          const nextDifficulty = result?.nextDifficulty as "EASY" | "MEDIUM" | "HARD" || currentDiff;
+          const reasonText = result?.reason || (isCorrect ? "Correct answer!" : "Incorrect option selected.");
 
-        setDiagnosticLog(prev => [...prev, {
-          position: pos,
-          questionId: legacyQId,
-          questionText: activeQuestion.questionText,
-          concept: activeQuestion.concept || "General",
-          difficulty: currentDiff,
-          correct: isCorrect,
-          reason: reasonText
-        }]);
+          setCurrentDiff(nextDifficulty);
 
-        setQuestionCount(prev => prev + 1);
-        setIsAnswered(true);
+          setDiagnosticLog(prev => [...prev, {
+            position: pos,
+            questionId: legacyQId,
+            questionText: activeQuestion.questionText,
+            concept: activeQuestion.concept || "General",
+            difficulty: currentDiff,
+            correct: isCorrect,
+            reason: reasonText
+          }]);
+
+          setIsAnswered(true);
+        }
       }
     } catch (err: any) {
       console.error("[SUBMIT HANDLER ERROR]", { sessionId: sessId, questionId: qId, position: pos, error: err?.message || err });
@@ -888,7 +896,8 @@ export default function Quizzes() {
 
     // Legacy fallback next step
     const totalSet = quizQuestions.length;
-    if (questionCount >= totalSet || questionCount >= 10) {
+    const nextIndex = questionCount + 1;
+    if (nextIndex >= totalSet || nextIndex >= 10) {
       if (isVerificationMode && remediationSessionId) {
         const activeUserId = profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") : "") || "";
         const remRes = await submitConceptRemediation(activeUserId, remediationSessionId, userAnswers);
@@ -911,7 +920,6 @@ export default function Quizzes() {
         applyResultsToProfileLocal();
       }
     } else {
-      const nextIndex = questionCount;
       let nextQ = quizQuestions[nextIndex];
 
       if (!nextQ) {
@@ -926,6 +934,7 @@ export default function Quizzes() {
       const key = nextQ.id || nextQ.questionText;
       savePersistedSeenId(activeSubject, key);
       setActiveQuestion(nextQ);
+      setQuestionCount(nextIndex);
 
       setSelectedOption(null);
       setIsAnswered(false);
