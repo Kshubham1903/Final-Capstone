@@ -23,10 +23,53 @@ public class GroqProvider implements LLMProvider {
     @Value("${llm.temperature:0.7}")
     private double temperature;
 
-    @Value("${llm.max-tokens:450}")
+    @Value("${llm.max-tokens:280}")
     private int maxTokens;
 
     private static final String GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+
+    private static final Object coordinatorLock = new Object();
+    private static long lastScheduledTime = 0;
+    private static int waitingDiagnosticCount = 0;
+    private static final long MIN_GROQ_SPACING_MS = 2500;
+
+    private void acquireGroqSlot(String purpose) {
+        boolean isDiagnostic = purpose != null && purpose.toUpperCase().contains("DIAGNOSTIC");
+        long waitMs;
+
+        synchronized (coordinatorLock) {
+            long now = System.currentTimeMillis();
+            long targetSlot;
+            
+            if (isDiagnostic) {
+                waitingDiagnosticCount++;
+                targetSlot = Math.max(now, lastScheduledTime + MIN_GROQ_SPACING_MS);
+                lastScheduledTime = targetSlot;
+            } else {
+                long diagnosticBuffer = waitingDiagnosticCount * MIN_GROQ_SPACING_MS;
+                targetSlot = Math.max(now, lastScheduledTime + MIN_GROQ_SPACING_MS + diagnosticBuffer);
+                lastScheduledTime = targetSlot;
+            }
+            
+            waitMs = targetSlot - now;
+        }
+
+        if (waitMs > 0) {
+            System.out.println("[GroqCoordinator] [" + (isDiagnostic ? "HIGH_PRIORITY_DIAGNOSTIC" : "NORMAL_PRIORITY") +
+                    "] Purpose: " + purpose + " | Coordinated spacing delay: " + waitMs + " ms");
+            try {
+                Thread.sleep(waitMs);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        if (isDiagnostic) {
+            synchronized (coordinatorLock) {
+                waitingDiagnosticCount = Math.max(0, waitingDiagnosticCount - 1);
+            }
+        }
+    }
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -52,8 +95,8 @@ public class GroqProvider implements LLMProvider {
                 effectiveMaxTokens = Integer.parseInt(context.get("maxTokens").toString());
             } catch (Exception ignored) {}
         }
-        // Enforce hard upper bound of 450 maxTokens for Groq requests (enforced OTPM limit is 1000)
-        effectiveMaxTokens = Math.min(effectiveMaxTokens, 450);
+        // Enforce hard upper bound of 280 maxTokens for Groq requests (enforced OTPM limit is 1000)
+        effectiveMaxTokens = Math.min(effectiveMaxTokens, 280);
 
         int promptChars = (systemPrompt != null ? systemPrompt.length() : 0) + (userMessage != null ? userMessage.length() : 0);
         int estPromptTokens = promptChars / 4;
@@ -64,6 +107,9 @@ public class GroqProvider implements LLMProvider {
                 ", promptChars = " + promptChars +
                 ", estimatedPromptTokens = " + estPromptTokens +
                 ", requestPurpose = " + purpose);
+
+        // Global Request Coordinator slot reservation (Priority: DIAGNOSTIC > NORMAL, Spacing: 2500ms)
+        acquireGroqSlot(purpose);
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", modelName);

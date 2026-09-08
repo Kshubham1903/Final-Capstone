@@ -29,6 +29,9 @@ public class KnowledgeService {
     private StudentProfileRepository studentProfileRepository;
 
     @Autowired
+    private StudentService studentService;
+
+    @Autowired
     private RecommendationService recommendationService;
 
     @Autowired
@@ -212,45 +215,36 @@ public class KnowledgeService {
 
         profileRepository.save(kp);
 
-        // Sync with StudentProfile (defensive lookup: findByUserId with findById fallback)
-        Optional<StudentProfile> profOpt = studentProfileRepository.findByUserId(userId);
-        if (profOpt.isEmpty()) {
-            profOpt = studentProfileRepository.findById(userId);
+        // Sync with StudentProfile (uses StudentService.findOrCreateProfile to auto-create profile if missing)
+        StudentProfile prof = studentService.findOrCreateProfile(userId);
+
+        String sName = (subjectName != null && !subjectName.isBlank()) ? subjectName : "General";
+
+        // Calculate subject-specific health score
+        double subjectHealthScore = healthScore;
+        List<ConceptMastery> subjectConcepts = allConcepts.stream()
+                .filter(c -> c.getSubjectName() != null && c.getSubjectName().equalsIgnoreCase(sName))
+                .collect(Collectors.toList());
+        if (!subjectConcepts.isEmpty()) {
+            double subjectAccSum = subjectConcepts.stream().mapToDouble(ConceptMastery::getAccuracy).sum();
+            subjectHealthScore = Math.round((subjectAccSum / subjectConcepts.size()) * 10.0) / 10.0;
         }
 
-        if (profOpt.isPresent()) {
-            StudentProfile prof = profOpt.get();
-            
-            String sName = (subjectName != null && !subjectName.isBlank()) ? subjectName : "General";
+        Map<String, List<String>> weakMap = prof.getWeakConcepts() != null ? prof.getWeakConcepts() : new HashMap<>();
+        weakMap.put(sName, weakList);
+        prof.setWeakConcepts(weakMap);
 
-            // Calculate subject-specific health score
-            double subjectHealthScore = healthScore;
-            List<ConceptMastery> subjectConcepts = allConcepts.stream()
-                    .filter(c -> c.getSubjectName() != null && c.getSubjectName().equalsIgnoreCase(sName))
-                    .collect(Collectors.toList());
-            if (!subjectConcepts.isEmpty()) {
-                double subjectAccSum = subjectConcepts.stream().mapToDouble(ConceptMastery::getAccuracy).sum();
-                subjectHealthScore = Math.round((subjectAccSum / subjectConcepts.size()) * 10.0) / 10.0;
-            }
+        Map<String, List<String>> strongMap = prof.getStrongConcepts() != null ? prof.getStrongConcepts() : new HashMap<>();
+        strongMap.put(sName, strongList);
+        prof.setStrongConcepts(strongMap);
 
-            Map<String, List<String>> weakMap = prof.getWeakConcepts() != null ? prof.getWeakConcepts() : new HashMap<>();
-            weakMap.put(sName, weakList);
-            prof.setWeakConcepts(weakMap);
+        Map<String, Double> masteryMap = prof.getConceptMastery() != null ? prof.getConceptMastery() : new HashMap<>();
+        masteryMap.put(sName, subjectHealthScore);
+        prof.setConceptMastery(masteryMap);
 
-            Map<String, List<String>> strongMap = prof.getStrongConcepts() != null ? prof.getStrongConcepts() : new HashMap<>();
-            strongMap.put(sName, strongList);
-            prof.setStrongConcepts(strongMap);
+        studentProfileRepository.save(prof);
 
-            Map<String, Double> masteryMap = prof.getConceptMastery() != null ? prof.getConceptMastery() : new HashMap<>();
-            masteryMap.put(sName, subjectHealthScore);
-            prof.setConceptMastery(masteryMap);
-
-            studentProfileRepository.save(prof);
-
-            System.out.println("[PROFILE DEBUG AFTER] userId=" + userId + ", subject=" + sName + ", updatedMastery=" + subjectHealthScore + "%, strongCount=" + strongList.size() + ", weakCount=" + weakList.size());
-        } else {
-            System.err.println("[PROFILE DEBUG WARNING] Could not find StudentProfile for userId=" + userId + " to persist mastery summary.");
-        }
+        System.out.println("[PROFILE DEBUG AFTER] userId=" + userId + ", subject=" + sName + ", updatedMastery=" + subjectHealthScore + "%, strongCount=" + strongList.size() + ", weakCount=" + weakList.size());
 
         // Trigger real-time recommendation engine generation
         try {

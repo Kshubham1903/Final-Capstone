@@ -25,7 +25,7 @@ import {
   PlusCircle,
   Check
 } from "lucide-react";
-import { saveOnboardingStep, onboardStudent, fetchOnboardingStatus, postQuestionnaire, fetchSubjectsByBranchAndSemester, fetchFullProfile, startDiagnosticAssessment, submitDiagnosticAssessment, fetchLatestDiagnosticResult } from "../../services/api";
+import { saveOnboardingStep, onboardStudent, fetchOnboardingStatus, postQuestionnaire, fetchSubjectsByBranchAndSemester, fetchFullProfile, startDiagnosticAssessment, submitDiagnosticAssessment, fetchLatestDiagnosticResult, fetchNextInitialDiagnosticQuestion, submitInitialDiagnosticAnswer } from "../../services/api";
 
 const FORM_B_SECTIONS = [
   {
@@ -207,6 +207,9 @@ export default function Onboarding() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [loadingQuestions, setLoadingQuestions] = useState<boolean>(false);
   const [submittingAssessment, setSubmittingAssessment] = useState<boolean>(false);
+  const [totalQuestions, setTotalQuestions] = useState<number>(10);
+  const [loadingNextQuestion, setLoadingNextQuestion] = useState<boolean>(false);
+  const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now());
 
   // Assessment Results state (summary page)
   const [diagnosticResult, setDiagnosticResult] = useState<any>(null);
@@ -324,6 +327,10 @@ export default function Onboarding() {
           if (session && session.questions) {
             setAssessmentSessionId(session.sessionId);
             setQuestions(session.questions);
+            if (session.totalQuestions) {
+              setTotalQuestions(session.totalQuestions);
+            }
+            setQuestionStartTime(Date.now());
           }
         } catch (err) {
           console.error("Failed to start assessment session:", err);
@@ -405,24 +412,116 @@ export default function Onboarding() {
     setAnswers(prev => ({ ...prev, [questionId]: optionIndex }));
   };
 
-  const handleSubmitAssessment = async () => {
+  const handleNextQuestion = async () => {
     setError("");
-    if (Object.keys(answers).length < questions.length) {
-      setError(`Please answer all ${questions.length} questions before submitting.`);
+    const activeQuestion = questions[currentQuestionIndex];
+    if (!activeQuestion) return;
+
+    const activeQuestionId = activeQuestion.questionId || activeQuestion.id;
+    const selectedOpt = answers[activeQuestionId];
+
+    if (selectedOpt === undefined || selectedOpt === null) {
+      setError("Please select an answer before proceeding to the next question.");
       return;
     }
 
-    setSubmittingAssessment(true);
+    // If next question is already fetched (e.g. user clicked Previous then Next), simply advance index
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1);
+      setQuestionStartTime(Date.now());
+      return;
+    }
+
+    if (loadingNextQuestion || submittingAssessment) return;
+
+    setLoadingNextQuestion(true);
+    const timeTakenSeconds = Math.max(1, Math.round((Date.now() - questionStartTime) / 1000));
+
     try {
-      const formattedAnswers = questions.map(q => ({
-        questionId: q.questionId,
-        selectedOption: answers[q.questionId] !== undefined ? answers[q.questionId] : -1
-      }));
+      // 1. Submit current answer to backend initial submit endpoint
+      try {
+        await submitInitialDiagnosticAnswer({
+          sessionId: assessmentSessionId,
+          questionId: activeQuestionId,
+          selectedOption: selectedOpt,
+          responseTimeSeconds: timeTakenSeconds
+        });
+      } catch (submitErr) {
+        console.warn("[Form D] Initial submit warning (continuing to fetch next):", submitErr);
+      }
+
+      // 2. Fetch next initial question
+      const nextRes = await fetchNextInitialDiagnosticQuestion({ sessionId: assessmentSessionId });
+
+      if (nextRes && nextRes.question) {
+        const normalizedQ = {
+          ...nextRes.question,
+          questionId: nextRes.question.questionId || nextRes.question.id,
+          id: nextRes.question.questionId || nextRes.question.id,
+          topic: nextRes.question.topic || nextRes.question.concept || "General"
+        };
+
+        setQuestions(prev => [...prev, normalizedQ]);
+        if (nextRes.totalQuestions) {
+          setTotalQuestions(nextRes.totalQuestions);
+        }
+        setCurrentQuestionIndex(prev => prev + 1);
+        setQuestionStartTime(Date.now());
+      } else {
+        setError(nextRes?.message || "Failed to load the next question. Please try clicking Next Question again.");
+      }
+    } catch (err: any) {
+      console.error("Error transitioning to next diagnostic question:", err);
+      setError(err.message || "Failed to submit answer or fetch next question.");
+    } finally {
+      setLoadingNextQuestion(false);
+    }
+  };
+
+  const handleSubmitAssessment = async () => {
+    setError("");
+    const activeQuestion = questions[currentQuestionIndex];
+    if (!activeQuestion) return;
+
+    const activeQuestionId = activeQuestion.questionId || activeQuestion.id;
+    const selectedOpt = answers[activeQuestionId];
+
+    if (selectedOpt === undefined || selectedOpt === null) {
+      setError(`Please select an answer for Question ${currentQuestionIndex + 1} before submitting.`);
+      return;
+    }
+
+    if (submittingAssessment || loadingNextQuestion) return;
+
+    setSubmittingAssessment(true);
+    const timeTakenSeconds = Math.max(1, Math.round((Date.now() - questionStartTime) / 1000));
+
+    try {
+      // Submit Q10 answer via initial submit endpoint first
+      try {
+        await submitInitialDiagnosticAnswer({
+          sessionId: assessmentSessionId,
+          questionId: activeQuestionId,
+          selectedOption: selectedOpt,
+          responseTimeSeconds: timeTakenSeconds
+        });
+      } catch (submitErr) {
+        console.warn("[Form D] Initial submit for final question warning:", submitErr);
+      }
+
+      // Format all answered questions for final consolidated submission
+      const formattedAnswers = questions.map(q => {
+        const qId = q.questionId || q.id;
+        return {
+          questionId: qId,
+          selectedOption: answers[qId] !== undefined ? answers[qId] : -1
+        };
+      });
 
       const res = await submitDiagnosticAssessment({
         sessionId: assessmentSessionId,
         userId,
-        timeTakenSeconds: 120,
+        timeTakenSeconds: 300,
         answers: formattedAnswers
       });
 
@@ -1112,13 +1211,13 @@ export default function Onboarding() {
                         {/* Progress Bar & Question Tracker */}
                         <div className="space-y-2">
                           <div className="flex justify-between text-xs font-bold text-secondary-theme">
-                            <span>Question {currentQuestionIndex + 1} of {questions.length}</span>
-                            <span>{Math.round(((currentQuestionIndex + 1) / questions.length) * 100)}% Complete</span>
+                            <span>Question {currentQuestionIndex + 1} of {totalQuestions}</span>
+                            <span>{Math.round(((currentQuestionIndex + 1) / totalQuestions) * 100)}% Complete</span>
                           </div>
                           <div className="w-full h-2 rounded-full bg-white/5 overflow-hidden">
                             <div
                               className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
-                              style={{ width: `${((currentQuestionIndex + 1) / questions.length) * 100}%` }}
+                              style={{ width: `${((currentQuestionIndex + 1) / totalQuestions) * 100}%` }}
                             ></div>
                           </div>
                         </div>
@@ -1127,7 +1226,7 @@ export default function Onboarding() {
                         <div className="p-6 rounded-2xl bg-white/5 border border-white/10 space-y-6">
                           <div className="space-y-1">
                             <span className="text-[9px] font-black text-purple-theme tracking-widest uppercase">
-                              TOPIC: {questions[currentQuestionIndex].topic}
+                              TOPIC: {questions[currentQuestionIndex].topic || questions[currentQuestionIndex].concept || "General"}
                             </span>
                             <h3 className="text-sm font-bold text-main-theme leading-relaxed">
                               {questions[currentQuestionIndex].questionText}
@@ -1138,12 +1237,13 @@ export default function Onboarding() {
                           <div className="grid grid-cols-1 gap-3">
                             {questions[currentQuestionIndex].options.map((opt: string, idx: number) => {
                               const letter = ["A", "B", "C", "D"][idx];
-                              const isSelected = answers[questions[currentQuestionIndex].questionId] === idx;
+                              const activeQId = questions[currentQuestionIndex].questionId || questions[currentQuestionIndex].id;
+                              const isSelected = answers[activeQId] === idx;
                               return (
                                 <button
                                   key={idx}
                                   type="button"
-                                  onClick={() => handleSelectOption(questions[currentQuestionIndex].questionId, idx)}
+                                  onClick={() => handleSelectOption(activeQId, idx)}
                                   className={`flex items-start gap-3 p-4 rounded-xl border text-left text-xs font-semibold transition-all cursor-pointer ${
                                     isSelected
                                       ? "bg-purple-600/20 border-purple-500 text-purple-300 shadow-md shadow-purple-500/10"
@@ -1165,30 +1265,40 @@ export default function Onboarding() {
                           <button
                             type="button"
                             onClick={() => setCurrentQuestionIndex(prev => Math.max(prev - 1, 0))}
-                            disabled={currentQuestionIndex === 0}
+                            disabled={currentQuestionIndex === 0 || loadingNextQuestion || submittingAssessment}
                             className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                              currentQuestionIndex === 0 ? "opacity-30 cursor-not-allowed text-secondary-theme" : "bg-white/5 hover:bg-white/10 text-main-theme"
+                              currentQuestionIndex === 0 || loadingNextQuestion || submittingAssessment ? "opacity-30 cursor-not-allowed text-secondary-theme" : "bg-white/5 hover:bg-white/10 text-main-theme"
                             }`}
                           >
                             <ArrowLeft className="h-3.5 w-3.5" />
                             <span>Previous Question</span>
                           </button>
 
-                          {currentQuestionIndex < questions.length - 1 ? (
+                          {currentQuestionIndex < totalQuestions - 1 ? (
                             <button
                               type="button"
-                              onClick={() => setCurrentQuestionIndex(prev => Math.min(prev + 1, questions.length - 1))}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-main-theme text-xs font-bold transition-all cursor-pointer"
+                              onClick={handleNextQuestion}
+                              disabled={loadingNextQuestion || submittingAssessment}
+                              className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-xs shadow-lg shadow-purple-500/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              <span>Next Question</span>
-                              <ArrowRight className="h-3.5 w-3.5" />
+                              {loadingNextQuestion ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
+                                  <span>Loading Question {currentQuestionIndex + 2}...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span>Next Question</span>
+                                  <ArrowRight className="h-3.5 w-3.5" />
+                                </>
+                              )}
                             </button>
                           ) : (
                             <button
                               type="button"
                               onClick={handleSubmitAssessment}
-                              disabled={submittingAssessment}
-                              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-black text-xs shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+                              disabled={submittingAssessment || loadingNextQuestion}
+                              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-black text-xs shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {submittingAssessment ? (
                                 <span>Submitting...</span>

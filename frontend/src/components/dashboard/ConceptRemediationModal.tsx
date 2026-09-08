@@ -60,26 +60,34 @@ export default function ConceptRemediationModal({
 
   const handleSelectOption = (optIdx: number) => {
     if (!currentQuestion) return;
+    const qId = currentQuestion.questionId || currentQuestion.id;
     setSelectedAnswers(prev => ({
       ...prev,
-      [currentQuestion.questionId]: optIdx
+      [qId]: optIdx
     }));
   };
 
   const handleSubmit = async () => {
-    if (!sessionData?.sessionId) return;
+    if (!sessionData?.sessionId || submitting) return;
     setSubmitting(true);
 
-    const answersPayload = questions.map((q: any) => ({
-      questionId: q.questionId,
-      selectedOptionIndex: selectedAnswers[q.questionId] ?? 0
-    }));
+    const answersPayload = questions.map((q: any) => {
+      const qId = q.questionId || q.id;
+      return {
+        questionId: qId,
+        selectedOptionIndex: selectedAnswers[qId] !== undefined ? selectedAnswers[qId] : 0
+      };
+    });
 
-    const res = await submitConceptRemediation(studentId, sessionData.sessionId, answersPayload);
-    setSubmitting(false);
-
-    if (res) {
-      setResult(res);
+    try {
+      const res = await submitConceptRemediation(studentId, sessionData.sessionId, answersPayload);
+      if (res) {
+        setResult(res);
+      }
+    } catch (err) {
+      console.error("[ConceptRemediationModal] Submission error:", err);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -172,7 +180,8 @@ export default function ConceptRemediationModal({
             {/* Options */}
             <div className="space-y-2">
               {currentQuestion.options.map((opt: string, optIdx: number) => {
-                const isSelected = selectedAnswers[currentQuestion.questionId] === optIdx;
+                const qId = currentQuestion.questionId || currentQuestion.id;
+                const isSelected = selectedAnswers[qId] === optIdx;
                 return (
                   <button
                     key={optIdx}
