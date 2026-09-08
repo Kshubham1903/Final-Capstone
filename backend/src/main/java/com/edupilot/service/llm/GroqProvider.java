@@ -8,6 +8,8 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service("groqProvider")
 public class GroqProvider implements LLMProvider {
@@ -15,13 +17,13 @@ public class GroqProvider implements LLMProvider {
     @Value("${llm.groq.api-key:mock-key}")
     private String apiKey;
 
-    @Value("${llm.groq.model:llama-3.3-70b-versatile}")
+    @Value("${llm.groq.model:qwen/qwen3.8-27b}")
     private String modelName;
 
     @Value("${llm.temperature:0.7}")
     private double temperature;
 
-    @Value("${llm.max-tokens:1200}")
+    @Value("${llm.max-tokens:450}")
     private int maxTokens;
 
     private static final String GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
@@ -50,6 +52,8 @@ public class GroqProvider implements LLMProvider {
                 effectiveMaxTokens = Integer.parseInt(context.get("maxTokens").toString());
             } catch (Exception ignored) {}
         }
+        // Enforce hard upper bound of 450 maxTokens for Groq requests (enforced OTPM limit is 1000)
+        effectiveMaxTokens = Math.min(effectiveMaxTokens, 450);
 
         int promptChars = (systemPrompt != null ? systemPrompt.length() : 0) + (userMessage != null ? userMessage.length() : 0);
         int estPromptTokens = promptChars / 4;
@@ -78,6 +82,24 @@ public class GroqProvider implements LLMProvider {
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 Map body = response.getBody();
+                if (body.get("usage") != null && body.get("usage") instanceof Map) {
+                    Map usageMap = (Map) body.get("usage");
+                    Object promptTokens = usageMap.get("prompt_tokens");
+                    Object completionTokens = usageMap.get("completion_tokens");
+                    Object totalTokens = usageMap.get("total_tokens");
+                    System.out.println("[GroqProvider] Token Usage -> Prompt: " + promptTokens + ", Output (Completion): " + completionTokens + ", Total: " + totalTokens);
+                    if (context != null) {
+                        if (promptTokens instanceof Number) {
+                            context.put("lastPromptTokens", ((Number) promptTokens).intValue());
+                        }
+                        if (completionTokens instanceof Number) {
+                            context.put("lastCompletionTokens", ((Number) completionTokens).intValue());
+                        }
+                        if (totalTokens instanceof Number) {
+                            context.put("lastTotalTokens", ((Number) totalTokens).intValue());
+                        }
+                    }
+                }
                 List choices = (List) body.get("choices");
                 if (choices != null && !choices.isEmpty()) {
                     Map firstChoice = (Map) choices.get(0);
@@ -117,13 +139,7 @@ public class GroqProvider implements LLMProvider {
             }
 
             if (status == 429) {
-                String retryAfterHeader = hsce.getResponseHeaders() != null ? hsce.getResponseHeaders().getFirst("Retry-After") : null;
-                long retryDelayMs = 2000;
-                if (retryAfterHeader != null) {
-                    try {
-                        retryDelayMs = (long) (Double.parseDouble(retryAfterHeader) * 1000);
-                    } catch (Exception ignored) {}
-                }
+                long retryDelayMs = parseRetryDelayMs(hsce, rawBody);
 
                 boolean isTpd = (rawBody != null && (
                         rawBody.toLowerCase().contains("per day") ||
@@ -147,6 +163,69 @@ public class GroqProvider implements LLMProvider {
             System.err.println("[GroqProvider] Exception: " + e.getMessage());
             return buildStructuredError("INTERNAL_ERROR", "Groq provider internal exception: " + e.getClass().getSimpleName(), e.getMessage());
         }
+    }
+
+    long parseRetryDelayMs(HttpStatusCodeException hsce, String rawBody) {
+        String selectedSource = "default (3000ms)";
+        long parsedMs = 3000;
+
+        // 1. Check HTTP Retry-After header
+        String retryAfterHeader = hsce != null && hsce.getResponseHeaders() != null ? hsce.getResponseHeaders().getFirst("Retry-After") : null;
+        if (retryAfterHeader != null && !retryAfterHeader.isBlank()) {
+            try {
+                double sec = Double.parseDouble(retryAfterHeader.replaceAll("[^0-9.]", ""));
+                if (sec > 0) {
+                    parsedMs = (long) (sec * 1000);
+                    selectedSource = "Header 'Retry-After' (" + retryAfterHeader + ")";
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 2. Check x-ratelimit-reset-requests header (Do NOT use x-ratelimit-reset-tokens which is the full token window reset time)
+        if (selectedSource.startsWith("default") && hsce != null && hsce.getResponseHeaders() != null) {
+            String resetReqHeader = hsce.getResponseHeaders().getFirst("x-ratelimit-reset-requests");
+            if (resetReqHeader != null && !resetReqHeader.isBlank()) {
+                try {
+                    if (resetReqHeader.endsWith("s")) {
+                        double sec = Double.parseDouble(resetReqHeader.substring(0, resetReqHeader.length() - 1));
+                        parsedMs = (long) (sec * 1000);
+                        selectedSource = "Header 'x-ratelimit-reset-requests' (" + resetReqHeader + ")";
+                    } else if (resetReqHeader.endsWith("ms")) {
+                        parsedMs = Long.parseLong(resetReqHeader.substring(0, resetReqHeader.length() - 2));
+                        selectedSource = "Header 'x-ratelimit-reset-requests' (" + resetReqHeader + ")";
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        // 3. Check raw body regex (e.g. "Please try again in 14.399999999s", "try again in 14.4s", "wait 15s")
+        if (selectedSource.startsWith("default") && rawBody != null && !rawBody.isBlank()) {
+            try {
+                Pattern patternSec = Pattern.compile("(?:try again in|retry after|wait)\\s+([0-9]+(?:\\.[0-9]+)?)\\s*s", Pattern.CASE_INSENSITIVE);
+                Matcher matcherSec = patternSec.matcher(rawBody);
+                if (matcherSec.find()) {
+                    double sec = Double.parseDouble(matcherSec.group(1));
+                    parsedMs = (long) (sec * 1000);
+                    selectedSource = "Body regex match '" + matcherSec.group(0) + "' (" + sec + "s)";
+                } else {
+                    Pattern patternMin = Pattern.compile("(?:try again in|retry after|wait)\\s+([0-9]+(?:\\.[0-9]+)?)\\s*m", Pattern.CASE_INSENSITIVE);
+                    Matcher matcherMin = patternMin.matcher(rawBody);
+                    if (matcherMin.find()) {
+                        double min = Double.parseDouble(matcherMin.group(1));
+                        parsedMs = (long) (min * 60 * 1000);
+                        selectedSource = "Body regex match '" + matcherMin.group(0) + "' (" + min + "m)";
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        long finalMs = parsedMs + 1000; // 1-second safety buffer
+        System.out.println("[GroqProvider Retry-After Parser] Source: " + selectedSource + " -> Parsed: " + parsedMs + " ms | Final wait (+1s safety buffer): " + finalMs + " ms");
+        return finalMs;
+    }
+
+    public String getModelName() {
+        return modelName;
     }
 
     private String buildStructuredError(String errorType, String message, String suggestion) {
