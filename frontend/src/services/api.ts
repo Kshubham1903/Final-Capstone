@@ -1581,13 +1581,18 @@ export async function startConceptRemediation(
       headers: { "Content-Type": "application/json", ...getAuthHeaders() },
       body: JSON.stringify({ studentId, subject, concept })
     });
-    if (res.ok) {
-      return await res.json();
+    const data = await res.json().catch(() => null);
+    if (res.ok && data) {
+      return data;
     }
-  } catch (err) {
+    if (data && data.message) {
+      throw new Error(data.message);
+    }
+    throw new Error(`Failed to start concept remediation test (HTTP ${res.status}).`);
+  } catch (err: any) {
     console.warn("Failed to start concept remediation test:", err);
+    throw err;
   }
-  return null;
 }
 
 export async function submitConceptRemediation(
@@ -1734,6 +1739,76 @@ export async function postStudentSatisfaction(
     } catch (err) {
       console.warn("Failed to post student satisfaction rating:", err);
     }
+  }
+  return null;
+}
+
+export async function abandonAssessmentSession(sessionId: string): Promise<any> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/assessment/abandon`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ sessionId })
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Failed to abandon assessment session:", err);
+  }
+  return null;
+}
+
+export async function abandonAdaptiveSession(sessionId: string): Promise<any> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/assessment/adaptive/abandon`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ sessionId, adaptiveSessionId: sessionId })
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Failed to abandon adaptive session:", err);
+  }
+  return null;
+}
+
+export async function abandonQuizSession(sessionId: string): Promise<any> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/quizzes/abandon`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ sessionId })
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Failed to abandon quiz session:", err);
+  }
+  return null;
+}
+
+export async function abandonRemediationSession(sessionId: string): Promise<any> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/concept-remediation/abandon`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ sessionId })
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Failed to abandon remediation session:", err);
+  }
+  return null;
+}
+
+export async function abandonDashboardTestSession(sessionId: string): Promise<any> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/dashboard-test/abandon`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ sessionId })
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Failed to abandon dashboard test session:", err);
   }
   return null;
 }

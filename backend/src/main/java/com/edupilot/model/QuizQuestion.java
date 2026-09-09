@@ -19,11 +19,20 @@ public class QuizQuestion {
 
     private int generationVersion = 2;
     private String questionSource = "DYNAMIC_V2";
+    private ModuleType moduleSource = ModuleType.PRACTICE;
     private String conceptId;
     private String templateFamilyId;
     private String questionFingerprint;
     private boolean qualityValidated = true;
     private java.time.LocalDateTime createdAt = java.time.LocalDateTime.now();
+
+    public ModuleType getModuleSource() {
+        return moduleSource != null ? moduleSource : ModuleType.PRACTICE;
+    }
+
+    public void setModuleSource(ModuleType moduleSource) {
+        this.moduleSource = moduleSource;
+    }
 
     public enum Difficulty {
         EASY,
@@ -178,6 +187,12 @@ public class QuizQuestion {
         private List<String> options;
         private int correctOptionIndex;
         private String conceptualExplanation;
+        private ModuleType moduleSource = ModuleType.PRACTICE;
+
+        public QuizQuestionBuilder moduleSource(ModuleType moduleSource) {
+            this.moduleSource = moduleSource;
+            return this;
+        }
 
         public QuizQuestionBuilder id(String id) {
             this.id = id;
@@ -220,7 +235,11 @@ public class QuizQuestion {
         }
 
         public QuizQuestion build() {
-            return new QuizQuestion(id, subject, concept, difficulty, questionText, options, correctOptionIndex, conceptualExplanation);
+            QuizQuestion q = new QuizQuestion(id, subject, concept, difficulty, questionText, options, correctOptionIndex, conceptualExplanation);
+            if (this.moduleSource != null) {
+                q.setModuleSource(this.moduleSource);
+            }
+            return q;
         }
     }
 }

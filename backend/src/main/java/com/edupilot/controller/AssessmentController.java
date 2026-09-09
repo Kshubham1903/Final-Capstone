@@ -180,5 +180,33 @@ public class AssessmentController {
             return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
         }
     }
+
+    @PostMapping("/abandon")
+    public ResponseEntity<?> abandonSession(@RequestBody Map<String, String> body) {
+        String sessionId = body != null ? body.get("sessionId") : null;
+        if (sessionId == null || sessionId.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "sessionId parameter is required"));
+        }
+        try {
+            Map<String, Object> result = assessmentService.abandonSession(sessionId);
+            return ResponseEntity.ok(result);
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
+
+    @PostMapping("/adaptive/abandon")
+    public ResponseEntity<?> abandonAdaptiveSession(@RequestBody Map<String, String> body) {
+        String sessionId = body != null ? (body.get("sessionId") != null ? body.get("sessionId") : body.get("adaptiveSessionId")) : null;
+        if (sessionId == null || sessionId.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "sessionId parameter is required"));
+        }
+        try {
+            Map<String, Object> result = assessmentService.abandonAdaptiveSession(sessionId);
+            return ResponseEntity.ok(result);
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
 }
 

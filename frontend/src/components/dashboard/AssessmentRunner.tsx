@@ -11,7 +11,9 @@ import {
   submitAdaptiveQuestionAnswer,
   fetchNextInitialDiagnosticQuestion,
   submitInitialDiagnosticAnswer,
-  fetchKnowledgeProfile
+  fetchKnowledgeProfile,
+  abandonAssessmentSession,
+  abandonAdaptiveSession
 } from "../../services/api";
 
 interface AssessmentRunnerProps {
@@ -514,6 +516,24 @@ export default function AssessmentRunner({
     }
   };
 
+  const handleCloseRunner = async () => {
+    if (step === "TESTING" || step === "ADAPTIVE_TESTING") {
+      if (typeof window !== "undefined" && !window.confirm("Are you sure you want to exit this diagnostic test? Your active session progress will be abandoned.")) {
+        return;
+      }
+      try {
+        if (step === "TESTING" && session?.sessionId) {
+          await abandonAssessmentSession(session.sessionId);
+        } else if (step === "ADAPTIVE_TESTING" && adaptiveSessionId) {
+          await abandonAdaptiveSession(adaptiveSessionId);
+        }
+      } catch (err) {
+        console.warn("Error abandoning assessment session:", err);
+      }
+    }
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="glass-panel p-6 rounded-3xl border border-white/10 shadow-2xl w-full max-w-3xl space-y-6 my-auto max-h-[90vh] overflow-y-auto">
@@ -532,12 +552,22 @@ export default function AssessmentRunner({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-secondary-theme hover:text-main-theme font-bold cursor-pointer"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {(step === "TESTING" || step === "ADAPTIVE_TESTING") && (
+              <button
+                onClick={handleCloseRunner}
+                className="px-3 py-1 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 text-xs font-bold border border-pink-500/30 transition-all cursor-pointer"
+              >
+                Exit Test
+              </button>
+            )}
+            <button
+              onClick={handleCloseRunner}
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-secondary-theme hover:text-main-theme font-bold cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {errorMessage && (

@@ -19,9 +19,18 @@ public class AssessmentSession {
     private List<String> questionIds;
     private int totalQuestions;
     private int totalMarks;
+    private ModuleType moduleType = ModuleType.DIAGNOSTIC;
     private Status status = Status.IN_PROGRESS;
     private LocalDateTime startTime = LocalDateTime.now();
     private LocalDateTime endTime;
+
+    public ModuleType getModuleType() {
+        return moduleType != null ? moduleType : ModuleType.DIAGNOSTIC;
+    }
+
+    public void setModuleType(ModuleType moduleType) {
+        this.moduleType = moduleType;
+    }
 
     // 1-by-1 Initial Diagnostic tracking fields
     private String currentQuestionId;
@@ -33,7 +42,8 @@ public class AssessmentSession {
     public enum Status {
         IN_PROGRESS,
         COMPLETED,
-        EXPIRED
+        EXPIRED,
+        ABANDONED
     }
 
     public AssessmentSession() {

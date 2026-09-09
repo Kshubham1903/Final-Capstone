@@ -77,4 +77,18 @@ public class DashboardTestController {
                     .body(Map.of("message", "Failed to fetch latest test result: " + e.getMessage()));
         }
     }
+
+    @PostMapping("/abandon")
+    public ResponseEntity<?> abandonTest(@RequestBody Map<String, String> body) {
+        String sessionId = body != null ? body.get("sessionId") : null;
+        if (sessionId == null || sessionId.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "sessionId parameter is required and cannot be blank"));
+        }
+        try {
+            Map<String, Object> result = dashboardTestService.abandonDashboardTestSession(sessionId.trim());
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
 }

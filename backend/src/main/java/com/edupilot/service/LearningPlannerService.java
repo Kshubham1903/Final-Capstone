@@ -70,9 +70,34 @@ public class LearningPlannerService {
         List<Recommendation> activeRecs = recommendationRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, Recommendation.Status.ACTIVE);
         List<Recommendation> rawPendingRecs = recommendationRepository.findByUserIdAndStatusOrderByCreatedAtDesc(userId, Recommendation.Status.VERIFICATION_PENDING);
 
-        // State Reconciliation: Filter out stale VERIFICATION_PENDING recommendations
-        List<Recommendation> validPendingRecs = new ArrayList<>();
+        // State Reconciliation: Filter out stale ACTIVE & VERIFICATION_PENDING recommendations
         List<com.edupilot.model.ConceptMastery> userCmList = conceptMasteryRepository.findByUserId(userId);
+
+        List<Recommendation> validActiveRecs = new ArrayList<>();
+        for (Recommendation aRec : activeRecs) {
+            String normConcept = RecommendationService.normalizeConceptName(aRec.getConceptName(), aRec.getSubjectName());
+            boolean isMastered = false;
+            if (userCmList != null) {
+                for (com.edupilot.model.ConceptMastery cm : userCmList) {
+                    if (cm.getConceptName() != null && normConcept.equalsIgnoreCase(RecommendationService.normalizeConceptName(cm.getConceptName(), cm.getSubjectName()))) {
+                        if (cm.getMasteryLevel() == com.edupilot.model.ConceptMastery.MasteryLevel.MASTER 
+                            || cm.getStatus() == com.edupilot.model.ConceptMastery.ConceptStatus.STRONG 
+                            || cm.getAccuracy() >= 80.0) {
+                            isMastered = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (isMastered) {
+                aRec.setStatus(Recommendation.Status.COMPLETED);
+                recommendationRepository.save(aRec);
+                continue;
+            }
+            validActiveRecs.add(aRec);
+        }
+
+        List<Recommendation> validPendingRecs = new ArrayList<>();
 
         for (Recommendation pRec : rawPendingRecs) {
             String normConcept = RecommendationService.normalizeConceptName(pRec.getConceptName(), pRec.getSubjectName());
@@ -123,7 +148,7 @@ public class LearningPlannerService {
             validPendingRecs.add(pRec);
         }
 
-        List<Recommendation> recs = new ArrayList<>(activeRecs);
+        List<Recommendation> recs = new ArrayList<>(validActiveRecs);
         recs.addAll(validPendingRecs);
         
         // Filter for weak/revision recommendations (CRITICAL and HIGH priority)
@@ -261,6 +286,110 @@ public class LearningPlannerService {
         return new LearningPlanResponse(savedPlan);
     }
 
+    private LearningPlan reconcilePlanWithSourceOfTruth(LearningPlan plan, String userId) {
+        if (plan == null || plan.getTasks() == null || plan.getTasks().isEmpty()) {
+            return plan;
+        }
+
+        List<Recommendation> allRecs = recommendationRepository.findByUserId(userId);
+        Map<String, Recommendation> recMap = new HashMap<>();
+        if (allRecs != null) {
+            for (Recommendation r : allRecs) {
+                if (r.getId() != null) {
+                    recMap.put(r.getId(), r);
+                }
+            }
+        }
+
+        List<com.edupilot.model.ConceptMastery> cmList = conceptMasteryRepository.findByUserId(userId);
+        List<LearningPlan.LearningTask> reconciledTasks = new ArrayList<>();
+        boolean modified = false;
+
+        for (LearningPlan.LearningTask task : plan.getTasks()) {
+            if (task.getTaskId() != null && (task.getTaskId().startsWith("task_no_weak_") || task.getTaskId().startsWith("task_def_"))) {
+                reconciledTasks.add(task);
+                continue;
+            }
+
+            String recId = task.getGeneratedFromRecommendationId();
+            Recommendation rec = (recId != null) ? recMap.get(recId) : null;
+
+            if (rec != null) {
+                if (rec.getStatus() == Recommendation.Status.COMPLETED || rec.getStatus() == Recommendation.Status.DISMISSED) {
+                    modified = true;
+                    continue;
+                }
+                if (rec.getExpiresAt() != null && rec.getExpiresAt().isBefore(LocalDateTime.now())) {
+                    rec.setStatus(Recommendation.Status.DISMISSED);
+                    recommendationRepository.save(rec);
+                    modified = true;
+                    continue;
+                }
+            }
+
+            boolean isMastered = false;
+            if (task.getConceptName() != null && cmList != null) {
+                String normTaskConcept = RecommendationService.normalizeConceptName(task.getConceptName(), task.getSubjectName());
+                for (com.edupilot.model.ConceptMastery cm : cmList) {
+                    if (cm.getConceptName() != null) {
+                        String normCmConcept = RecommendationService.normalizeConceptName(cm.getConceptName(), cm.getSubjectName());
+                        if (normTaskConcept.equalsIgnoreCase(normCmConcept)) {
+                            if (cm.getMasteryLevel() == com.edupilot.model.ConceptMastery.MasteryLevel.MASTER 
+                                || cm.getStatus() == com.edupilot.model.ConceptMastery.ConceptStatus.STRONG 
+                                || cm.getAccuracy() >= 80.0) {
+                                isMastered = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (isMastered) {
+                if (rec != null && rec.getStatus() != Recommendation.Status.COMPLETED) {
+                    rec.setStatus(Recommendation.Status.COMPLETED);
+                    recommendationRepository.save(rec);
+                }
+                modified = true;
+                continue;
+            }
+
+            if (rec != null) {
+                if (rec.getStatus() == Recommendation.Status.VERIFICATION_PENDING) {
+                    if (task.getStatus() != LearningPlan.LearningTask.TaskStatus.VERIFICATION_PENDING) {
+                        task.setStatus(LearningPlan.LearningTask.TaskStatus.VERIFICATION_PENDING);
+                        modified = true;
+                    }
+                } else if (rec.getStatus() == Recommendation.Status.ACTIVE) {
+                    if (task.getStatus() == LearningPlan.LearningTask.TaskStatus.VERIFICATION_PENDING) {
+                        task.setStatus(LearningPlan.LearningTask.TaskStatus.PENDING);
+                        modified = true;
+                    }
+                }
+            }
+
+            reconciledTasks.add(task);
+        }
+
+        if (reconciledTasks.isEmpty()) {
+            generateLearningPlan(userId);
+            return planRepository.findByUserIdAndPlanDate(userId, LocalDate.now()).orElse(plan);
+        }
+
+        if (modified || reconciledTasks.size() != plan.getTasks().size()) {
+            plan.setTasks(reconciledTasks);
+            plan.setTotalTasks(reconciledTasks.size());
+            plan.setCompletedTasks((int) reconciledTasks.stream().filter(t -> t.getStatus() == LearningPlan.LearningTask.TaskStatus.COMPLETED).count());
+            int totalMins = reconciledTasks.stream().mapToInt(LearningPlan.LearningTask::getEstimatedStudyTimeMinutes).sum();
+            plan.setTotalEstimatedMinutes(totalMins);
+            plan.setCompletionPercentage(plan.getTotalTasks() > 0 ? (plan.getCompletedTasks() * 100.0 / plan.getTotalTasks()) : 0.0);
+            plan.setUpdatedAt(LocalDateTime.now());
+            return planRepository.save(plan);
+        }
+
+        return plan;
+    }
+
     public LearningPlanResponse getTodayPlan(String userId) {
         LocalDate today = LocalDate.now();
         Optional<LearningPlan> planOpt = planRepository.findByUserIdAndPlanDate(userId, today);
@@ -272,7 +401,8 @@ public class LearningPlannerService {
             if (isLegacyFallback) {
                 return generateLearningPlan(userId);
             }
-            return new LearningPlanResponse(plan);
+            LearningPlan reconciledPlan = reconcilePlanWithSourceOfTruth(plan, userId);
+            return new LearningPlanResponse(reconciledPlan);
         }
         return generateLearningPlan(userId);
     }

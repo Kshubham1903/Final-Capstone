@@ -1,5 +1,6 @@
 package com.edupilot.controller;
 
+import com.edupilot.model.ModuleType;
 import com.edupilot.model.QuizQuestion;
 import com.edupilot.model.StudentProfile;
 import com.edupilot.model.ConceptMastery;
@@ -91,6 +92,12 @@ public class QuizController {
                 continue;
             }
 
+            // QUESTION ISOLATION: Exclude DIAGNOSTIC and BASELINE questions from practice/adaptive quiz pool
+            ModuleType qSource = q.getModuleSource();
+            if (qSource == ModuleType.DIAGNOSTIC || qSource == ModuleType.BASELINE) {
+                continue;
+            }
+
             if (!AiServiceClient.isGenericTemplateQuestion(q.getQuestionText())) {
                 allSubjectExcludeTexts.add(q.getQuestionText());
                 String qId = q.getId();
@@ -122,6 +129,7 @@ public class QuizController {
                         if (!AiServiceClient.isGenericTemplateQuestion(g.getQuestionText())) {
                             boolean isDupInUnseen = validUnseen.stream().anyMatch(e -> AiServiceClient.isDuplicateQuestion(g.getQuestionText(), e.getQuestionText()));
                             if (!isDupInUnseen) {
+                                g.setModuleSource(effectiveTargetConcept != null ? ModuleType.REMEDIATION : ModuleType.PRACTICE);
                                 toSave.add(g);
                                 validUnseen.add(g);
                             }
@@ -414,6 +422,26 @@ public class QuizController {
             ));
         } catch (IllegalArgumentException iae) {
             return ResponseEntity.status(404).body(Map.of("message", iae.getMessage()));
+        }
+    }
+
+    @PostMapping("/abandon")
+    public ResponseEntity<?> abandonQuizSession(@RequestBody Map<String, String> body) {
+        String sessionId = body != null ? body.get("sessionId") : null;
+        if (sessionId == null || sessionId.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "sessionId parameter is required"));
+        }
+        try {
+            Optional<com.edupilot.model.QuizSession> sessionOpt = quizSessionRepository.findById(sessionId.trim());
+            if (sessionOpt.isPresent()) {
+                com.edupilot.model.QuizSession session = sessionOpt.get();
+                session.setStatus(com.edupilot.model.QuizSession.Status.ABANDONED);
+                quizSessionRepository.save(session);
+                return ResponseEntity.ok(Map.of("status", "SESSION_ABANDONED", "sessionId", sessionId));
+            }
+            return ResponseEntity.ok(Map.of("status", "SESSION_NOT_FOUND", "sessionId", sessionId));
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
         }
     }
 }

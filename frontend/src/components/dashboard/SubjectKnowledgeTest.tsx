@@ -20,6 +20,7 @@ import {
   generateDashboardTest, 
   submitDashboardTest, 
   getLatestDashboardTestResult, 
+  abandonDashboardTestSession,
   DashboardTestQuestionDTO, 
   DashboardTestResultDTO 
 } from "../../services/api";
@@ -146,6 +147,18 @@ export default function SubjectKnowledgeTest({ profile }: SubjectKnowledgeTestPr
     }
   };
 
+  const handleExitTest = async () => {
+    if (typeof window !== "undefined" && window.confirm("Are you sure you want to exit this knowledge test? Your active test session will be ended without saving unfinished answers.")) {
+      if (sessionId) {
+        await abandonDashboardTestSession(sessionId);
+      }
+      setViewState("SUMMARY");
+      setSessionId("");
+      setQuestions([]);
+      setSelectedAnswers({});
+    }
+  };
+
   const currentQ = questions[currentIndex];
   const totalQuestions = questions.length;
   const answeredCount = Object.keys(selectedAnswers).length;
@@ -171,6 +184,15 @@ export default function SubjectKnowledgeTest({ profile }: SubjectKnowledgeTestPr
             </p>
           </div>
         </div>
+
+        {viewState === "TEST" && (
+          <button
+            onClick={handleExitTest}
+            className="px-3.5 py-1.5 rounded-xl bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 text-xs font-extrabold border border-pink-500/30 transition-all cursor-pointer shadow-md shrink-0"
+          >
+            Exit Test
+          </button>
+        )}
 
         {viewState === "SUMMARY" && (
           <button
