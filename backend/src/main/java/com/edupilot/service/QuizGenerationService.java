@@ -72,7 +72,7 @@ public class QuizGenerationService {
         if (!context.containsKey("purpose")) context.put("purpose", "DASHBOARD_BATCH");
 
         int maxRetries = 2;
-        String lastError = "Unknown error";
+        String lastError = "Groq API response validation failed";
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             String currentPrompt = userPrompt;
             if (attempt > 1) {
@@ -107,7 +107,7 @@ public class QuizGenerationService {
                     return questions;
                 }
             } catch (Exception ex) {
-                lastError = ex.getMessage();
+                lastError = (ex.getMessage() != null && !ex.getMessage().isBlank()) ? ex.getMessage() : ex.toString();
                 if (ex.getMessage() != null && ex.getMessage().contains("daily token quota")) {
                     throw ex;
                 }
@@ -184,7 +184,7 @@ public class QuizGenerationService {
         Map<String, Object> genContext = new HashMap<>();
         genContext.put("excludeQuestions", accumulatedExclusions);
 
-        String lastError = "Unknown error";
+        String lastError = "Groq API response validation failed";
         for (int i = 0; i < needed; i++) {
             QuestionBlueprintSpec spec = new QuestionBlueprintSpec(result.size() + 1, concept, difficulty);
             Map<String, Object> subContext = new HashMap<>(genContext);
@@ -206,7 +206,7 @@ public class QuizGenerationService {
                     }
                 }
             } catch (Exception ex) {
-                lastError = ex.getMessage();
+                lastError = (ex.getMessage() != null && !ex.getMessage().isBlank()) ? ex.getMessage() : ex.toString();
                 System.err.println("[generateForConcept] Groq 1-by-1 generation attempt failed: " + lastError);
             }
         }
@@ -539,7 +539,7 @@ public class QuizGenerationService {
                     }
                 }
             } catch (Exception ex) {
-                lastError = ex.getMessage();
+                lastError = (ex.getMessage() != null && !ex.getMessage().isBlank()) ? ex.getMessage() : ex.toString();
                 System.err.println("[QuizGenerationService] Question " + position + "/" + totalQuestions + " attempt " + attempt + " exception: " + lastError);
                 if (lastError != null && lastError.contains("daily token quota")) throw ex;
             }
@@ -978,7 +978,7 @@ public class QuizGenerationService {
                     lastError = "Parsed questions list was empty (raw response: " + (rawResponse != null ? rawResponse.replaceAll("\\s+", " ") : "null") + ")";
                 }
             } catch (Exception ex) {
-                lastError = ex.getMessage();
+                lastError = (ex.getMessage() != null && !ex.getMessage().isBlank()) ? ex.getMessage() : ex.toString();
                 System.err.println("[QuizGenerationService] Groq generation attempt " + attempt + " failed: " + lastError);
             }
         }

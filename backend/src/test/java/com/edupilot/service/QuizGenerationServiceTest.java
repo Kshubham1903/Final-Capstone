@@ -1,13 +1,21 @@
 package com.edupilot.service;
 
+import com.edupilot.controller.QuizController;
 import com.edupilot.model.QuizQuestion;
+import com.edupilot.service.llm.GroqProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 public class QuizGenerationServiceTest {
 
@@ -228,5 +236,75 @@ public class QuizGenerationServiceTest {
         String result = (String) validateExplanationMethod.invoke(quizGenerationService, options, correctOptionIndex, explanation);
 
         assertNull(result, "Consistent explanation should pass validation cleanly");
+    }
+
+    @Test
+    public void testGroqFailureCapturesDescriptiveFallbackAndExceptionToString() throws Exception {
+        GroqProvider mockGroq = mock(GroqProvider.class);
+        when(mockGroq.generateResponse(anyString(), anyString(), anyMap()))
+                .thenThrow(new RuntimeException((String) null)); // Exception with null message
+
+        Field groqField = QuizGenerationService.class.getDeclaredField("groqProvider");
+        groqField.setAccessible(true);
+        groqField.set(quizGenerationService, mockGroq);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> {
+            quizGenerationService.generate("Physics", QuizQuestion.Difficulty.MEDIUM, 5);
+        });
+
+        assertFalse(ex.getMessage().contains("Unknown error"), "Failure message should not contain unhelpful 'Unknown error'");
+        assertTrue(ex.getMessage().contains("java.lang.RuntimeException") || ex.getMessage().contains("Groq API response validation failed"),
+                "Failure message should contain descriptive exception representation or fallback");
+    }
+
+    @Test
+    public void testQuizControllerGenerateAiQuizReturns502OnIllegalStateException() {
+        QuizController controller = new QuizController();
+        QuizGenerationService mockService = mock(QuizGenerationService.class);
+        when(mockService.generateForStudent("s1", "Physics", 5))
+                .thenThrow(new IllegalStateException("Groq API question generation failed for subject 'Physics' after 2 attempts. Last failure: Groq API response validation failed"));
+
+        try {
+            Field serviceField = QuizController.class.getDeclaredField("quizGenerationService");
+            serviceField.setAccessible(true);
+            serviceField.set(controller, mockService);
+        } catch (Exception e) {
+            fail("Failed to set mock service on controller: " + e.getMessage());
+        }
+
+        Map<String, Object> request = Map.of("studentId", "s1", "subject", "Physics", "count", 5);
+        ResponseEntity<?> response = controller.generateAiQuiz(request);
+
+        assertEquals(HttpStatus.BAD_GATEWAY, response.getStatusCode());
+        assertTrue(response.getBody() instanceof Map);
+        Map<?, ?> body = (Map<?, ?>) response.getBody();
+        assertEquals("Groq API question generation failed for subject 'Physics' after 2 attempts. Last failure: Groq API response validation failed", body.get("message"));
+    }
+
+    @Test
+    public void testQuizControllerGenerateAiQuizSuccessUnchanged() {
+        QuizController controller = new QuizController();
+        QuizGenerationService mockService = mock(QuizGenerationService.class);
+        QuizQuestion mockQ = QuizQuestion.builder().subject("Physics").concept("Optics").questionText("Sample Q").build();
+        when(mockService.generateForStudent("s1", "Physics", 5))
+                .thenReturn(List.of(mockQ));
+
+        try {
+            Field serviceField = QuizController.class.getDeclaredField("quizGenerationService");
+            serviceField.setAccessible(true);
+            serviceField.set(controller, mockService);
+        } catch (Exception e) {
+            fail("Failed to set mock service on controller: " + e.getMessage());
+        }
+
+        Map<String, Object> request = Map.of("studentId", "s1", "subject", "Physics", "count", 5);
+        ResponseEntity<?> response = controller.generateAiQuiz(request);
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertTrue(response.getBody() instanceof Map);
+        Map<?, ?> body = (Map<?, ?>) response.getBody();
+        assertEquals("Physics", body.get("subject"));
+        assertEquals(1, body.get("count"));
+        assertEquals(List.of(mockQ), body.get("questions"));
     }
 }
