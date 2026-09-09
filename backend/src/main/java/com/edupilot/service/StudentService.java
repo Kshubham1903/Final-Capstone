@@ -60,6 +60,9 @@ public class StudentService {
     @Autowired
     private AiServiceClient aiServiceClient;
 
+    @Autowired
+    private ConceptMasteryRepository conceptMasteryRepository;
+
     /**
      * Helper to resolve canonical student userId from user ID or email address.
      */
@@ -856,6 +859,79 @@ private StudentProfile ensureSubjectMastery(StudentProfile profile) {
     return profile;
 }
 
-    
-    
+    /**
+     * Phase 1 Mastery / Profile Synchronization:
+     * Centralized method to synchronize StudentProfile.conceptMastery summary
+     * directly from authoritative ConceptMasteryRepository data.
+     */
+    public synchronized StudentProfile syncConceptMasteryWithProfile(String userIdOrEmail, String subjectName) {
+        if (userIdOrEmail == null || userIdOrEmail.trim().isEmpty() || "anonymous_student".equalsIgnoreCase(userIdOrEmail)) {
+            return null;
+        }
+
+        String canonicalUserId = resolveUserId(userIdOrEmail);
+        StudentProfile profile = findOrCreateProfile(canonicalUserId);
+        if (profile == null) return null;
+
+        List<ConceptMastery> cmList = conceptMasteryRepository.findByUserId(canonicalUserId);
+        if ((cmList == null || cmList.isEmpty()) && profile.getId() != null && !profile.getId().equals(canonicalUserId)) {
+            cmList = conceptMasteryRepository.findByUserId(profile.getId());
+        }
+
+        if (cmList == null) {
+            cmList = Collections.emptyList();
+        }
+
+        Map<String, Double> masteryMap = profile.getConceptMastery() != null ? new HashMap<>(profile.getConceptMastery()) : new HashMap<>();
+
+        if (!cmList.isEmpty()) {
+            Map<String, List<ConceptMastery>> bySubject = new HashMap<>();
+            for (ConceptMastery cm : cmList) {
+                String sName = cm.getSubjectName();
+                if (sName != null && !sName.isBlank()) {
+                    bySubject.computeIfAbsent(sName.trim(), k -> new ArrayList<>()).add(cm);
+                }
+            }
+
+            for (Map.Entry<String, List<ConceptMastery>> entry : bySubject.entrySet()) {
+                List<ConceptMastery> list = entry.getValue();
+                if (!list.isEmpty()) {
+                    double sum = 0.0;
+                    for (ConceptMastery cm : list) {
+                        sum += cm.getAccuracy();
+                    }
+                    double avg = Math.round((sum / list.size()) * 10.0) / 10.0;
+                    masteryMap.put(entry.getKey(), avg);
+                }
+            }
+        }
+
+        if (subjectName != null && !subjectName.isBlank()) {
+            String targetSubj = subjectName.trim();
+            List<ConceptMastery> subjectConcepts = new ArrayList<>();
+            for (ConceptMastery cm : cmList) {
+                if (cm.getSubjectName() != null && isSameSubject(cm.getSubjectName(), targetSubj)) {
+                    subjectConcepts.add(cm);
+                }
+            }
+            if (!subjectConcepts.isEmpty()) {
+                double sum = 0.0;
+                for (ConceptMastery cm : subjectConcepts) {
+                    sum += cm.getAccuracy();
+                }
+                double avg = Math.round((sum / subjectConcepts.size()) * 10.0) / 10.0;
+                masteryMap.put(targetSubj, avg);
+            }
+        }
+
+        profile.setConceptMastery(masteryMap);
+        return profileRepository.save(profile);
+    }
+
+    private boolean isSameSubject(String s1, String s2) {
+        if (s1 == null || s2 == null) return false;
+        String clean1 = s1.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
+        String clean2 = s2.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
+        return clean1.equals(clean2) || clean1.contains(clean2) || clean2.contains(clean1);
+    }
 }

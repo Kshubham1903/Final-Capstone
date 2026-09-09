@@ -366,6 +366,11 @@ public class AssessmentService {
                 prof.setConceptMastery(masteryMap);
                 prof.setCompletedQuizzesCount(prof.getCompletedQuizzesCount() + 1);
                 profileRepository.save(prof);
+                try {
+                    studentService.syncConceptMasteryWithProfile(session.getUserId(), session.getSubjectName());
+                } catch (Exception ex) {
+                    System.err.println("Failed profile mastery sync: " + ex.getMessage());
+                }
             }
         }
 
@@ -647,6 +652,12 @@ public class AssessmentService {
                     question.getConcept(),
                     isCorrect
             );
+
+            try {
+                studentService.syncConceptMasteryWithProfile(session.getUserId(), session.getSubjectName());
+            } catch (Exception ex) {
+                System.err.println("Failed profile mastery sync in adaptive answer: " + ex.getMessage());
+            }
 
             // Fetch updated ConceptMastery state
             Optional<ConceptMastery> updatedCmOpt = conceptRepository.findByUserIdAndSubjectCodeAndTopicAndConceptName(
@@ -1033,6 +1044,7 @@ public class AssessmentService {
 
                 try {
                     knowledgeService.syncKnowledgeProfileSummary(effectiveUserId, session.getSubjectName());
+                    studentService.syncConceptMasteryWithProfile(effectiveUserId, session.getSubjectName());
                 } catch (Exception ex) {
                     System.err.println("Failed knowledge profile processing: " + ex.getMessage());
                 }

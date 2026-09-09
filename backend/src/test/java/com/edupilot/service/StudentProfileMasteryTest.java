@@ -114,4 +114,62 @@ public class StudentProfileMasteryTest {
         assertEquals(expectedId, postProfile.getId(), "Existing profile ID must be preserved");
         assertTrue(postProfile.getConceptMastery().containsKey(subject), "Existing profile must be updated with concept mastery");
     }
+
+    @Autowired
+    private com.edupilot.repository.ConceptMasteryRepository conceptMasteryRepository;
+
+    @Test
+    public void testRemediationCompletionSyncsProfileConceptMastery() {
+        String userId = "test_user_remediation_sync";
+        String subject = "Database Management Systems";
+        String concept = "Normal Forms";
+
+        StudentProfile preProfile = studentService.findOrCreateProfile(userId);
+
+        com.edupilot.model.ConceptMastery cm = new com.edupilot.model.ConceptMastery();
+        cm.setUserId(userId);
+        cm.setStudentProfileId(preProfile.getId());
+        cm.setSubjectName(subject);
+        cm.setConceptName(concept);
+        cm.setAccuracy(90.0);
+        cm.setMasteryLevel(com.edupilot.model.ConceptMastery.MasteryLevel.MASTER);
+        conceptMasteryRepository.save(cm);
+
+        studentService.syncConceptMasteryWithProfile(userId, subject);
+
+        StudentProfile postProfile = studentService.findOrCreateProfile(userId);
+        assertNotNull(postProfile.getConceptMastery(), "Profile conceptMastery should not be null");
+        assertTrue(postProfile.getConceptMastery().containsKey(subject), "Profile conceptMastery should contain subject key");
+        assertEquals(90.0, postProfile.getConceptMastery().get(subject), "Profile conceptMastery should equal concept accuracy");
+    }
+
+    @Test
+    public void testCentralizedSynchronizationDerivesFromRepository() {
+        String userId = "test_user_centralized_sync";
+        String subject = "Data Structures & Algorithms";
+
+        StudentProfile profile = studentService.findOrCreateProfile(userId);
+
+        com.edupilot.model.ConceptMastery cm1 = new com.edupilot.model.ConceptMastery();
+        cm1.setUserId(userId);
+        cm1.setStudentProfileId(profile.getId());
+        cm1.setSubjectName(subject);
+        cm1.setConceptName("Arrays");
+        cm1.setAccuracy(80.0);
+        conceptMasteryRepository.save(cm1);
+
+        com.edupilot.model.ConceptMastery cm2 = new com.edupilot.model.ConceptMastery();
+        cm2.setUserId(userId);
+        cm2.setStudentProfileId(profile.getId());
+        cm2.setSubjectName(subject);
+        cm2.setConceptName("LinkedLists");
+        cm2.setAccuracy(100.0);
+        conceptMasteryRepository.save(cm2);
+
+        studentService.syncConceptMasteryWithProfile(userId, subject);
+
+        StudentProfile updatedProfile = studentService.findOrCreateProfile(userId);
+        assertNotNull(updatedProfile.getConceptMastery());
+        assertEquals(90.0, updatedProfile.getConceptMastery().get(subject), "Subject average accuracy should be derived as 90.0");
+    }
 }

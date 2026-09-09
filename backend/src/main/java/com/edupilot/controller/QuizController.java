@@ -291,6 +291,13 @@ public class QuizController {
                 System.err.println("Error recording quiz session: " + ex.getMessage());
             }
 
+            // Synchronize StudentProfile.conceptMastery summary with ConceptMasteryRepository data
+            try {
+                studentService.syncConceptMasteryWithProfile(actualUserId, subject);
+            } catch (Exception ex) {
+                System.err.println("Error synchronizing student profile concept mastery: " + ex.getMessage());
+            }
+
             Map<String, Object> response = new HashMap<>();
             response.put("nextDifficulty", nextDifficulty);
             response.put("reason", reason);
