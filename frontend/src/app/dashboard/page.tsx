@@ -15,7 +15,6 @@ import DashboardHeader from "../../components/dashboard/DashboardHeader";
 import WelcomeCard from "../../components/dashboard/WelcomeCard";
 import TodaysLearningCard from "../../components/dashboard/TodaysLearningCard";
 import LearningProgressCard from "../../components/dashboard/LearningProgressCard";
-import SubjectKnowledgeTest from "../../components/dashboard/SubjectKnowledgeTest";
 import SubjectProgressPanel from "../../components/dashboard/SubjectProgressPanel";
 import LearningPreferencesCard from "../../components/dashboard/LearningPreferencesCard";
 import LearningGainCard from "../../components/dashboard/LearningGainCard";
@@ -162,9 +161,6 @@ export default function StudentDashboard() {
           {/* Left Column (2/3 width) - Focus areas & Mastery progress */}
           <div className="lg:col-span-2 space-y-6">
             
-            {/* Subject Knowledge Check Baseline Test */}
-            <SubjectKnowledgeTest profile={profile} />
-
             {/* Today's Learning Focus (Primary Highlight) */}
             <TodaysLearningCard profile={profile} />
 

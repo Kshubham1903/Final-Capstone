@@ -16,7 +16,6 @@ import static org.mockito.Mockito.*;
 public class QuizIsolationRegressionTest {
 
     private QuizQuestionRepository questionRepository;
-    private DashboardTestSessionRepository dashboardSessionRepository;
     private RemediationSessionRepository remediationSessionRepository;
     private StudentProfileRepository profileRepository;
     private KnowledgeProfileRepository knowledgeProfileRepository;
@@ -25,7 +24,6 @@ public class QuizIsolationRegressionTest {
     @BeforeEach
     public void setUp() {
         questionRepository = mock(QuizQuestionRepository.class);
-        dashboardSessionRepository = mock(DashboardTestSessionRepository.class);
         remediationSessionRepository = mock(RemediationSessionRepository.class);
         profileRepository = mock(StudentProfileRepository.class);
         knowledgeProfileRepository = mock(KnowledgeProfileRepository.class);
@@ -85,9 +83,6 @@ public class QuizIsolationRegressionTest {
         QuizSession quizSession = new QuizSession();
         assertEquals(ModuleType.PRACTICE, quizSession.getModuleType());
 
-        DashboardTestSession dashboardSession = new DashboardTestSession();
-        assertEquals(ModuleType.BASELINE, dashboardSession.getModuleType());
-
         RemediationSession remediationSession = new RemediationSession();
         assertEquals(ModuleType.REMEDIATION, remediationSession.getModuleType());
     }
@@ -125,26 +120,16 @@ public class QuizIsolationRegressionTest {
 
     @Test
     @DisplayName("Verification 3: MongoDB Collection Isolation - Remediation Sessions stored in dedicated collection")
-    public void testRemediationSessionIsolationFromBaseline() {
+    public void testRemediationSessionIsolation() {
         RemediationSession remSession = new RemediationSession("rem_101", "student_1", "CS", "Arrays", List.of("q1", "q2"), LocalDateTime.now(), false);
         assertEquals(ModuleType.REMEDIATION, remSession.getModuleType());
 
-        DashboardTestSession baseSession = new DashboardTestSession("base_202", "student_1", List.of("CS"), List.of("q3", "q4"), LocalDateTime.now(), false);
-        assertEquals(ModuleType.BASELINE, baseSession.getModuleType());
-
         when(remediationSessionRepository.findById("rem_101")).thenReturn(Optional.of(remSession));
-        when(dashboardSessionRepository.findTop5ByStudentIdOrderByCreatedAtDesc("student_1")).thenReturn(List.of(baseSession));
 
         Optional<RemediationSession> fetchedRem = remediationSessionRepository.findById("rem_101");
         assertTrue(fetchedRem.isPresent());
         assertEquals("rem_101", fetchedRem.get().getId());
         assertEquals(ModuleType.REMEDIATION, fetchedRem.get().getModuleType());
-
-        List<DashboardTestSession> fetchedBaseHistory = dashboardSessionRepository.findTop5ByStudentIdOrderByCreatedAtDesc("student_1");
-        assertEquals(1, fetchedBaseHistory.size());
-        assertEquals("base_202", fetchedBaseHistory.get(0).getId());
-        assertFalse(fetchedBaseHistory.stream().anyMatch(s -> s.getId().equals("rem_101")),
-                "Remediation sessions must NEVER be returned when querying Baseline Test sessions");
     }
 
     @Test
@@ -198,7 +183,7 @@ public class QuizIsolationRegressionTest {
     }
 
     @Test
-    @DisplayName("Verification 6: Result Graph Sync - Baseline test completion updates StudentProfile.conceptMastery map for UI BarChart rendering")
+    @DisplayName("Verification 6: Result Graph Sync - Concept mastery updates StudentProfile.conceptMastery map for UI BarChart rendering")
     public void testProfileConceptMasterySyncForGraph() {
         StudentProfile profile = new StudentProfile();
         profile.setId("student_100");
