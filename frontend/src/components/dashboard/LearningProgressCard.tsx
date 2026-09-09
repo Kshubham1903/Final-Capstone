@@ -11,14 +11,18 @@ export default function LearningProgressCard({ profile, onSelectSubject }: Learn
     ? profile.subjects 
     : Object.keys(profile?.conceptMastery || {});
 
+  const normalizeSubjKey = (str: string) =>
+    str.trim().replace(/\band\b/gi, "&").replace(/\s+/g, " ").toLowerCase();
+
   const masteryData = studentSubjects.map((subj) => {
     let val = 0;
     if (profile?.conceptMastery) {
       if (profile.conceptMastery[subj] !== undefined) {
         val = profile.conceptMastery[subj];
       } else {
+        const normTarget = normalizeSubjKey(subj);
         const foundKey = Object.keys(profile.conceptMastery).find(
-          k => k.trim().toLowerCase() === subj.trim().toLowerCase()
+          k => normalizeSubjKey(k) === normTarget
         );
         if (foundKey && profile.conceptMastery[foundKey] !== undefined) {
           val = profile.conceptMastery[foundKey];

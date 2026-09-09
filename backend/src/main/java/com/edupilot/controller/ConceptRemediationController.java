@@ -91,4 +91,18 @@ public class ConceptRemediationController {
                     .body(Map.of("message", "Failed to submit concept remediation test: " + e.getMessage()));
         }
     }
+
+    @PostMapping("/abandon")
+    public ResponseEntity<?> abandonRemediation(@RequestBody Map<String, String> body) {
+        String sessionId = body != null ? body.get("sessionId") : null;
+        if (sessionId == null || sessionId.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "sessionId parameter is required and cannot be blank"));
+        }
+        try {
+            Map<String, Object> result = remediationService.abandonRemediationSession(sessionId.trim());
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
 }

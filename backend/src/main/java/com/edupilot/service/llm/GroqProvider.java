@@ -275,9 +275,11 @@ public class GroqProvider implements LLMProvider {
     }
 
     private String buildStructuredError(String errorType, String message, String suggestion) {
-        return "{\"success\": false, \"provider\": \"Groq\", \"errorType\": \"" + errorType +
-               "\", \"message\": \"" + message.replace("\"", "'") +
-               "\", \"suggestion\": \"" + suggestion.replace("\"", "'") + "\"}";
+        String safeMessage = message != null ? message.replace("\"", "'") : "No error details available.";
+        String safeSuggestion = suggestion != null ? suggestion.replace("\"", "'") : "Retry request.";
+        return "{\"success\": false, \"provider\": \"Groq\", \"errorType\": \"" + (errorType != null ? errorType : "UNKNOWN") +
+               "\", \"message\": \"" + safeMessage +
+               "\", \"suggestion\": \"" + safeSuggestion + "\"}";
     }
 
     @Override

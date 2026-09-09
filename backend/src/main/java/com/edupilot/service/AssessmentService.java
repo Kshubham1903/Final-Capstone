@@ -1017,6 +1017,21 @@ public class AssessmentService {
                 AssessmentResult savedResult = resultRepository.save(result);
 
                 try {
+                    StudentProfile prof = studentService.findOrCreateProfile(effectiveUserId);
+                    if (prof != null) {
+                        Map<String, Double> cmMap = prof.getConceptMastery();
+                        if (cmMap == null) cmMap = new HashMap<>();
+                        if (session.getSubjectName() != null) {
+                            cmMap.put(session.getSubjectName(), percentage);
+                        }
+                        prof.setConceptMastery(cmMap);
+                        profileRepository.save(prof);
+                    }
+                } catch (Exception ex) {
+                    System.err.println("Failed updating profile concept mastery: " + ex.getMessage());
+                }
+
+                try {
                     knowledgeService.syncKnowledgeProfileSummary(effectiveUserId, session.getSubjectName());
                 } catch (Exception ex) {
                     System.err.println("Failed knowledge profile processing: " + ex.getMessage());
@@ -1053,5 +1068,35 @@ public class AssessmentService {
                     "MEDIUM"
             );
         }
+    }
+
+    public Map<String, Object> abandonSession(String sessionId) {
+        if (sessionId == null || sessionId.trim().isEmpty()) {
+            throw new IllegalArgumentException("sessionId cannot be null or empty");
+        }
+        Optional<AssessmentSession> sessionOpt = sessionRepository.findById(sessionId.trim());
+        if (sessionOpt.isPresent()) {
+            AssessmentSession session = sessionOpt.get();
+            session.setCompleted(false);
+            session.setStatus("ABANDONED");
+            sessionRepository.save(session);
+            return Map.of("status", "SESSION_ABANDONED", "sessionId", sessionId);
+        }
+        return Map.of("status", "SESSION_NOT_FOUND", "sessionId", sessionId);
+    }
+
+    public Map<String, Object> abandonAdaptiveSession(String sessionId) {
+        if (sessionId == null || sessionId.trim().isEmpty()) {
+            throw new IllegalArgumentException("sessionId cannot be null or empty");
+        }
+        Optional<AdaptiveSession> sessionOpt = adaptiveSessionRepository.findById(sessionId.trim());
+        if (sessionOpt.isPresent()) {
+            AdaptiveSession session = sessionOpt.get();
+            session.setCompleted(false);
+            session.setStatus("ABANDONED");
+            adaptiveSessionRepository.save(session);
+            return Map.of("status", "SESSION_ABANDONED", "sessionId", sessionId);
+        }
+        return Map.of("status", "SESSION_NOT_FOUND", "sessionId", sessionId);
     }
 }

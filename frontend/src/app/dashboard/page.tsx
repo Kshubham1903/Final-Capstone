@@ -58,6 +58,22 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     loadData();
+
+    const handleRefresh = () => {
+      console.log("[StudentDashboard] Event detected. Refreshing profile analytics...");
+      loadData();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("edupilot:assessment-completed", handleRefresh);
+      window.addEventListener("focus", handleRefresh);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("edupilot:assessment-completed", handleRefresh);
+        window.removeEventListener("focus", handleRefresh);
+      }
+    };
   }, []);
 
   if (!profile && isLoadingAI) {

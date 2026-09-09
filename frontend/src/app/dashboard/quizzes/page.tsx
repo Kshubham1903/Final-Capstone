@@ -30,7 +30,11 @@ import {
   startAdaptiveDiagnosticSession,
   fetchNextAdaptiveQuestion,
   submitAdaptiveQuestionAnswer,
-  fetchKnowledgeProfile
+  fetchKnowledgeProfile,
+  abandonAssessmentSession,
+  abandonAdaptiveSession,
+  abandonRemediationSession,
+  abandonQuizSession
 } from "../../../services/api";
 
 export default function Quizzes() {
@@ -980,6 +984,31 @@ export default function Quizzes() {
     setProfile(updatedProfile);
   };
 
+  const handleExitActiveQuiz = async () => {
+    if (typeof window !== "undefined" && window.confirm("Are you sure you want to exit this quiz? Your active session progress will be abandoned.")) {
+      try {
+        if (diagnosticSessionId) {
+          await abandonAssessmentSession(diagnosticSessionId);
+        } else if (adaptiveSessionId) {
+          await abandonAdaptiveSession(adaptiveSessionId);
+        } else if (remediationSessionId) {
+          await abandonRemediationSession(remediationSessionId);
+        }
+      } catch (err) {
+        console.warn("Error abandoning quiz session:", err);
+      }
+      setQuizStarted(false);
+      setQuizFinished(false);
+      setDiagnosticSessionId("");
+      setAdaptiveSessionId("");
+      setRemediationSessionId("");
+      setActiveQuestion(null);
+      setSelectedOption(null);
+      setIsAnswered(false);
+      setQuestionCount(0);
+    }
+  };
+
   return (
     <Layout>
       <div className="space-y-8">
@@ -1195,6 +1224,12 @@ export default function Quizzes() {
                 </span>
 
                 <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleExitActiveQuiz}
+                    className="px-3 py-1 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 text-xs font-bold border border-pink-500/30 transition-all cursor-pointer"
+                  >
+                    Exit Quiz
+                  </button>
                   <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${currentDiff === "EASY" ? "bg-emerald-500/10 text-emerald-theme" :
                       currentDiff === "MEDIUM" ? "bg-cyan-500/10 text-cyan-theme" : "bg-pink-500/10 text-pink-theme"
                     }`}>

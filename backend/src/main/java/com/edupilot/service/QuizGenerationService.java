@@ -1,5 +1,6 @@
 package com.edupilot.service;
 
+import com.edupilot.model.ModuleType;
 import com.edupilot.model.QuizQuestion;
 import com.edupilot.model.StudentProfile;
 import com.edupilot.repository.QuizQuestionRepository;
@@ -88,6 +89,20 @@ public class QuizGenerationService {
 
                 List<QuizQuestion> questions = parseQuestions(rawResponse, subject, difficulty);
                 if (!questions.isEmpty()) {
+                    ModuleType targetSource = ModuleType.PRACTICE;
+                    if (callerContext != null && callerContext.containsKey("moduleSource")) {
+                        Object srcObj = callerContext.get("moduleSource");
+                        if (srcObj instanceof ModuleType) {
+                            targetSource = (ModuleType) srcObj;
+                        } else if (srcObj instanceof String) {
+                            try {
+                                targetSource = ModuleType.valueOf(((String) srcObj).toUpperCase());
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                    for (QuizQuestion q : questions) {
+                        q.setModuleSource(targetSource);
+                    }
                     questionRepository.saveAll(questions);
                     return questions;
                 }
@@ -110,42 +125,131 @@ public class QuizGenerationService {
         }
 
         int targetCount = Math.min(count > 0 ? count : 5, 5);
-        String systemPrompt = buildSystemPrompt();
-        String userPrompt = buildUserPromptForConcept(subject, concept, difficulty, targetCount);
-        Map<String, Object> context = Map.of("maxTokens", 280, "purpose", "CONCEPT_REMEDIATION_BATCH");
+        List<QuizQuestion> result = new ArrayList<>();
+        Set<String> seenIds = new HashSet<>();
 
-        int maxRetries = 2;
-        String lastError = "Unknown error";
-        for (int attempt = 1; attempt <= maxRetries; attempt++) {
-            String currentPrompt = userPrompt;
-            if (attempt > 1) {
-                currentPrompt += "\n\nSTRICT JSON RETRY NOTICE (Attempt " + attempt + " of " + maxRetries + "):\n" +
-                        "Previous output failed JSON parsing. Output strictly valid RFC-8259 JSON using double quotes for all keys and strings.";
-            }
-            try {
-                String rawResponse = groqProvider.generateResponse(systemPrompt, currentPrompt, context);
-
-                if (rawResponse != null && (rawResponse.contains("RATE_LIMIT_TPD") || rawResponse.contains("retryAfterMs=9") || rawResponse.contains("retryAfterMs=8") || rawResponse.contains("retryAfterMs=7") || rawResponse.contains("retryAfterMs=6"))) {
-                    System.err.println("[QuizGenerationService] Groq Daily Quota Exceeded (TPD). Halting automatic retries.");
-                    throw new IllegalStateException("Groq daily token quota (TPD) reached. Assessment question not consumed. Please retry after quota resets.");
-                }
-
-                List<QuizQuestion> questions = parseQuestions(rawResponse, subject, difficulty);
-                if (!questions.isEmpty()) {
-                    for (QuizQuestion q : questions) {
-                        q.setConcept(concept);
+        // 1. Try exact match in MongoDB matching subject and concept
+        try {
+            List<QuizQuestion> existing = questionRepository.findBySubjectAndConcept(subject.trim(), concept.trim());
+            if (existing != null) {
+                for (QuizQuestion q : existing) {
+                    if (q != null && q.getQuestionText() != null && !q.getQuestionText().isBlank() && q.getId() != null) {
+                        q.setModuleSource(ModuleType.REMEDIATION);
+                        result.add(q);
+                        seenIds.add(q.getId());
+                        if (result.size() >= targetCount) {
+                            return result;
+                        }
                     }
-                    questionRepository.saveAll(questions);
-                    return questions;
+                }
+            }
+        } catch (Exception ex) {
+            System.err.println("[generateForConcept] Error querying existing questions for concept '" + concept + "': " + ex.getMessage());
+        }
+
+        // 2. Try case-insensitive / substring match from subject questions
+        try {
+            if (result.size() < targetCount) {
+                List<QuizQuestion> subjectQs = questionRepository.findBySubject(subject.trim());
+                if (subjectQs != null) {
+                    String cleanTarget = concept.trim().toLowerCase();
+                    for (QuizQuestion q : subjectQs) {
+                        if (q != null && q.getQuestionText() != null && !q.getQuestionText().isBlank() && q.getId() != null && !seenIds.contains(q.getId())) {
+                            String qConcept = q.getConcept() != null ? q.getConcept().trim().toLowerCase() : "";
+                            if (qConcept.equals(cleanTarget) || qConcept.contains(cleanTarget) || cleanTarget.contains(qConcept)) {
+                                q.setModuleSource(ModuleType.REMEDIATION);
+                                result.add(q);
+                                seenIds.add(q.getId());
+                                if (result.size() >= targetCount) {
+                                    return result;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            System.err.println("[generateForConcept] Error querying substring concept questions: " + ex.getMessage());
+        }
+
+        // 3. Generate missing questions 1-by-1 to respect Groq maxTokens (280) and avoid JSON truncation
+        int needed = targetCount - result.size();
+        List<String> accumulatedExclusions = new ArrayList<>();
+        for (QuizQuestion q : result) {
+            if (q.getQuestionText() != null) {
+                accumulatedExclusions.add(q.getQuestionText());
+            }
+        }
+
+        Map<String, Object> genContext = new HashMap<>();
+        genContext.put("excludeQuestions", accumulatedExclusions);
+
+        String lastError = "Unknown error";
+        for (int i = 0; i < needed; i++) {
+            QuestionBlueprintSpec spec = new QuestionBlueprintSpec(result.size() + 1, concept, difficulty);
+            Map<String, Object> subContext = new HashMap<>(genContext);
+            subContext.put("maxTokens", 280);
+            subContext.put("purpose", "CONCEPT_REMEDIATION_QUESTION_" + (result.size() + 1));
+            
+            try {
+                QuizQuestion singleQ = generateSingleQuestionWithRetry(subject, spec, subContext, result.size() + 1, targetCount);
+                if (singleQ != null) {
+                    singleQ.setConcept(concept);
+                    singleQ.setSubject(subject);
+                    singleQ.setModuleSource(ModuleType.REMEDIATION);
+                    QuizQuestion savedQ = questionRepository.save(singleQ);
+                    result.add(savedQ);
+                    if (savedQ.getId() != null) seenIds.add(savedQ.getId());
+                    if (savedQ.getQuestionText() != null) {
+                        accumulatedExclusions.add(savedQ.getQuestionText());
+                        genContext.put("excludeQuestions", new ArrayList<>(accumulatedExclusions));
+                    }
                 }
             } catch (Exception ex) {
                 lastError = ex.getMessage();
-                if (ex.getMessage() != null && ex.getMessage().contains("daily token quota")) {
-                    throw ex;
-                }
+                System.err.println("[generateForConcept] Groq 1-by-1 generation attempt failed: " + lastError);
             }
         }
-        throw new IllegalStateException("Groq API question generation failed for concept '" + concept + "' after " + maxRetries + " attempts. Last failure: " + lastError);
+
+        if (result.size() >= targetCount) {
+            return result;
+        }
+
+        // 4. Emergency fallback: fill remaining slots from existing subject question bank so Remediation Test NEVER fails
+        try {
+            List<QuizQuestion> fallbackSubjectQs = questionRepository.findBySubject(subject.trim());
+            if (fallbackSubjectQs != null) {
+                for (QuizQuestion q : fallbackSubjectQs) {
+                    if (q != null && q.getQuestionText() != null && !q.getQuestionText().isBlank() && q.getId() != null && !seenIds.contains(q.getId())) {
+                        QuizQuestion cloneQ = QuizQuestion.builder()
+                                .subject(subject)
+                                .concept(concept)
+                                .difficulty(difficulty)
+                                .questionText(q.getQuestionText())
+                                .options(q.getOptions())
+                                .correctOptionIndex(q.getCorrectOptionIndex())
+                                .conceptualExplanation(q.getConceptualExplanation())
+                                .moduleSource(ModuleType.REMEDIATION)
+                                .build();
+                        cloneQ.setQuestionSource("REMEDIATION_FALLBACK");
+                        QuizQuestion savedFallback = questionRepository.save(cloneQ);
+                        result.add(savedFallback);
+                        seenIds.add(savedFallback.getId());
+                        if (result.size() >= targetCount) {
+                            return result;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            System.err.println("[generateForConcept] Error applying fallback questions: " + ex.getMessage());
+        }
+
+        if (!result.isEmpty()) {
+            return result;
+        }
+
+        throw new IllegalStateException("Groq API question generation failed for concept '" + concept + "'. Last failure: " + lastError);
     }
 
     public static class QuestionBlueprintSpec {
@@ -237,6 +341,9 @@ public class QuizGenerationService {
         subContext.put("purpose", "DIAGNOSTIC_QUESTION_" + position + "_OF_" + totalQuestions);
 
         QuizQuestion singleQuestion = generateSingleQuestionWithRetry(subject, spec, subContext, position, totalQuestions);
+        if (singleQuestion != null) {
+            singleQuestion.setModuleSource(ModuleType.DIAGNOSTIC);
+        }
 
         int promptTok = subContext.containsKey("lastPromptTokens") ? Integer.parseInt(subContext.get("lastPromptTokens").toString()) : 0;
         int compTok = subContext.containsKey("lastCompletionTokens") ? Integer.parseInt(subContext.get("lastCompletionTokens").toString()) : 0;
@@ -290,10 +397,12 @@ public class QuizGenerationService {
             subContext.put("excludeQuestions", new ArrayList<>(accumulatedExclusions));
 
             QuizQuestion singleQuestion = generateSingleDiagnosticQuestion(subject, spec, subContext, i + 1, totalQuestions);
-
-            finalQuestions.add(singleQuestion);
-            if (singleQuestion.getQuestionText() != null && !singleQuestion.getQuestionText().isBlank()) {
-                accumulatedExclusions.add(singleQuestion.getQuestionText());
+            if (singleQuestion != null) {
+                singleQuestion.setModuleSource(ModuleType.ADAPTIVE);
+                finalQuestions.add(singleQuestion);
+                if (singleQuestion.getQuestionText() != null && !singleQuestion.getQuestionText().isBlank()) {
+                    accumulatedExclusions.add(singleQuestion.getQuestionText());
+                }
             }
         }
 

@@ -97,7 +97,8 @@ public class DashboardKnowledgeTestService {
             Map<String, Object> genContext = Map.of(
                     "excludeQuestions", boundedExclusions,
                     "maxTokens", 1200,
-                    "purpose", "DASHBOARD_KNOWLEDGE_TEST"
+                    "purpose", "DASHBOARD_KNOWLEDGE_TEST",
+                    "moduleSource", com.edupilot.model.ModuleType.BASELINE
             );
 
             List<QuizQuestion> subjectQuestions = quizGenerationService.generate(
@@ -215,6 +216,22 @@ public class DashboardKnowledgeTestService {
         session.setCompleted(true);
         sessionRepository.save(session);
 
+        // Also sync subject scores into profile.conceptMastery so graphs immediately reflect test results
+        try {
+            StudentProfile profile = studentService.findOrCreateProfile(submission.getStudentId());
+            if (profile != null) {
+                Map<String, Double> cm = profile.getConceptMastery();
+                if (cm == null) cm = new HashMap<>();
+                if (subjectScorePercentage != null) {
+                    cm.putAll(subjectScorePercentage);
+                }
+                profile.setConceptMastery(cm);
+                profileRepository.save(profile);
+            }
+        } catch (Exception ex) {
+            System.err.println("[DashboardKnowledgeTestService] Error syncing profile concept mastery: " + ex.getMessage());
+        }
+
         String createdAtStr = result.getCreatedAt() != null 
                 ? result.getCreatedAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) 
                 : "";
@@ -264,5 +281,19 @@ public class DashboardKnowledgeTestService {
                 result.getOverallPercentage(),
                 createdAtStr
         );
+    }
+
+    public Map<String, Object> abandonDashboardTestSession(String sessionId) {
+        if (sessionId == null || sessionId.trim().isEmpty()) {
+            throw new IllegalArgumentException("sessionId is required");
+        }
+        Optional<DashboardTestSession> sessionOpt = sessionRepository.findById(sessionId.trim());
+        if (sessionOpt.isPresent()) {
+            DashboardTestSession session = sessionOpt.get();
+            session.setCompleted(false);
+            sessionRepository.save(session);
+            return Map.of("status", "SESSION_ABANDONED", "sessionId", sessionId);
+        }
+        return Map.of("status", "SESSION_NOT_FOUND", "sessionId", sessionId);
     }
 }

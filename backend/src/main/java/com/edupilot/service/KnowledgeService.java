@@ -219,32 +219,37 @@ public class KnowledgeService {
         StudentProfile prof = studentService.findOrCreateProfile(userId);
 
         String sName = (subjectName != null && !subjectName.isBlank()) ? subjectName : "General";
+        String canonicalSubjectName = normalizeSubjectName(sName, prof.getSubjects());
 
         // Calculate subject-specific health score
-        double subjectHealthScore = healthScore;
+        double subjectHealthScore;
         List<ConceptMastery> subjectConcepts = allConcepts.stream()
-                .filter(c -> c.getSubjectName() != null && c.getSubjectName().equalsIgnoreCase(sName))
+                .filter(c -> c.getSubjectName() != null && isSameSubject(c.getSubjectName(), canonicalSubjectName))
                 .collect(Collectors.toList());
         if (!subjectConcepts.isEmpty()) {
             double subjectAccSum = subjectConcepts.stream().mapToDouble(ConceptMastery::getAccuracy).sum();
             subjectHealthScore = Math.round((subjectAccSum / subjectConcepts.size()) * 10.0) / 10.0;
+        } else if (prof.getConceptMastery() != null && prof.getConceptMastery().containsKey(canonicalSubjectName)) {
+            subjectHealthScore = prof.getConceptMastery().get(canonicalSubjectName);
+        } else {
+            subjectHealthScore = healthScore;
         }
 
         Map<String, List<String>> weakMap = prof.getWeakConcepts() != null ? prof.getWeakConcepts() : new HashMap<>();
-        weakMap.put(sName, weakList);
+        weakMap.put(canonicalSubjectName, weakList);
         prof.setWeakConcepts(weakMap);
 
         Map<String, List<String>> strongMap = prof.getStrongConcepts() != null ? prof.getStrongConcepts() : new HashMap<>();
-        strongMap.put(sName, strongList);
+        strongMap.put(canonicalSubjectName, strongList);
         prof.setStrongConcepts(strongMap);
 
         Map<String, Double> masteryMap = prof.getConceptMastery() != null ? prof.getConceptMastery() : new HashMap<>();
-        masteryMap.put(sName, subjectHealthScore);
+        masteryMap.put(canonicalSubjectName, subjectHealthScore);
         prof.setConceptMastery(masteryMap);
 
         studentProfileRepository.save(prof);
 
-        System.out.println("[PROFILE DEBUG AFTER] userId=" + userId + ", subject=" + sName + ", updatedMastery=" + subjectHealthScore + "%, strongCount=" + strongList.size() + ", weakCount=" + weakList.size());
+        System.out.println("[PROFILE DEBUG AFTER] userId=" + userId + ", subject=" + canonicalSubjectName + ", updatedMastery=" + subjectHealthScore + "%, strongCount=" + strongList.size() + ", weakCount=" + weakList.size());
 
         // Trigger real-time recommendation engine generation
         try {
@@ -290,5 +295,27 @@ public class KnowledgeService {
                 .stream()
                 .map(ConceptMasteryResponse::new)
                 .collect(Collectors.toList());
+    }
+
+    public static String normalizeSubjectName(String rawSubject, List<String> canonicalSubjects) {
+        if (rawSubject == null || rawSubject.isBlank()) return "General";
+        String cleaned = cleanSubjectString(rawSubject);
+        if (canonicalSubjects != null) {
+            for (String canonical : canonicalSubjects) {
+                if (canonical != null && cleanSubjectString(canonical).equalsIgnoreCase(cleaned)) {
+                    return canonical;
+                }
+            }
+        }
+        return rawSubject.trim();
+    }
+
+    public static boolean isSameSubject(String s1, String s2) {
+        if (s1 == null || s2 == null) return false;
+        return cleanSubjectString(s1).equalsIgnoreCase(cleanSubjectString(s2));
+    }
+
+    private static String cleanSubjectString(String str) {
+        return str.trim().replaceAll("(?i)\\band\\b", "&").replaceAll("\\s+", " ");
     }
 }

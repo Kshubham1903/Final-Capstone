@@ -18,8 +18,17 @@ public class QuizSession {
     private LocalDateTime startTime = LocalDateTime.now();
     private LocalDateTime lastAnswerTime = LocalDateTime.now();
     private Status status = Status.IN_PROGRESS;
+    private ModuleType moduleType = ModuleType.PRACTICE;
     private boolean isVerificationQuiz = false;
     private String targetConcept;
+
+    public ModuleType getModuleType() {
+        return moduleType != null ? moduleType : ModuleType.PRACTICE;
+    }
+
+    public void setModuleType(ModuleType moduleType) {
+        this.moduleType = moduleType;
+    }
 
     private int totalQuestions = 0;
     private int correctCount = 0;
@@ -29,7 +38,8 @@ public class QuizSession {
 
     public enum Status {
         IN_PROGRESS,
-        COMPLETED
+        COMPLETED,
+        ABANDONED
     }
 
     public static class QuizAnswerRecord {
