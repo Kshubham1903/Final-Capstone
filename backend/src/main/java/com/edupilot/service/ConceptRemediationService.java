@@ -20,9 +20,6 @@ public class ConceptRemediationService {
     private RemediationSessionRepository remediationSessionRepository;
 
     @Autowired
-    private DashboardTestSessionRepository sessionRepository;
-
-    @Autowired
     private QuizQuestionRepository questionRepository;
 
     @Autowired
@@ -111,25 +108,13 @@ public class ConceptRemediationService {
         String concept = "Core Concept";
         String effectiveStudentId = studentId;
 
-        Optional<RemediationSession> remSessionOpt = remediationSessionRepository.findById(sessionId);
-        DashboardTestSession legacySession = null;
-
-        if (remSessionOpt.isPresent()) {
-            RemediationSession session = remSessionOpt.get();
-            questionIds = session.getQuestionIds();
-            subject = session.getSubject() != null ? session.getSubject() : "General";
-            concept = session.getConcept() != null ? session.getConcept() : "Core Concept";
-            if (effectiveStudentId == null || effectiveStudentId.isBlank()) {
-                effectiveStudentId = session.getStudentId();
-            }
-        } else {
-            legacySession = sessionRepository.findById(sessionId)
-                    .orElseThrow(() -> new IllegalArgumentException("Remediation session not found: " + sessionId));
-            questionIds = legacySession.getQuestionIds();
-            subject = (!legacySession.getSubjects().isEmpty()) ? legacySession.getSubjects().get(0) : "General";
-            if (effectiveStudentId == null || effectiveStudentId.isBlank()) {
-                effectiveStudentId = legacySession.getStudentId();
-            }
+        RemediationSession session = remediationSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Remediation session not found: " + sessionId));
+        questionIds = session.getQuestionIds();
+        subject = session.getSubject() != null ? session.getSubject() : "General";
+        concept = session.getConcept() != null ? session.getConcept() : "Core Concept";
+        if (effectiveStudentId == null || effectiveStudentId.isBlank()) {
+            effectiveStudentId = session.getStudentId();
         }
 
         List<QuizQuestion> questions = (questionIds != null && !questionIds.isEmpty()) 
@@ -161,14 +146,8 @@ public class ConceptRemediationService {
         double percentage = totalQuestions > 0 ? ((double) correctCount / totalQuestions) * 100.0 : 0.0;
         boolean passed = (correctCount >= 4); // >= 80% required for remediation pass
 
-        if (remSessionOpt.isPresent()) {
-            RemediationSession rs = remSessionOpt.get();
-            rs.setCompleted(true);
-            remediationSessionRepository.save(rs);
-        } else if (legacySession != null) {
-            legacySession.setCompleted(true);
-            sessionRepository.save(legacySession);
-        }
+        session.setCompleted(true);
+        remediationSessionRepository.save(session);
 
         StudentProfile profile = studentService.findOrCreateProfile(effectiveStudentId);
         String canonicalUserId = profile.getUserId() != null ? profile.getUserId() : profile.getId();
@@ -258,13 +237,6 @@ public class ConceptRemediationService {
             RemediationSession session = remSessionOpt.get();
             session.setCompleted(false);
             remediationSessionRepository.save(session);
-            return Map.of("status", "SESSION_ABANDONED", "sessionId", sessionId);
-        }
-        Optional<DashboardTestSession> legacyOpt = sessionRepository.findById(sessionId.trim());
-        if (legacyOpt.isPresent()) {
-            DashboardTestSession legacy = legacyOpt.get();
-            legacy.setCompleted(false);
-            sessionRepository.save(legacy);
             return Map.of("status", "SESSION_ABANDONED", "sessionId", sessionId);
         }
         return Map.of("status", "SESSION_NOT_FOUND", "sessionId", sessionId);

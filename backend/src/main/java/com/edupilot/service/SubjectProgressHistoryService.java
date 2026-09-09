@@ -3,11 +3,9 @@ package com.edupilot.service;
 import com.edupilot.dto.AttemptMasteryPointDTO;
 import com.edupilot.dto.DailyMasteryPointDTO;
 import com.edupilot.model.AssessmentResult;
-import com.edupilot.model.DashboardTestResult;
 import com.edupilot.model.QuizSession;
 import com.edupilot.model.StudentProfile;
 import com.edupilot.repository.AssessmentResultRepository;
-import com.edupilot.repository.DashboardTestResultRepository;
 import com.edupilot.repository.QuizSessionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -24,9 +22,6 @@ public class SubjectProgressHistoryService {
 
     @Autowired
     private QuizSessionRepository quizSessionRepository;
-
-    @Autowired
-    private DashboardTestResultRepository dashboardTestResultRepository;
 
     @Autowired
     private AssessmentResultRepository assessmentResultRepository;
@@ -85,32 +80,7 @@ public class SubjectProgressHistoryService {
             }
         }
 
-        // 2. Gather historical DashboardTestResults
-        List<DashboardTestResult> testResults = dashboardTestResultRepository.findByStudentId(studentId);
-        if (testResults.isEmpty() && profile.getId() != null) {
-            testResults = dashboardTestResultRepository.findByStudentId(profile.getId());
-        }
-        if (testResults.isEmpty() && canonicalUserId != null) {
-            testResults = dashboardTestResultRepository.findByStudentId(canonicalUserId);
-        }
 
-        for (DashboardTestResult result : testResults) {
-            if (result.getCreatedAt() != null) {
-                LocalDate date = result.getCreatedAt().toLocalDate();
-                if (!date.isBefore(startDate) && !date.isAfter(endDate)) {
-                    if (result.getCorrectCountPerSubject() != null) {
-                        for (Map.Entry<String, Integer> entry : result.getCorrectCountPerSubject().entrySet()) {
-                            if (isSubjectMatch(entry.getKey(), subject)) {
-                                DayStats stats = dailyActivityMap.computeIfAbsent(date, d -> new DayStats());
-                                int correct = entry.getValue() != null ? entry.getValue() : 0;
-                                stats.questionsAnswered += 5; // Dashboard test generates 5 questions per subject
-                                stats.correctAnswers += correct;
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
         // 3. Construct chronological time-series list with carried-forward mastery
         List<DailyMasteryPointDTO> history = new ArrayList<>();
@@ -196,41 +166,7 @@ public class SubjectProgressHistoryService {
             }
         }
 
-        // 2. Gather DashboardTestResult attempts
-        List<DashboardTestResult> testResults = dashboardTestResultRepository.findByStudentId(studentId);
-        if (testResults.isEmpty() && profile.getId() != null) {
-            testResults = dashboardTestResultRepository.findByStudentId(profile.getId());
-        }
-        if (testResults.isEmpty() && canonicalUserId != null) {
-            testResults = dashboardTestResultRepository.findByStudentId(canonicalUserId);
-        }
 
-        for (DashboardTestResult result : testResults) {
-            LocalDateTime ts = result.getCreatedAt();
-            if (ts != null && !ts.isBefore(cutoffTime)) {
-                if (result.getSubjectScorePercentage() != null) {
-                    for (Map.Entry<String, Double> entry : result.getSubjectScorePercentage().entrySet()) {
-                        if (isSubjectMatch(entry.getKey(), subject)) {
-                            double pct = entry.getValue() != null ? entry.getValue() : 0.0;
-                            int correct = 0;
-                            if (result.getCorrectCountPerSubject() != null && result.getCorrectCountPerSubject().get(entry.getKey()) != null) {
-                                correct = result.getCorrectCountPerSubject().get(entry.getKey());
-                            } else {
-                                correct = (int) Math.round((pct / 100.0) * 5);
-                            }
-                            attempts.add(new AttemptMasteryPointDTO(
-                                    result.getId(),
-                                    ts,
-                                    Math.round(pct * 10.0) / 10.0,
-                                    5,
-                                    correct,
-                                    subject
-                            ));
-                        }
-                    }
-                }
-            }
-        }
 
         // 3. Gather AssessmentResult attempts
         List<AssessmentResult> assessmentResults = assessmentResultRepository.findByUserId(canonicalUserId);

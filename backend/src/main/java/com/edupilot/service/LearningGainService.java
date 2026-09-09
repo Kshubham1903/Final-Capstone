@@ -3,11 +3,9 @@ package com.edupilot.service;
 import com.edupilot.dto.LearningGainResponse;
 import com.edupilot.model.AssessmentResult;
 import com.edupilot.model.ConceptMastery;
-import com.edupilot.model.DashboardTestResult;
 import com.edupilot.model.StudentProfile;
 import com.edupilot.repository.AssessmentResultRepository;
 import com.edupilot.repository.ConceptMasteryRepository;
-import com.edupilot.repository.DashboardTestResultRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -23,9 +21,6 @@ public class LearningGainService {
 
     @Autowired
     private AssessmentResultRepository assessmentResultRepository;
-
-    @Autowired
-    private DashboardTestResultRepository dashboardTestResultRepository;
 
     @Autowired
     private ConceptMasteryRepository conceptMasteryRepository;
@@ -113,20 +108,6 @@ public class LearningGainService {
                     for (Map.Entry<String, int[]> e : counts.entrySet()) {
                         double score = e.getValue()[1] > 0 ? (double) e.getValue()[0] / e.getValue()[1] : 0.5;
                         preMap.putIfAbsent(e.getKey(), score);
-                    }
-                }
-            }
-        }
-
-        // 2. Check DashboardTestResult baseline if preMap is still empty
-        if (preMap.isEmpty()) {
-            List<DashboardTestResult> dashResults = dashboardTestResultRepository.findByStudentId(canonicalUserId);
-            if (!dashResults.isEmpty()) {
-                dashResults.sort(Comparator.comparing(DashboardTestResult::getCreatedAt));
-                DashboardTestResult firstTest = dashResults.get(0);
-                if (firstTest.getSubjectScorePercentage() != null) {
-                    for (Map.Entry<String, Double> entry : firstTest.getSubjectScorePercentage().entrySet()) {
-                        preMap.putIfAbsent(entry.getKey(), entry.getValue() > 1.0 ? entry.getValue() / 100.0 : entry.getValue());
                     }
                 }
             }

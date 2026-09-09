@@ -1077,8 +1077,7 @@ public class AssessmentService {
         Optional<AssessmentSession> sessionOpt = sessionRepository.findById(sessionId.trim());
         if (sessionOpt.isPresent()) {
             AssessmentSession session = sessionOpt.get();
-            session.setCompleted(false);
-            session.setStatus("ABANDONED");
+            session.setStatus(AssessmentSession.Status.ABANDONED);
             sessionRepository.save(session);
             return Map.of("status", "SESSION_ABANDONED", "sessionId", sessionId);
         }
@@ -1092,8 +1091,7 @@ public class AssessmentService {
         Optional<AdaptiveSession> sessionOpt = adaptiveSessionRepository.findById(sessionId.trim());
         if (sessionOpt.isPresent()) {
             AdaptiveSession session = sessionOpt.get();
-            session.setCompleted(false);
-            session.setStatus("ABANDONED");
+            session.setStatus(AdaptiveSession.Status.COMPLETED);
             adaptiveSessionRepository.save(session);
             return Map.of("status", "SESSION_ABANDONED", "sessionId", sessionId);
         }
