@@ -3,6 +3,8 @@ package com.edupilot.service;
 import com.edupilot.model.*;
 import com.edupilot.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.event.EventListener;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -63,6 +65,21 @@ public class StudentService {
     @Autowired
     private ConceptMasteryRepository conceptMasteryRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private AssessmentResultRepository assessmentResultRepository;
+
+    @Autowired
+    private KnowledgeProfileRepository knowledgeProfileRepository;
+
+    @Autowired
+    private QuizSessionRepository quizSessionRepository;
+
+    @Autowired
+    private RemediationSessionRepository remediationSessionRepository;
+
     /**
      * Helper to resolve canonical student userId from user ID or email address.
      */
@@ -70,19 +87,41 @@ public class StudentService {
         if (emailOrId == null || emailOrId.trim().isEmpty() || "anonymous_student".equalsIgnoreCase(emailOrId)) {
             return "anonymous_student";
         }
-        Optional<StudentProfile> opt = profileRepository.findByUserId(emailOrId);
+        String trimmed = emailOrId.trim();
+
+        // 1. If input is an email address, resolve via UserRepository FIRST
+        if (trimmed.contains("@")) {
+            if (userRepository != null) {
+                Optional<User> userOpt = userRepository.findByEmail(trimmed);
+                if (userOpt.isPresent() && userOpt.get().getId() != null) {
+                    return userOpt.get().getId();
+                }
+            }
+            Optional<StudentProfile> profOpt = profileRepository.findByEmail(trimmed);
+            if (profOpt.isPresent()) {
+                return profOpt.get().getUserId() != null ? profOpt.get().getUserId() : profOpt.get().getId();
+            }
+        }
+
+        // 2. If input is an ID, check UserRepository first by ID
+        if (userRepository != null) {
+            Optional<User> userOpt = userRepository.findById(trimmed);
+            if (userOpt.isPresent() && userOpt.get().getId() != null) {
+                return userOpt.get().getId();
+            }
+        }
+
+        // 3. Fallback to profile check by userId or id
+        Optional<StudentProfile> opt = profileRepository.findByUserId(trimmed);
         if (opt.isPresent() && opt.get().getUserId() != null) {
             return opt.get().getUserId();
         }
-        opt = profileRepository.findByEmail(emailOrId);
+        opt = profileRepository.findById(trimmed);
         if (opt.isPresent()) {
             return opt.get().getUserId() != null ? opt.get().getUserId() : opt.get().getId();
         }
-        opt = profileRepository.findById(emailOrId);
-        if (opt.isPresent()) {
-            return opt.get().getUserId() != null ? opt.get().getUserId() : opt.get().getId();
-        }
-        return emailOrId;
+
+        return trimmed;
     }
 
     /**
@@ -92,18 +131,20 @@ public class StudentService {
         if (idOrUserId == null || idOrUserId.trim().isEmpty()) {
             idOrUserId = "anonymous_student";
         }
-        Optional<StudentProfile> opt = profileRepository.findById(idOrUserId);
+        String canonicalId = resolveUserId(idOrUserId);
+
+        Optional<StudentProfile> opt = profileRepository.findByUserId(canonicalId);
         if (opt.isPresent()) {
             return ensureSubjectMastery(opt.get());
         }
-        opt = profileRepository.findByUserId(idOrUserId);
+        opt = profileRepository.findById(canonicalId);
         if (opt.isPresent()) {
             return ensureSubjectMastery(opt.get());
         }
 
-        // Initialize new StudentProfile for this userId
+        // Initialize new StudentProfile for this canonicalId
         StudentProfile newProfile = StudentProfile.builder()
-                .userId(idOrUserId)
+                .userId(canonicalId)
                 .institution("EduPilot Academy")
                 .degree("B.Tech")
                 .branch("Computer Science & Engineering")
@@ -123,9 +164,148 @@ public class StudentService {
                 .conceptMastery(new HashMap<>())
                 .weakConcepts(new HashMap<>())
                 .strongConcepts(new HashMap<>())
+                .completedQuizzesCount(0)
+                .predictedCgpa(3.0)
+                .academicRiskLevel("LOW")
+                .parentalInvolvement("Medium")
+                .accessToResources("High")
+                .extracurricularActivities("Yes")
+                .motivationLevel("High")
+                .internetAccess("Yes")
+                .tutoringSessions(1)
+                .familyIncome("Medium")
+                .teacherQuality("Medium")
+                .schoolType("Public")
+                .peerInfluence("Positive")
+                .learningDisabilities("No")
+                .parentalEducationLevel("College")
+                .distanceFromHome("Near")
+                .gender("Male")
                 .build();
 
         return profileRepository.save(newProfile);
+    }
+
+    /**
+     * Automatic startup migration to safely consolidate legacy email-keyed records into canonical User ID partitions.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void reconcileLegacyUserPartitions() {
+        if (userRepository == null) return;
+        try {
+            List<User> allUsers = userRepository.findAll();
+            for (User user : allUsers) {
+                if (user.getId() == null || user.getEmail() == null || user.getEmail().isBlank()) continue;
+                String canonicalUserId = user.getId();
+                String email = user.getEmail().trim();
+                if (canonicalUserId.equals(email)) continue;
+
+                // 1. Migrate ConceptMastery
+                List<ConceptMastery> emailCmList = conceptMasteryRepository.findByUserId(email);
+                for (ConceptMastery emailCm : emailCmList) {
+                    String subjectCode = emailCm.getSubjectCode() != null ? emailCm.getSubjectCode() : "";
+                    String topic = emailCm.getTopic() != null ? emailCm.getTopic() : emailCm.getConceptName();
+                    Optional<ConceptMastery> canonicalCmOpt = conceptMasteryRepository
+                            .findByUserIdAndSubjectCodeAndTopicAndConceptName(canonicalUserId, subjectCode, topic, topic);
+                    if (canonicalCmOpt.isPresent()) {
+                        ConceptMastery canonicalCm = canonicalCmOpt.get();
+                        // Merge metrics safely
+                        if (emailCm.getAttemptCount() > 0) {
+                            canonicalCm.setAttemptCount(canonicalCm.getAttemptCount() + emailCm.getAttemptCount());
+                            canonicalCm.setCorrectCount(canonicalCm.getCorrectCount() + emailCm.getCorrectCount());
+                            canonicalCm.setWrongCount(canonicalCm.getWrongCount() + emailCm.getWrongCount());
+                            if (emailCm.getAccuracy() > canonicalCm.getAccuracy()) {
+                                canonicalCm.setAccuracy(emailCm.getAccuracy());
+                                canonicalCm.setMasteryScore(emailCm.getMasteryScore());
+                                canonicalCm.setStatus(emailCm.getStatus());
+                                canonicalCm.setMasteryLevel(emailCm.getMasteryLevel());
+                            }
+                        }
+                        conceptMasteryRepository.save(canonicalCm);
+                        conceptMasteryRepository.delete(emailCm);
+                    } else {
+                        emailCm.setUserId(canonicalUserId);
+                        emailCm.setStudentProfileId(canonicalUserId);
+                        conceptMasteryRepository.save(emailCm);
+                    }
+                }
+
+                // 2. Migrate AssessmentResult
+                if (assessmentResultRepository != null) {
+                    List<AssessmentResult> emailResults = assessmentResultRepository.findByUserId(email);
+                    for (AssessmentResult ar : emailResults) {
+                        ar.setUserId(canonicalUserId);
+                        ar.setStudentProfileId(canonicalUserId);
+                        assessmentResultRepository.save(ar);
+                    }
+                }
+
+                // 3. Migrate KnowledgeProfile
+                if (knowledgeProfileRepository != null) {
+                    List<KnowledgeProfile> emailKpList = knowledgeProfileRepository.findAll().stream()
+                            .filter(kp -> email.equalsIgnoreCase(kp.getUserId()))
+                            .toList();
+                    Optional<KnowledgeProfile> canonicalKpOpt = knowledgeProfileRepository.findByUserId(canonicalUserId);
+                    for (KnowledgeProfile emailKp : emailKpList) {
+                        if (canonicalKpOpt.isPresent() && !emailKp.getId().equals(canonicalKpOpt.get().getId())) {
+                            KnowledgeProfile canonicalKp = canonicalKpOpt.get();
+                            if (emailKp.getWeakConcepts() != null && !emailKp.getWeakConcepts().isEmpty()) {
+                                Set<String> combinedWeak = new LinkedHashSet<>(canonicalKp.getWeakConcepts() != null ? canonicalKp.getWeakConcepts() : List.of());
+                                combinedWeak.addAll(emailKp.getWeakConcepts());
+                                canonicalKp.setWeakConcepts(new ArrayList<>(combinedWeak));
+                            }
+                            if (emailKp.getStrongConcepts() != null && !emailKp.getStrongConcepts().isEmpty()) {
+                                Set<String> combinedStrong = new LinkedHashSet<>(canonicalKp.getStrongConcepts() != null ? canonicalKp.getStrongConcepts() : List.of());
+                                combinedStrong.addAll(emailKp.getStrongConcepts());
+                                canonicalKp.setStrongConcepts(new ArrayList<>(combinedStrong));
+                            }
+                            knowledgeProfileRepository.save(canonicalKp);
+                            knowledgeProfileRepository.delete(emailKp);
+                        } else {
+                            emailKp.setUserId(canonicalUserId);
+                            knowledgeProfileRepository.save(emailKp);
+                        }
+                    }
+                }
+
+                // 4. Migrate Duplicate StudentProfile
+                Optional<StudentProfile> emailProfOpt = profileRepository.findByUserId(email);
+                Optional<StudentProfile> canonicalProfOpt = profileRepository.findByUserId(canonicalUserId);
+
+                if (emailProfOpt.isPresent()) {
+                    StudentProfile emailProf = emailProfOpt.get();
+                    if (canonicalProfOpt.isPresent() && !emailProf.getId().equals(canonicalProfOpt.get().getId())) {
+                        StudentProfile canonicalProf = canonicalProfOpt.get();
+                        if (emailProf.getConceptMastery() != null) {
+                            Map<String, Double> combinedMastery = canonicalProf.getConceptMastery() != null ? canonicalProf.getConceptMastery() : new HashMap<>();
+                            emailProf.getConceptMastery().forEach((sub, val) -> {
+                                if (val != null && val > 0) {
+                                    combinedMastery.put(sub, val);
+                                }
+                            });
+                            canonicalProf.setConceptMastery(combinedMastery);
+                        }
+                        if (emailProf.getCompletedQuizzesCount() > 0) {
+                            canonicalProf.setCompletedQuizzesCount(canonicalProf.getCompletedQuizzesCount() + emailProf.getCompletedQuizzesCount());
+                        }
+                        profileRepository.save(canonicalProf);
+                        profileRepository.delete(emailProf);
+                    } else if (canonicalProfOpt.isEmpty()) {
+                        emailProf.setUserId(canonicalUserId);
+                        profileRepository.save(emailProf);
+                    }
+                }
+
+                // 5. Sync canonical profile and knowledge map
+                for (String subject : List.of("Data Structures & Algorithms", "Database Management Systems", "Artificial Intelligence")) {
+                    try {
+                        syncConceptMasteryWithProfile(canonicalUserId, subject);
+                    } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception ex) {
+            System.err.println("[StudentService] Startup partition reconciliation error: " + ex.getMessage());
+        }
     }
 
     /**

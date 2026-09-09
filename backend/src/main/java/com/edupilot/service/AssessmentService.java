@@ -145,7 +145,8 @@ public class AssessmentService {
         String branch = req.getBranch() != null ? req.getBranch() : "Computer Science & Engineering";
         int semester = req.getSemester() > 0 ? req.getSemester() : 3;
         String subjectCode = req.getSubjectCode() != null ? req.getSubjectCode().trim().toUpperCase() : "CS301";
-        String userId = req.getUserId() != null ? req.getUserId() : "anonymous_student";
+        String rawUserId = req.getUserId() != null ? req.getUserId() : "anonymous_student";
+        String userId = studentService.resolveUserId(rawUserId);
         StudentProfile studentProfile = studentService.findOrCreateProfile(userId);
 
         String subjectName = req.getSubjectName() != null && !req.getSubjectName().isBlank()
@@ -904,7 +905,10 @@ public class AssessmentService {
             count = session.getQuestionCount();
 
             if (session.getStatus() != AssessmentSession.Status.IN_PROGRESS || count >= 10) {
-                return new AdaptiveAssessmentDTOs.AdaptiveNextResponse(session.getId(), true, null, 10, 10, "Complete", "MEDIUM");
+                AdaptiveAssessmentDTOs.AdaptiveNextResponse nextResp = new AdaptiveAssessmentDTOs.AdaptiveNextResponse(session.getId(), true, null, 10, 10, "Complete", "MEDIUM");
+                Optional<AssessmentResult> latestOpt = resultRepository.findTopByUserIdOrderByCreatedAtDesc(effectiveUserId);
+                latestOpt.ifPresent(ar -> nextResp.setResult(new AssessmentResultResponse(ar)));
+                return nextResp;
             }
         }
 
@@ -994,6 +998,7 @@ public class AssessmentService {
             int totalQuestions = session.getTotalQuestions() > 0 ? session.getTotalQuestions() : 25;
             boolean completed = session.getQuestionCount() >= totalQuestions;
 
+            AssessmentResultResponse resultResponse = null;
             if (completed) {
                 session.setStatus(AssessmentSession.Status.COMPLETED);
                 session.setEndTime(LocalDateTime.now());
@@ -1026,6 +1031,7 @@ public class AssessmentService {
                 result.setCreatedAt(LocalDateTime.now());
 
                 AssessmentResult savedResult = resultRepository.save(result);
+                resultResponse = new AssessmentResultResponse(savedResult);
 
                 try {
                     StudentProfile prof = studentService.findOrCreateProfile(effectiveUserId);
@@ -1069,7 +1075,7 @@ public class AssessmentService {
                     ", questionText=\"" + question.getQuestionText() + "\"" +
                     ", conceptualExplanation=\"" + question.getConceptualExplanation() + "\"");
 
-            return new AdaptiveAssessmentDTOs.AdaptiveSubmitResponse(
+            AdaptiveAssessmentDTOs.AdaptiveSubmitResponse submitResponse = new AdaptiveAssessmentDTOs.AdaptiveSubmitResponse(
                     session.getId(),
                     isCorrect,
                     question.getCorrectOptionIndex(),
@@ -1079,6 +1085,10 @@ public class AssessmentService {
                     updatedConf,
                     "MEDIUM"
             );
+            if (completed && resultResponse != null) {
+                submitResponse.setResult(resultResponse);
+            }
+            return submitResponse;
         }
     }
 

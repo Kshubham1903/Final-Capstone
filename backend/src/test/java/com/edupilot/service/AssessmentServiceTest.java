@@ -170,4 +170,42 @@ public class AssessmentServiceTest {
         assertNotEquals("q_array_1", nextResp.getQuestion().getQuestionId(), "Next question ID must NOT be identical to Q1");
         assertEquals("q_array_2", session.getCurrentQuestionId(), "Session currentQuestionId should be updated to q_array_2");
     }
+
+    @Test
+    public void testTenthQuestionInitialAnswerReturnsResultAndSyncsKnowledge() {
+        AssessmentSession session = new AssessmentSession();
+        session.setId("session_10th");
+        session.setUserId("user_10th");
+        session.setStudentProfileId("user_10th");
+        session.setSubjectCode("CS301");
+        session.setSubjectName("Data Structures & Algorithms");
+        session.setStatus(AssessmentSession.Status.IN_PROGRESS);
+        session.setCurrentQuestionId("q_array_1");
+        session.setActiveQuestionSubmitted(false);
+        session.setQuestionCount(9); // 9 previous questions completed
+        session.setTotalQuestions(10);
+        session.setUserAnswers(new java.util.ArrayList<>());
+
+        for (int i = 0; i < 9; i++) {
+            session.getUserAnswers().add(new com.edupilot.model.AssessmentResult.UserAnswer("q_" + i, "Arrays & Linked Lists", 1, true, 2));
+        }
+
+        when(sessionRepository.findById("session_10th")).thenReturn(Optional.of(session));
+        when(quizQuestionRepository.findById("q_array_1")).thenReturn(Optional.of(arrayQuestion));
+        when(resultRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        AdaptiveAssessmentDTOs.AdaptiveSubmitRequest req = new AdaptiveAssessmentDTOs.AdaptiveSubmitRequest("session_10th", "q_array_1", 1, 5.0);
+
+        AdaptiveAssessmentDTOs.AdaptiveSubmitResponse resp = assessmentService.submitInitialAnswer(req, "user_10th");
+
+        assertNotNull(resp);
+        assertTrue(resp.isCompleted(), "10th answer submission must complete the session");
+        assertNotNull(resp.getResult(), "AdaptiveSubmitResponse must contain completed AssessmentResultResponse");
+        assertEquals(10, resp.getResult().getTotalQuestions());
+        assertEquals(10, resp.getResult().getCorrectAnswers());
+        assertEquals(100.0, resp.getResult().getPercentage());
+
+        verify(resultRepository).save(any());
+        verify(knowledgeService).syncKnowledgeProfileSummary(eq("user_10th"), eq("Data Structures & Algorithms"));
+    }
 }

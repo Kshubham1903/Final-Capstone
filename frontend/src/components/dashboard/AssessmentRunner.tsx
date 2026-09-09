@@ -12,6 +12,7 @@ import {
   fetchNextInitialDiagnosticQuestion,
   submitInitialDiagnosticAnswer,
   fetchKnowledgeProfile,
+  fetchLatestDiagnosticResult,
   abandonAssessmentSession,
   abandonAdaptiveSession
 } from "../../services/api";
@@ -259,8 +260,20 @@ export default function AssessmentRunner({
       });
 
       setAdaptiveFeedback(submitRes);
-      if (submitRes && submitRes.completed && submitRes.result) {
-        setAssessmentResult(submitRes.result);
+      if (submitRes && submitRes.completed) {
+        if (submitRes.result) {
+          setAssessmentResult(submitRes.result);
+        } else {
+          const userId = getStudentUserId();
+          if (userId) {
+            const latest = await fetchLatestDiagnosticResult(userId);
+            if (latest) setAssessmentResult(latest);
+          }
+        }
+        if (typeof window !== "undefined") {
+          const userId = getStudentUserId();
+          window.dispatchEvent(new CustomEvent("edupilot:assessment-completed", { detail: { userId } }));
+        }
       }
     } catch (err: any) {
       console.error("Failed to submit initial question answer:", err);
@@ -274,6 +287,16 @@ export default function AssessmentRunner({
     if (adaptiveFeedback && adaptiveFeedback.completed) {
       if (adaptiveFeedback.result) {
         setAssessmentResult(adaptiveFeedback.result);
+      } else {
+        const userId = getStudentUserId();
+        if (userId) {
+          const latest = await fetchLatestDiagnosticResult(userId);
+          if (latest) setAssessmentResult(latest);
+        }
+      }
+      if (typeof window !== "undefined") {
+        const userId = getStudentUserId();
+        window.dispatchEvent(new CustomEvent("edupilot:assessment-completed", { detail: { userId } }));
       }
       setStep("RESULT");
       return;
@@ -313,6 +336,16 @@ export default function AssessmentRunner({
       if (nextRes && nextRes.completed) {
         if (nextRes.result) {
           setAssessmentResult(nextRes.result);
+        } else {
+          const userId = getStudentUserId();
+          if (userId) {
+            const latest = await fetchLatestDiagnosticResult(userId);
+            if (latest) setAssessmentResult(latest);
+          }
+        }
+        if (typeof window !== "undefined") {
+          const userId = getStudentUserId();
+          window.dispatchEvent(new CustomEvent("edupilot:assessment-completed", { detail: { userId } }));
         }
         setStep("RESULT");
       } else if (nextRes && nextRes.question) {
@@ -529,6 +562,13 @@ export default function AssessmentRunner({
         }
       } catch (err) {
         console.warn("Error abandoning assessment session:", err);
+      }
+    } else {
+      if (typeof window !== "undefined") {
+        const userId = getStudentUserId();
+        window.dispatchEvent(new CustomEvent("edupilot:assessment-completed", {
+          detail: { userId }
+        }));
       }
     }
     onClose();

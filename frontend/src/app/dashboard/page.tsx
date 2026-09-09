@@ -17,6 +17,7 @@ import TodaysLearningCard from "../../components/dashboard/TodaysLearningCard";
 import LearningProgressCard from "../../components/dashboard/LearningProgressCard";
 import SubjectProgressPanel from "../../components/dashboard/SubjectProgressPanel";
 import LearningPreferencesCard from "../../components/dashboard/LearningPreferencesCard";
+import KnowledgeProgressCard from "../../components/dashboard/KnowledgeProgressCard";
 import LearningGainCard from "../../components/dashboard/LearningGainCard";
 import EvaluationMetricsCard from "../../components/dashboard/EvaluationMetricsCard";
 
@@ -169,6 +170,9 @@ export default function StudentDashboard() {
               profile={profile} 
               onSelectSubject={(subj, val) => setSelectedSubjectForHistory({ name: subj, mastery: val })}
             />
+
+            {/* Concept-Level Mastery & Knowledge Intelligence Engine */}
+            <KnowledgeProgressCard profile={profile} />
 
           </div>
 
