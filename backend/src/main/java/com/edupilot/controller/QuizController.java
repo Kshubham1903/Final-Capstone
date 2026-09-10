@@ -14,6 +14,7 @@ import com.edupilot.service.StudentService;
 import com.edupilot.service.QuizGenerationService;
 import com.edupilot.service.RecommendationService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -291,6 +292,13 @@ public class QuizController {
                 System.err.println("Error recording quiz session: " + ex.getMessage());
             }
 
+            // Synchronize StudentProfile.conceptMastery summary with ConceptMasteryRepository data
+            try {
+                studentService.syncConceptMasteryWithProfile(actualUserId, subject);
+            } catch (Exception ex) {
+                System.err.println("Error synchronizing student profile concept mastery: " + ex.getMessage());
+            }
+
             Map<String, Object> response = new HashMap<>();
             response.put("nextDifficulty", nextDifficulty);
             response.put("reason", reason);
@@ -420,6 +428,8 @@ public class QuizController {
                 "count", questions.size(),
                 "questions", questions
             ));
+        } catch (IllegalStateException ise) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(Map.of("message", ise.getMessage()));
         } catch (IllegalArgumentException iae) {
             return ResponseEntity.status(404).body(Map.of("message", iae.getMessage()));
         }

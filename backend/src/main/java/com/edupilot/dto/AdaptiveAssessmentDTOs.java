@@ -162,6 +162,10 @@ public class AdaptiveAssessmentDTOs {
         public void setCurrentConcept(String currentConcept) { this.currentConcept = currentConcept; }
         public String getTargetDifficulty() { return targetDifficulty; }
         public void setTargetDifficulty(String targetDifficulty) { this.targetDifficulty = targetDifficulty; }
+
+        private AssessmentResultResponse result;
+        public AssessmentResultResponse getResult() { return result; }
+        public void setResult(AssessmentResultResponse result) { this.result = result; }
     }
 
     public static class AdaptiveSubmitRequest {
@@ -198,6 +202,7 @@ public class AdaptiveAssessmentDTOs {
         private String updatedConceptStatus;
         private double updatedConceptConfidence;
         private String nextDifficulty;
+        private AssessmentResultResponse result;
 
         public AdaptiveSubmitResponse() {}
 
@@ -238,5 +243,7 @@ public class AdaptiveAssessmentDTOs {
         public void setUpdatedConceptConfidence(double updatedConceptConfidence) { this.updatedConceptConfidence = updatedConceptConfidence; }
         public String getNextDifficulty() { return nextDifficulty; }
         public void setNextDifficulty(String nextDifficulty) { this.nextDifficulty = nextDifficulty; }
+        public AssessmentResultResponse getResult() { return result; }
+        public void setResult(AssessmentResultResponse result) { this.result = result; }
     }
 }

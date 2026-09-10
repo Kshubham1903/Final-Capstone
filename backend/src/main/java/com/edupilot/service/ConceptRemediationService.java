@@ -193,6 +193,13 @@ public class ConceptRemediationService {
             cm.setRecommendedAction("Remediated successfully! Concept cleared.");
             conceptMasteryRepository.save(cm);
 
+            // Synchronize StudentProfile.conceptMastery summary with ConceptMasteryRepository data
+            try {
+                studentService.syncConceptMasteryWithProfile(canonicalUserId, finalSubject);
+            } catch (Exception e) {
+                System.err.println("[ConceptRemediationService] Profile mastery sync error: " + e.getMessage());
+            }
+
             // 4. Force regenerate adaptive planner to clear remediated card from dashboard
             try {
                 plannerService.generateLearningPlan(canonicalUserId);

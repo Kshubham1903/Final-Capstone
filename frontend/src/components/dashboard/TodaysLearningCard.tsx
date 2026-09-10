@@ -315,6 +315,9 @@ export default function TodaysLearningCard({ profile }: TodaysLearningCardProps)
                 };
               });
             }
+            if (remediated && typeof window !== "undefined") {
+              window.dispatchEvent(new CustomEvent("edupilot:assessment-completed"));
+            }
             loadPlan();
           }}
         />

@@ -45,7 +45,7 @@ public class KnowledgeService {
             return null;
         }
 
-        String userId = result.getUserId();
+        String userId = studentService.resolveUserId(result.getUserId());
         String subjectCode = result.getSubjectCode();
         String subjectName = result.getSubjectName();
 
@@ -163,8 +163,9 @@ public class KnowledgeService {
 
     public void syncKnowledgeProfileSummary(String userId, String subjectName) {
         if (userId == null) return;
+        String canonicalUserId = studentService.resolveUserId(userId);
 
-        List<ConceptMastery> allConcepts = conceptRepository.findByUserId(userId);
+        List<ConceptMastery> allConcepts = conceptRepository.findByUserId(canonicalUserId);
 
         int mastered = 0;
         int proficient = 0;
@@ -174,9 +175,12 @@ public class KnowledgeService {
         List<String> weakList = new ArrayList<>();
 
         for (ConceptMastery cm : allConcepts) {
-            if (cm.getStatus() == ConceptMastery.ConceptStatus.STRONG) {
+            boolean isStrong = cm.getStatus() == ConceptMastery.ConceptStatus.STRONG || (cm.getAttemptCount() >= 1 && cm.getAccuracy() >= 70.0);
+            boolean isWeak = cm.getStatus() == ConceptMastery.ConceptStatus.WEAK || (cm.getAttemptCount() >= 1 && cm.getAccuracy() < 70.0);
+
+            if (isStrong) {
                 strongList.add(cm.getConceptName());
-            } else if (cm.getStatus() == ConceptMastery.ConceptStatus.WEAK) {
+            } else if (isWeak) {
                 weakList.add(cm.getConceptName());
             }
 
@@ -197,9 +201,9 @@ public class KnowledgeService {
             healthScore = Math.round((totalAcc / allConcepts.size()) * 10.0) / 10.0;
         }
 
-        KnowledgeProfile kp = profileRepository.findByUserId(userId).orElseGet(() -> {
+        KnowledgeProfile kp = profileRepository.findByUserId(canonicalUserId).orElseGet(() -> {
             KnowledgeProfile k = new KnowledgeProfile();
-            k.setUserId(userId);
+            k.setUserId(canonicalUserId);
             return k;
         });
 
@@ -216,7 +220,7 @@ public class KnowledgeService {
         profileRepository.save(kp);
 
         // Sync with StudentProfile (uses StudentService.findOrCreateProfile to auto-create profile if missing)
-        StudentProfile prof = studentService.findOrCreateProfile(userId);
+        StudentProfile prof = studentService.findOrCreateProfile(canonicalUserId);
 
         String sName = (subjectName != null && !subjectName.isBlank()) ? subjectName : "General";
         String canonicalSubjectName = normalizeSubjectName(sName, prof.getSubjects());
@@ -249,24 +253,27 @@ public class KnowledgeService {
 
         studentProfileRepository.save(prof);
 
-        System.out.println("[PROFILE DEBUG AFTER] userId=" + userId + ", subject=" + canonicalSubjectName + ", updatedMastery=" + subjectHealthScore + "%, strongCount=" + strongList.size() + ", weakCount=" + weakList.size());
+        System.out.println("[PROFILE DEBUG AFTER] userId=" + canonicalUserId + ", subject=" + canonicalSubjectName + ", updatedMastery=" + subjectHealthScore + "%, strongCount=" + strongList.size() + ", weakCount=" + weakList.size());
 
         // Trigger real-time recommendation engine generation
         try {
-            recommendationService.generateRecommendations(userId);
+            recommendationService.generateRecommendations(canonicalUserId);
         } catch (Exception ex) {
             System.err.println("Failed to trigger recommendation generation: " + ex.getMessage());
         }
     }
 
     public KnowledgeProfileResponse getKnowledgeProfile(String userId) {
-        KnowledgeProfile kp = profileRepository.findByUserId(userId).orElseGet(() -> {
+        if (userId == null) return new KnowledgeProfileResponse(new KnowledgeProfile(), Collections.emptyList());
+        String canonicalUserId = studentService.resolveUserId(userId);
+
+        KnowledgeProfile kp = profileRepository.findByUserId(canonicalUserId).orElseGet(() -> {
             KnowledgeProfile k = new KnowledgeProfile();
-            k.setUserId(userId);
+            k.setUserId(canonicalUserId);
             return k;
         });
 
-        List<ConceptMasteryResponse> entries = conceptRepository.findByUserId(userId)
+        List<ConceptMasteryResponse> entries = conceptRepository.findByUserId(canonicalUserId)
                 .stream()
                 .map(ConceptMasteryResponse::new)
                 .collect(Collectors.toList());
@@ -275,23 +282,29 @@ public class KnowledgeService {
     }
 
     public List<ConceptMasteryResponse> getWeakConcepts(String userId) {
-        return conceptRepository.findByUserId(userId)
+        if (userId == null) return Collections.emptyList();
+        String canonicalUserId = studentService.resolveUserId(userId);
+        return conceptRepository.findByUserId(canonicalUserId)
                 .stream()
-                .filter(cm -> cm.getStatus() == ConceptMastery.ConceptStatus.WEAK || cm.getStatus() == ConceptMastery.ConceptStatus.UNCERTAIN)
+                .filter(cm -> cm.getStatus() == ConceptMastery.ConceptStatus.WEAK || (cm.getAttemptCount() >= 1 && cm.getAccuracy() < 70.0))
                 .map(ConceptMasteryResponse::new)
                 .collect(Collectors.toList());
     }
 
     public List<ConceptMasteryResponse> getStrongConcepts(String userId) {
-        return conceptRepository.findByUserId(userId)
+        if (userId == null) return Collections.emptyList();
+        String canonicalUserId = studentService.resolveUserId(userId);
+        return conceptRepository.findByUserId(canonicalUserId)
                 .stream()
-                .filter(cm -> cm.getStatus() == ConceptMastery.ConceptStatus.STRONG)
+                .filter(cm -> cm.getStatus() == ConceptMastery.ConceptStatus.STRONG || (cm.getAttemptCount() >= 1 && cm.getAccuracy() >= 70.0))
                 .map(ConceptMasteryResponse::new)
                 .collect(Collectors.toList());
     }
 
     public List<ConceptMasteryResponse> getConceptMastery(String userId) {
-        return conceptRepository.findByUserId(userId)
+        if (userId == null) return Collections.emptyList();
+        String canonicalUserId = studentService.resolveUserId(userId);
+        return conceptRepository.findByUserId(canonicalUserId)
                 .stream()
                 .map(ConceptMasteryResponse::new)
                 .collect(Collectors.toList());
