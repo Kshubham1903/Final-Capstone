@@ -1739,3 +1739,75 @@ export async function abandonDashboardTestSession(sessionId: string): Promise<an
   }
   return null;
 }
+
+// Personalized Subject Roadmap API Helpers
+
+export async function fetchSubjectRoadmap(subjectCode: string, userId?: string, subjectName?: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const params = new URLSearchParams();
+      if (userId) params.append("userId", userId);
+      if (subjectName) params.append("subjectName", subjectName);
+      const queryString = params.toString() ? `?${params.toString()}` : "";
+
+      const res = await fetch(`${getBackendUrl()}/api/roadmaps/subject/${encodeURIComponent(subjectCode)}${queryString}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to fetch subject roadmap from backend:", err);
+    }
+  }
+  return null;
+}
+
+export async function generateSubjectRoadmap(payload: { subjectCode: string; subjectName?: string; userId?: string }): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/roadmaps/generate`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to generate subject roadmap:", err);
+    }
+  }
+  return null;
+}
+
+export async function fetchRoadmapTopicResources(
+  subjectCode: string, 
+  conceptId: string, 
+  conceptName?: string, 
+  subjectName?: string, 
+  userId?: string
+): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const params = new URLSearchParams();
+      if (conceptName) params.append("conceptName", conceptName);
+      if (subjectName) params.append("subjectName", subjectName);
+      if (userId) params.append("userId", userId);
+      const queryString = params.toString() ? `?${params.toString()}` : "";
+
+      const res = await fetch(`${getBackendUrl()}/api/roadmaps/subject/${encodeURIComponent(subjectCode)}/topic/${encodeURIComponent(conceptId)}/resources${queryString}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to fetch VARK-ranked roadmap topic resources from backend:", err);
+    }
+  }
+  return fetchStudyResources(subjectName || subjectCode, conceptName || conceptId);
+}
