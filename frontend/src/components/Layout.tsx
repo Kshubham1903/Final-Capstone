@@ -17,7 +17,8 @@ import {
   Sun,
   Moon,
   User,
-  Bot
+  Bot,
+  BookOpen
 } from "lucide-react";
 import { getStoredStudentProfile } from "../services/mockData";
 import { fetchProfile } from "../services/api";
@@ -100,6 +101,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navItems = {
     STUDENT: [
       { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { name: "Subjects Roadmap", href: "/dashboard/subjects", icon: BookOpen },
       { name: "My Profile", href: "/dashboard/profile", icon: User },
       { name: "Pomodoro Focus", href: "/dashboard/pomodoro", icon: Timer },
       { name: "Adaptive Quizzes", href: "/dashboard/quizzes", icon: GraduationCap },
