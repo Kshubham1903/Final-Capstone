@@ -163,24 +163,20 @@ public class StudyResourceService {
         // 4. Stack Overflow Search (if technical)
         // =========================================================================
 
-        // 1. GeeksforGeeks Search
-        String gfgQuery = buildGfgQuery(cleanConcept, semanticContext);
-        buildGfgSearchResource(cleanConcept, gfgQuery, rawConcept, items, seenUrls);
+        // 1. GeeksforGeeks Direct Article Resolution
+        fetchGfgDirectResource(cleanConcept, semanticContext, rawConcept, items, seenUrls);
 
-        // 2. W3Schools Search
+        // 2. W3Schools Direct Tutorial Resolution
         if (isTechConcept) {
-            String w3Query = buildW3SchoolsQuery(cleanConcept, semanticContext);
-            buildW3SchoolsSearchResource(cleanConcept, w3Query, rawConcept, items, seenUrls);
+            fetchW3SchoolsDirectResource(cleanConcept, semanticContext, rawConcept, items, seenUrls);
         }
 
-        // 3. YouTube Tutorial Search
-        String ytQuery = buildYouTubeQuery(cleanConcept, semanticContext);
-        buildYoutubeSearchResource(cleanConcept, ytQuery, semanticContext, rawConcept, items, seenUrls);
+        // 3. YouTube Direct Video Tutorial Resolution
+        fetchYoutubeDirectResource(cleanConcept, semanticContext, rawConcept, items, seenUrls);
 
-        // 4. Stack Overflow Search
+        // 4. Stack Overflow Direct Question Resolution
         if (isTechConcept) {
-            String soQuery = buildStackOverflowQuery(cleanConcept, semanticContext);
-            buildStackOverflowSearchResource(cleanConcept, soQuery, rawConcept, items, seenUrls);
+            fetchStackOverflowDirectResource(cleanConcept, rawConcept, items, seenUrls);
         }
 
         // =========================================================================
@@ -215,22 +211,6 @@ public class StudyResourceService {
         return items;
     }
 
-    private String buildGfgQuery(String concept, String context) {
-        return concept + " " + context;
-    }
-
-    private String buildW3SchoolsQuery(String concept, String context) {
-        return concept;
-    }
-
-    private String buildYouTubeQuery(String concept, String context) {
-        return concept + " " + context + " tutorial";
-    }
-
-    private String buildStackOverflowQuery(String concept, String context) {
-        return concept;
-    }
-
     private String buildWikipediaQuery(String concept, String context) {
         return concept + " " + context;
     }
@@ -243,48 +223,243 @@ public class StudyResourceService {
         return concept + " " + context;
     }
 
-    private void buildGfgSearchResource(String cleanConcept, String gfgQuery, String rawConcept, List<StudyResourceDTO.ResourceItem> items, Set<String> seenUrls) {
-        String gfgUrl = "https://www.geeksforgeeks.org/search/?q=" + encode(gfgQuery);
-        items.add(new StudyResourceDTO.ResourceItem(
-                cleanConcept + " — GeeksforGeeks Search",
-                gfgUrl,
-                "geeksforgeeks.org",
-                "Search GeeksforGeeks for " + rawConcept + "."
-        ));
-        seenUrls.add(gfgUrl.toLowerCase());
+    private String verifyDirectUrl(String urlStr) {
+        if (urlStr == null || urlStr.isBlank()) return null;
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(urlStr))
+                    .timeout(Duration.ofMillis(1000))
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                    .GET()
+                    .build();
+
+            HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+            if (response.statusCode() == 200) {
+                String finalUrl = response.uri().toString();
+                String lower = finalUrl.toLowerCase();
+                if (!lower.contains("/search") && !lower.contains("/404")
+                        && !lower.endsWith("w3schools.com/") && !lower.endsWith("w3schools.com")
+                        && !lower.endsWith("geeksforgeeks.org/") && !lower.endsWith("geeksforgeeks.org")
+                        && !lower.contains("geeksforgeeks.org/quizzes") && !lower.contains("geeksforgeeks.org/search")) {
+                    return finalUrl;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
-    private void buildW3SchoolsSearchResource(String cleanConcept, String w3Query, String rawConcept, List<StudyResourceDTO.ResourceItem> items, Set<String> seenUrls) {
-        String w3Url = "https://www.w3schools.com/?s=" + encode(w3Query);
-        items.add(new StudyResourceDTO.ResourceItem(
-                cleanConcept + " — W3Schools Search",
-                w3Url,
-                "w3schools.com",
-                "Search W3Schools for tutorials and reference material related to " + rawConcept + "."
-        ));
-        seenUrls.add(w3Url.toLowerCase());
+    private void fetchGfgDirectResource(String cleanConcept, String context, String rawConcept, List<StudyResourceDTO.ResourceItem> items, Set<String> seenUrls) {
+        String clean = cleanConcept.replaceAll("[^a-zA-Z0-9\\s]", " ").replaceAll("\\s+", " ").trim().toLowerCase();
+        String[] words = clean.split(" ");
+        String slugHyphen = String.join("-", words);
+
+        List<String> candidates = new ArrayList<>();
+        if (clean.contains("array")) {
+            candidates.add("https://www.geeksforgeeks.org/dsa/array-data-structure-guide/");
+            candidates.add("https://www.geeksforgeeks.org/dsa/array-data-structure/");
+            candidates.add("https://www.geeksforgeeks.org/array-data-structure/");
+        }
+        if (clean.contains("linked") || clean.contains("list")) {
+            candidates.add("https://www.geeksforgeeks.org/dsa/linked-list-data-structure/");
+            candidates.add("https://www.geeksforgeeks.org/linked-list-data-structure/");
+        }
+        if (clean.contains("tree") || clean.contains("bst")) {
+            candidates.add("https://www.geeksforgeeks.org/dsa/binary-search-tree-data-structure/");
+            candidates.add("https://www.geeksforgeeks.org/binary-search-tree-data-structure/");
+        }
+        if (clean.contains("stack")) {
+            candidates.add("https://www.geeksforgeeks.org/dsa/stack-data-structure/");
+            candidates.add("https://www.geeksforgeeks.org/stack-data-structure/");
+        }
+        if (clean.contains("queue")) {
+            candidates.add("https://www.geeksforgeeks.org/dsa/queue-data-structure/");
+            candidates.add("https://www.geeksforgeeks.org/queue-data-structure/");
+        }
+        if (clean.contains("normaliz") || clean.contains("dbms") || clean.contains("database")) {
+            candidates.add("https://www.geeksforgeeks.org/dbms/database-normalization/");
+            candidates.add("https://www.geeksforgeeks.org/database-normalization-in-dbms/");
+            candidates.add("https://www.geeksforgeeks.org/normal-forms-in-dbms/");
+            candidates.add("https://www.geeksforgeeks.org/dbms/normal-forms-in-dbms/");
+        }
+
+        candidates.add("https://www.geeksforgeeks.org/dsa/" + slugHyphen + "-data-structure/");
+        candidates.add("https://www.geeksforgeeks.org/dsa/" + slugHyphen + "/");
+        candidates.add("https://www.geeksforgeeks.org/" + slugHyphen + "-data-structure/");
+        candidates.add("https://www.geeksforgeeks.org/" + slugHyphen + "/");
+        candidates.add("https://www.geeksforgeeks.org/dbms/" + slugHyphen + "/");
+        candidates.add("https://www.geeksforgeeks.org/" + slugHyphen + "-in-dbms/");
+        candidates.add("https://www.geeksforgeeks.org/operating-systems/" + slugHyphen + "/");
+        candidates.add("https://www.geeksforgeeks.org/" + slugHyphen + "-in-operating-system/");
+        candidates.add("https://www.geeksforgeeks.org/computer-network/" + slugHyphen + "/");
+        candidates.add("https://www.geeksforgeeks.org/" + slugHyphen + "-in-computer-network/");
+        candidates.add("https://www.geeksforgeeks.org/sql-" + slugHyphen + "/");
+        candidates.add("https://www.geeksforgeeks.org/" + slugHyphen + "-sql/");
+        candidates.add("https://www.geeksforgeeks.org/" + slugHyphen + "-tutorial/");
+        candidates.add("https://www.geeksforgeeks.org/introduction-to-" + slugHyphen + "/");
+
+        for (String cand : candidates) {
+            String verified = verifyDirectUrl(cand);
+            if (verified != null) {
+                String normUrl = verified.toLowerCase();
+                if (!seenUrls.contains(normUrl)) {
+                    items.add(new StudyResourceDTO.ResourceItem(
+                            cleanConcept + " — GeeksforGeeks",
+                            verified,
+                            "geeksforgeeks.org",
+                            "Direct GeeksforGeeks article and code tutorial covering " + rawConcept + "."
+                    ));
+                    seenUrls.add(normUrl);
+                    return;
+                }
+            }
+        }
     }
 
-    private void buildYoutubeSearchResource(String cleanConcept, String ytQuery, String context, String rawConcept, List<StudyResourceDTO.ResourceItem> items, Set<String> seenUrls) {
-        String ytUrl = "https://www.youtube.com/results?search_query=" + encode(ytQuery);
-        items.add(new StudyResourceDTO.ResourceItem(
-                cleanConcept + " — YouTube Tutorial Search",
-                ytUrl,
-                "youtube.com",
-                "Search YouTube for " + rawConcept + " tutorials and lectures."
-        ));
-        seenUrls.add(ytUrl.toLowerCase());
+    private void fetchW3SchoolsDirectResource(String cleanConcept, String context, String rawConcept, List<StudyResourceDTO.ResourceItem> items, Set<String> seenUrls) {
+        String clean = cleanConcept.replaceAll("[^a-zA-Z0-9\\s]", " ").replaceAll("\\s+", " ").trim().toLowerCase();
+        String[] words = clean.split(" ");
+        String slugUnderscore = String.join("_", words);
+        String slugPlain = String.join("", words);
+
+        List<String> candidates = new ArrayList<>();
+        if (clean.contains("array")) {
+            candidates.add("https://www.w3schools.com/dsa/dsa_data_arrays.php");
+            candidates.add("https://www.w3schools.com/js/js_arrays.asp");
+            candidates.add("https://www.w3schools.com/java/java_arrays.asp");
+            candidates.add("https://www.w3schools.com/python/python_arrays.asp");
+        }
+        if (clean.contains("linked") || clean.contains("list")) {
+            candidates.add("https://www.w3schools.com/dsa/dsa_data_linkedlists.php");
+        }
+        if (clean.contains("tree") || clean.contains("bst")) {
+            candidates.add("https://www.w3schools.com/dsa/dsa_data_binarysearchtrees.php");
+            candidates.add("https://www.w3schools.com/dsa/dsa_data_trees.php");
+        }
+        if (clean.contains("stack")) {
+            candidates.add("https://www.w3schools.com/dsa/dsa_data_stacks.php");
+        }
+        if (clean.contains("queue")) {
+            candidates.add("https://www.w3schools.com/dsa/dsa_data_queues.php");
+        }
+        if (clean.contains("graph")) {
+            candidates.add("https://www.w3schools.com/dsa/dsa_data_graphs.php");
+        }
+
+        candidates.add("https://www.w3schools.com/dsa/dsa_data_" + slugUnderscore + ".php");
+        candidates.add("https://www.w3schools.com/dsa/dsa_data_" + slugPlain + ".php");
+        candidates.add("https://www.w3schools.com/dsa/dsa_data_" + slugPlain + "s.php");
+        candidates.add("https://www.w3schools.com/dsa/dsa_theory_" + slugPlain + ".php");
+        candidates.add("https://www.w3schools.com/dsa/dsa_algo_" + slugPlain + ".php");
+        candidates.add("https://www.w3schools.com/sql/sql_" + slugUnderscore + ".asp");
+        candidates.add("https://www.w3schools.com/sql/sql_" + slugPlain + ".asp");
+        candidates.add("https://www.w3schools.com/cpp/cpp_" + slugUnderscore + ".asp");
+        candidates.add("https://www.w3schools.com/java/java_" + slugUnderscore + ".asp");
+        candidates.add("https://www.w3schools.com/js/js_" + slugUnderscore + ".asp");
+        candidates.add("https://www.w3schools.com/python/python_" + slugUnderscore + ".asp");
+        candidates.add("https://www.w3schools.com/c/c_" + slugUnderscore + ".php");
+        candidates.add("https://www.w3schools.com/programming/prog_" + slugUnderscore + ".php");
+
+        for (String cand : candidates) {
+            String verified = verifyDirectUrl(cand);
+            if (verified != null) {
+                String normUrl = verified.toLowerCase();
+                if (!seenUrls.contains(normUrl)) {
+                    items.add(new StudyResourceDTO.ResourceItem(
+                            cleanConcept + " — W3Schools Tutorial",
+                            verified,
+                            "w3schools.com",
+                            "Comprehensive W3Schools interactive tutorial explaining " + rawConcept + "."
+                    ));
+                    seenUrls.add(normUrl);
+                    return;
+                }
+            }
+        }
     }
 
-    private void buildStackOverflowSearchResource(String cleanConcept, String soQuery, String rawConcept, List<StudyResourceDTO.ResourceItem> items, Set<String> seenUrls) {
-        String soUrl = "https://stackoverflow.com/search?q=" + encode(soQuery);
-        items.add(new StudyResourceDTO.ResourceItem(
-                cleanConcept + " — Stack Overflow Search",
-                soUrl,
-                "stackoverflow.com",
-                "Search Stack Overflow for engineering questions and discussions related to " + rawConcept + "."
-        ));
-        seenUrls.add(soUrl.toLowerCase());
+    private void fetchYoutubeDirectResource(String cleanConcept, String context, String rawConcept, List<StudyResourceDTO.ResourceItem> items, Set<String> seenUrls) {
+        try {
+            String ytQuery = encode(cleanConcept + " " + context + " tutorial");
+            String url = "https://www.youtube.com/results?search_query=" + ytQuery;
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(3))
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200 && response.body() != null) {
+                String html = response.body();
+                Pattern p = Pattern.compile("\"videoId\":\"([a-zA-Z0-9_-]{11})\"");
+                Matcher m = p.matcher(html);
+                if (m.find()) {
+                    String videoId = m.group(1);
+                    String videoUrl = "https://www.youtube.com/watch?v=" + videoId;
+                    String normUrl = videoUrl.toLowerCase();
+                    if (!seenUrls.contains(normUrl)) {
+                        items.add(new StudyResourceDTO.ResourceItem(
+                                cleanConcept + " — YouTube Video Tutorial",
+                                videoUrl,
+                                "youtube.com",
+                                "Direct video lecture and step-by-step tutorial explaining " + rawConcept + "."
+                        ));
+                        seenUrls.add(normUrl);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[StudyResourceService] YouTube provider error: " + e.getMessage());
+        }
+    }
+
+    private void fetchStackOverflowDirectResource(String cleanConcept, String rawConcept, List<StudyResourceDTO.ResourceItem> items, Set<String> seenUrls) {
+        try {
+            String soQuery = encode(cleanConcept);
+            String url = "https://api.stackexchange.com/2.3/search/advanced?order=desc&sort=relevance&q=" + soQuery + "&site=stackoverflow";
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(3))
+                    .header("User-Agent", "EduPilot/1.0 (Educational Learning Assistant)")
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200 && response.body() != null) {
+                JsonNode root = objectMapper.readTree(response.body());
+                JsonNode itemsArray = root.path("items");
+                if (itemsArray.isArray()) {
+                    for (JsonNode item : itemsArray) {
+                        String title = item.path("title").asText("");
+                        String link = item.path("link").asText("");
+                        if (!link.isEmpty() && link.contains("/questions/")) {
+                            String normUrl = link.toLowerCase();
+                            if (!seenUrls.contains(normUrl)) {
+                                String cleanTitle = title.replaceAll("&quot;", "\"")
+                                                         .replaceAll("&#39;", "'")
+                                                         .replaceAll("&amp;", "&")
+                                                         .replaceAll("&lt;", "<")
+                                                         .replaceAll("&gt;", ">");
+                                items.add(new StudyResourceDTO.ResourceItem(
+                                        cleanTitle + " — Stack Overflow",
+                                        link,
+                                        "stackoverflow.com",
+                                        "Community engineering discussion and accepted answers related to " + rawConcept + "."
+                                ));
+                                seenUrls.add(normUrl);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[StudyResourceService] Stack Overflow provider error: " + e.getMessage());
+        }
     }
 
     /**
