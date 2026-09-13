@@ -207,7 +207,7 @@ export default function Onboarding() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
   const [loadingQuestions, setLoadingQuestions] = useState<boolean>(false);
   const [submittingAssessment, setSubmittingAssessment] = useState<boolean>(false);
-  const [totalQuestions, setTotalQuestions] = useState<number>(10);
+  const [totalQuestions, setTotalQuestions] = useState<number>(25);
   const [loadingNextQuestion, setLoadingNextQuestion] = useState<boolean>(false);
   const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now());
 
