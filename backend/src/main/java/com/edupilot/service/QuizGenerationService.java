@@ -707,7 +707,7 @@ public class QuizGenerationService {
             return new BatchParseResult("Wrong response structure: Expected JSON array or object containing 'questions' array, got root shape: " + root.getNodeType());
         }
 
-        int expectedCount = blueprint != null ? blueprint.size() : 10;
+        int expectedCount = blueprint != null ? blueprint.size() : 25;
         if (questionsNode.size() != expectedCount) {
             return new BatchParseResult("Wrong question count: Groq returned " + questionsNode.size() + " questions, expected exactly " + expectedCount);
         }
