@@ -193,8 +193,8 @@ export default function Quizzes() {
         subjectName: subj,
         questionCount: 5
       });
-      if (!startRes || !startRes.sessionId) {
-        setGroqError("Failed to initialize diagnostic session. Please check connection.");
+      if (!startRes || startRes.error || !startRes.sessionId || startRes.sessionId.startsWith("sess_local_")) {
+        setGroqError(startRes?.message || "Failed to initialize diagnostic session. Please check connection and backend configuration.");
         return;
       }
 
@@ -209,7 +209,10 @@ export default function Quizzes() {
   };
 
   const loadNextInitialQuestion = async (sessId: string) => {
-    if (!sessId) return;
+    if (!sessId || sessId.startsWith("sess_local_")) {
+      setGroqError("Session initialization incomplete: Missing backend session ID.");
+      return;
+    }
 
     if (adaptiveNextRequestInFlightRef.current) {
       console.warn(`[AdaptiveQuiz] Next initial question request already in flight for session ${sessId}. Ignoring duplicate call.`);

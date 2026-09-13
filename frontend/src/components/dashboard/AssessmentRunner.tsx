@@ -108,7 +108,7 @@ export default function AssessmentRunner({
         questionCount: 5
       });
 
-      if (sess && sess.sessionId) {
+      if (sess && !sess.error && sess.sessionId) {
         setSession(sess);
         setSelectedSubjectCode(subjCode);
         setCurrentIdx(0);

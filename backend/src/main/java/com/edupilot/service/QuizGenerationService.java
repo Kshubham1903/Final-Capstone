@@ -173,7 +173,7 @@ public class QuizGenerationService {
         }
 
         Map<String, Object> genContext = context != null ? new HashMap<>(context) : new HashMap<>();
-        if (!genContext.containsKey("maxTokens")) genContext.put("maxTokens", 3500);
+        if (!genContext.containsKey("maxTokens")) genContext.put("maxTokens", 8000);
         if (!genContext.containsKey("purpose")) genContext.put("purpose", "DIAGNOSTIC_BATCH_10");
 
         List<String> excludeTexts = genContext.containsKey("excludeQuestions") 
@@ -317,8 +317,9 @@ public class QuizGenerationService {
         try {
             JsonNode root = objectMapper.readTree(cleanJson);
             if (root.has("success") && !root.get("success").asBoolean(true)) {
+                String errMsg = root.has("message") ? root.get("message").asText() : "Groq API error response";
                 System.err.println("[QuizGenerationService] Groq error payload in batch parse: " + root.toString());
-                return result;
+                throw new IllegalStateException(errMsg);
             }
 
             JsonNode questionsNode = root.get("questions");

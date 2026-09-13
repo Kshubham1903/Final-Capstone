@@ -1,6 +1,6 @@
 # EduPilot Backend Runner Script
 
-# Ensure GROQ_API_KEY and LLM_PROVIDER process environment variables are resolved
+# Ensure GROQ_API_KEY, GEMINI_API_KEY and LLM_PROVIDER process environment variables are resolved
 if (-not $env:GROQ_API_KEY) {
     $userKey = [System.Environment]::GetEnvironmentVariable('GROQ_API_KEY', 'User')
     $machineKey = [System.Environment]::GetEnvironmentVariable('GROQ_API_KEY', 'Machine')
@@ -8,11 +8,27 @@ if (-not $env:GROQ_API_KEY) {
     elseif ($machineKey) { $env:GROQ_API_KEY = $machineKey }
     elseif (Test-Path "$PSScriptRoot\.env") {
         Get-Content "$PSScriptRoot\.env" | ForEach-Object {
-            if ($_ -match '^\s*GROQ_API_KEY\s*=\s*(.*)\s*$') { $env:GROQ_API_KEY = $matches[1].Trim('"''') }
+            if ($_ -match '^\s*GROQ_API_KEY\s*=\s*(.*)\s*$') { $env:GROQ_API_KEY = $matches[1].Trim().Trim('"').Trim("'") }
         }
     } elseif (Test-Path "$PSScriptRoot\..\.env") {
         Get-Content "$PSScriptRoot\..\.env" | ForEach-Object {
-            if ($_ -match '^\s*GROQ_API_KEY\s*=\s*(.*)\s*$') { $env:GROQ_API_KEY = $matches[1].Trim('"''') }
+            if ($_ -match '^\s*GROQ_API_KEY\s*=\s*(.*)\s*$') { $env:GROQ_API_KEY = $matches[1].Trim().Trim('"').Trim("'") }
+        }
+    }
+}
+
+if (-not $env:GEMINI_API_KEY) {
+    $userKey = [System.Environment]::GetEnvironmentVariable('GEMINI_API_KEY', 'User')
+    $machineKey = [System.Environment]::GetEnvironmentVariable('GEMINI_API_KEY', 'Machine')
+    if ($userKey) { $env:GEMINI_API_KEY = $userKey }
+    elseif ($machineKey) { $env:GEMINI_API_KEY = $machineKey }
+    elseif (Test-Path "$PSScriptRoot\.env") {
+        Get-Content "$PSScriptRoot\.env" | ForEach-Object {
+            if ($_ -match '^\s*GEMINI_API_KEY\s*=\s*(.*)\s*$') { $env:GEMINI_API_KEY = $matches[1].Trim().Trim('"').Trim("'") }
+        }
+    } elseif (Test-Path "$PSScriptRoot\..\.env") {
+        Get-Content "$PSScriptRoot\..\.env" | ForEach-Object {
+            if ($_ -match '^\s*GEMINI_API_KEY\s*=\s*(.*)\s*$') { $env:GEMINI_API_KEY = $matches[1].Trim().Trim('"').Trim("'") }
         }
     }
 }
@@ -24,16 +40,50 @@ if (-not $env:LLM_PROVIDER) {
     elseif ($machineProv) { $env:LLM_PROVIDER = $machineProv }
     elseif (Test-Path "$PSScriptRoot\.env") {
         Get-Content "$PSScriptRoot\.env" | ForEach-Object {
-            if ($_ -match '^\s*LLM_PROVIDER\s*=\s*(.*)\s*$') { $env:LLM_PROVIDER = $matches[1].Trim('"''') }
+            if ($_ -match '^\s*LLM_PROVIDER\s*=\s*(.*)\s*$') { $env:LLM_PROVIDER = $matches[1].Trim().Trim('"').Trim("'") }
         }
     } elseif (Test-Path "$PSScriptRoot\..\.env") {
         Get-Content "$PSScriptRoot\..\.env" | ForEach-Object {
-            if ($_ -match '^\s*LLM_PROVIDER\s*=\s*(.*)\s*$') { $env:LLM_PROVIDER = $matches[1].Trim('"''') }
+            if ($_ -match '^\s*LLM_PROVIDER\s*=\s*(.*)\s*$') { $env:LLM_PROVIDER = $matches[1].Trim().Trim('"').Trim("'") }
         }
     } else { $env:LLM_PROVIDER = 'groq' }
 }
 
-$port = if ($env:SERVER_PORT) { [int]$env:SERVER_PORT } else { 8080 }
+if (-not $env:GROQ_MODEL) {
+    if (Test-Path "$PSScriptRoot\.env") {
+        Get-Content "$PSScriptRoot\.env" | ForEach-Object {
+            if ($_ -match '^\s*GROQ_MODEL\s*=\s*(.*)\s*$') { $env:GROQ_MODEL = $matches[1].Trim().Trim('"').Trim("'") }
+        }
+    } elseif (Test-Path "$PSScriptRoot\..\.env") {
+        Get-Content "$PSScriptRoot\..\.env" | ForEach-Object {
+            if ($_ -match '^\s*GROQ_MODEL\s*=\s*(.*)\s*$') { $env:GROQ_MODEL = $matches[1].Trim().Trim('"').Trim("'") }
+        }
+    } else { $env:GROQ_MODEL = 'qwen/qwen3.6-27b' }
+}
+
+# Validate and print masked status for LLM keys
+Write-Host "========== EDUPILOT ENVIRONMENT VALIDATION ==========" -ForegroundColor Cyan
+Write-Host "LLM Provider selected: $env:LLM_PROVIDER" -ForegroundColor Cyan
+Write-Host "Groq Model selected: $env:GROQ_MODEL" -ForegroundColor Cyan
+
+if (-not $env:GROQ_API_KEY -or $env:GROQ_API_KEY.Length -lt 10) {
+    Write-Host "[ERROR] GROQ_API_KEY is missing or invalid in process environment and .env files!" -ForegroundColor Red
+    Write-Host "Please set a valid GROQ_API_KEY in .env or system environment variables before starting." -ForegroundColor Red
+    exit 1
+} else {
+    $maskedGroq = $env:GROQ_API_KEY.Substring(0, [Math]::Min(7, $env:GROQ_API_KEY.Length)) + "..." + $env:GROQ_API_KEY.Substring([Math]::Max(0, $env:GROQ_API_KEY.Length - 4))
+    Write-Host "GROQ_API_KEY loaded successfully: $maskedGroq (Length: $($env:GROQ_API_KEY.Length))" -ForegroundColor Green
+}
+
+if (-not $env:GEMINI_API_KEY -or $env:GEMINI_API_KEY.Length -lt 10) {
+    Write-Host "[WARNING] GEMINI_API_KEY is missing or invalid in .env files." -ForegroundColor Yellow
+} else {
+    $maskedGemini = $env:GEMINI_API_KEY.Substring(0, [Math]::Min(4, $env:GEMINI_API_KEY.Length)) + "..." + $env:GEMINI_API_KEY.Substring([Math]::Max(0, $env:GEMINI_API_KEY.Length - 4))
+    Write-Host "GEMINI_API_KEY loaded successfully: $maskedGemini (Length: $($env:GEMINI_API_KEY.Length))" -ForegroundColor Green
+}
+Write-Host "=====================================================" -ForegroundColor Cyan
+
+$port = if ($env:SERVER_PORT) { [int]$env:SERVER_PORT } else { 8085 }
 
 # 1. Check for any process currently listening on the target port and attempt termination
 $staleConnections = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
@@ -50,13 +100,19 @@ if ($staleConnections) {
     }
     Start-Sleep -Seconds 1
     
-    # 2. Check if port is still locked (e.g. requires Administrator rights to kill)
+    # 2. Enforce target port: Fail fast loudly if port is occupied by another process
     $stillOccupied = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
     if ($stillOccupied) {
         $blockedPid = $stillOccupied[0].OwningProcess
-        Write-Host "[run_backend.ps1] WARNING: Port $port is locked by PID $blockedPid (Requires Admin privileges to terminate)." -ForegroundColor Red
-        Write-Host "[run_backend.ps1] Automatically switching application port to 8081..." -ForegroundColor Yellow
-        $port = 8081
+        $procName = "Unknown"
+        try { $procName = (Get-Process -Id $blockedPid -ErrorAction SilentlyContinue).ProcessName } catch {}
+        Write-Host "======================================================================" -ForegroundColor Red
+        Write-Host "[ERROR] BACKEND PORT COLLISION DETECTED!" -ForegroundColor Red
+        Write-Host "Target port $port is already occupied by process '$procName' (PID: $blockedPid)." -ForegroundColor Red
+        Write-Host "Port fallback is disabled to prevent frontend CORS and session mismatches." -ForegroundColor Red
+        Write-Host "Please terminate PID $blockedPid ('$procName') or stop the conflicting service, then restart." -ForegroundColor Red
+        Write-Host "======================================================================" -ForegroundColor Red
+        exit 1
     }
 }
 

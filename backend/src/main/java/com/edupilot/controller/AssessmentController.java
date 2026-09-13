@@ -16,7 +16,6 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/assessment")
-@CrossOrigin(origins = "*")
 public class AssessmentController {
 
     @Autowired
@@ -58,8 +57,12 @@ public class AssessmentController {
             }
             AssessmentSessionResponse response = assessmentService.startAssessmentSession(request);
             return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException argEx) {
+            System.err.println("[AssessmentController /start IllegalArgumentException] " + argEx.getMessage());
+            return ResponseEntity.status(400).body(Map.of("error", "INVALID_REQUEST", "message", argEx.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+            System.err.println("[AssessmentController /start Exception] " + ex.getMessage());
+            return ResponseEntity.status(500).body(Map.of("error", "ASSESSMENT_START_FAILED", "message", ex.getMessage() != null ? ex.getMessage() : "Failed to start assessment session"));
         }
     }
 
@@ -75,7 +78,7 @@ public class AssessmentController {
             AssessmentResultResponse response = assessmentService.submitAssessment(request);
             return ResponseEntity.ok(response);
         } catch (Exception ex) {
-            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+            return ResponseEntity.status(500).body(Map.of("error", "SUBMISSION_FAILED", "message", ex.getMessage()));
         }
     }
 
@@ -115,9 +118,9 @@ public class AssessmentController {
             AdaptiveAssessmentDTOs.AdaptiveStartResponse response = assessmentService.startAdaptiveSession(request, authUserId);
             return ResponseEntity.ok(response);
         } catch (SecurityException secEx) {
-            return ResponseEntity.status(403).body(Map.of("message", secEx.getMessage()));
+            return ResponseEntity.status(403).body(Map.of("error", "FORBIDDEN", "message", secEx.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+            return ResponseEntity.status(500).body(Map.of("error", "ADAPTIVE_START_FAILED", "message", ex.getMessage()));
         }
     }
 
@@ -128,9 +131,11 @@ public class AssessmentController {
             AdaptiveAssessmentDTOs.AdaptiveNextResponse response = assessmentService.getAdaptiveNextQuestion(request, authUserId);
             return ResponseEntity.ok(response);
         } catch (SecurityException secEx) {
-            return ResponseEntity.status(403).body(Map.of("message", secEx.getMessage()));
+            return ResponseEntity.status(403).body(Map.of("error", "FORBIDDEN", "message", secEx.getMessage()));
+        } catch (IllegalArgumentException argEx) {
+            return ResponseEntity.status(404).body(Map.of("error", "SESSION_NOT_FOUND", "message", argEx.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+            return ResponseEntity.status(500).body(Map.of("error", "ADAPTIVE_NEXT_FAILED", "message", ex.getMessage()));
         }
     }
 
@@ -141,11 +146,11 @@ public class AssessmentController {
             AdaptiveAssessmentDTOs.AdaptiveSubmitResponse response = assessmentService.submitAdaptiveAnswer(request, authUserId);
             return ResponseEntity.ok(response);
         } catch (SecurityException secEx) {
-            return ResponseEntity.status(403).body(Map.of("message", secEx.getMessage()));
+            return ResponseEntity.status(403).body(Map.of("error", "FORBIDDEN", "message", secEx.getMessage()));
         } catch (IllegalStateException stateEx) {
-            return ResponseEntity.status(409).body(Map.of("message", stateEx.getMessage()));
+            return ResponseEntity.status(409).body(Map.of("error", "SESSION_COMPLETED", "message", stateEx.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+            return ResponseEntity.status(500).body(Map.of("error", "ADAPTIVE_SUBMIT_FAILED", "message", ex.getMessage()));
         }
     }
 
@@ -160,9 +165,11 @@ public class AssessmentController {
             AdaptiveAssessmentDTOs.AdaptiveNextResponse response = assessmentService.getInitialNextQuestion(request, authUserId);
             return ResponseEntity.ok(response);
         } catch (SecurityException secEx) {
-            return ResponseEntity.status(403).body(Map.of("message", secEx.getMessage()));
+            return ResponseEntity.status(403).body(Map.of("error", "FORBIDDEN", "message", secEx.getMessage()));
+        } catch (IllegalArgumentException argEx) {
+            return ResponseEntity.status(404).body(Map.of("error", "SESSION_NOT_FOUND", "message", argEx.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+            return ResponseEntity.status(500).body(Map.of("error", "INITIAL_NEXT_FAILED", "message", ex.getMessage()));
         }
     }
 
@@ -173,11 +180,11 @@ public class AssessmentController {
             AdaptiveAssessmentDTOs.AdaptiveSubmitResponse response = assessmentService.submitInitialAnswer(request, authUserId);
             return ResponseEntity.ok(response);
         } catch (SecurityException secEx) {
-            return ResponseEntity.status(403).body(Map.of("message", secEx.getMessage()));
+            return ResponseEntity.status(403).body(Map.of("error", "FORBIDDEN", "message", secEx.getMessage()));
         } catch (IllegalStateException stateEx) {
-            return ResponseEntity.status(409).body(Map.of("message", stateEx.getMessage()));
+            return ResponseEntity.status(409).body(Map.of("error", "SESSION_COMPLETED", "message", stateEx.getMessage()));
         } catch (Exception ex) {
-            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+            return ResponseEntity.status(500).body(Map.of("error", "INITIAL_SUBMIT_FAILED", "message", ex.getMessage()));
         }
     }
 }

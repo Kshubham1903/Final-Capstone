@@ -1,6 +1,6 @@
 import { StudentProfile, LifestyleLog, getStoredStudentProfile, saveStudentProfile, calculateLocalSgi, QUESTION_BANK } from "./mockData";
 
-let activeBackendUrl = (import.meta as any).env?.VITE_API_URL || "http://127.0.0.1:8080";
+let activeBackendUrl = (import.meta as any).env?.VITE_API_URL || "http://127.0.0.1:8085";
 
 export function getBackendUrl(): string {
   return activeBackendUrl;
@@ -31,11 +31,8 @@ export function handleAuthError(res: Response): void {
 export async function checkBackendConnection(): Promise<boolean> {
   const candidateUrls = Array.from(new Set([
     (import.meta as any).env?.VITE_API_URL,
-    activeBackendUrl,
-    "http://127.0.0.1:8080",
-    "http://localhost:8080",
-    "http://127.0.0.1:8081",
-    "http://localhost:8081"
+    "http://127.0.0.1:8085",
+    "http://localhost:8085"
   ].filter(Boolean)));
 
   for (const url of candidateUrls) {
@@ -860,49 +857,25 @@ export async function startDiagnosticAssessment(payload: {
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        return await res.json();
+        return data;
       }
-    } catch (err) {
+      return {
+        error: "ASSESSMENT_START_FAILED",
+        message: data.message || `Failed to start diagnostic assessment (HTTP ${res.status}).`
+      };
+    } catch (err: any) {
       console.warn("Error starting diagnostic assessment on backend:", err);
+      return {
+        error: "ASSESSMENT_START_FAILED",
+        message: err.message || "Failed to communicate with diagnostic backend service."
+      };
     }
   }
-
-  // Fallback diagnostic session
   return {
-    sessionId: "sess_local_" + Date.now(),
-    branch: payload.branch,
-    semester: payload.semester,
-    subjectCode: payload.subjectCode,
-    subjectName: "Data Structures & Algorithms",
-    totalQuestions: 3,
-    totalMarks: 6,
-    questions: [
-      {
-        questionId: "q1",
-        topic: "Binary Search Trees",
-        questionText: "What is the worst-case time complexity of searching in an unbalanced Binary Search Tree?",
-        options: ["O(1)", "O(log N)", "O(N)", "O(N log N)"],
-        marks: 2,
-        difficulty: "MEDIUM"
-      },
-      {
-        questionId: "q2",
-        topic: "Sorting Algorithms",
-        questionText: "Which sorting algorithm is guaranteed O(N log N) time in worst case and is stable?",
-        options: ["Quick Sort", "Merge Sort", "Heap Sort", "Selection Sort"],
-        marks: 2,
-        difficulty: "EASY"
-      },
-      {
-        questionId: "q3",
-        topic: "Graph Theory",
-        questionText: "Which graph traversal algorithm uses a Queue data structure?",
-        options: ["Depth First Search (DFS)", "Breadth First Search (BFS)", "Dijkstra Algorithm", "Kruskal Algorithm"],
-        marks: 2,
-        difficulty: "EASY"
-      }
-    ]
+    error: "ASSESSMENT_START_FAILED",
+    message: "Backend service is offline."
   };
 }
 
@@ -1062,6 +1035,12 @@ export async function submitAdaptiveQuestionAnswer(payload: {
 export async function fetchNextInitialDiagnosticQuestion(payload: {
   sessionId: string;
 }): Promise<any> {
+  if (!payload || !payload.sessionId || payload.sessionId.startsWith("sess_local_")) {
+    return {
+      error: "INVALID_SESSION_ID",
+      message: "Cannot fetch diagnostic question: Session ID is missing or invalid."
+    };
+  }
   const online = await checkBackendConnection();
   if (online) {
     try {
@@ -1070,11 +1049,11 @@ export async function fetchNextInitialDiagnosticQuestion(payload: {
         headers: getAuthHeaders(),
         body: JSON.stringify({ adaptiveSessionId: payload.sessionId })
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         return data;
       }
-      return { error: "QUESTION_GENERATION_FAILED", message: data.message || "Groq API question generation failed." };
+      return { error: data.error || "QUESTION_GENERATION_FAILED", message: data.message || `Failed to fetch diagnostic question (HTTP ${res.status}).` };
     } catch (err: any) {
       console.warn("Error fetching next initial diagnostic question:", err);
       return { error: "QUESTION_GENERATION_FAILED", message: err.message || "Failed to communicate with diagnostic service." };

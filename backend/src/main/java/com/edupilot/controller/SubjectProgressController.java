@@ -13,7 +13,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/subject-progress")
-@CrossOrigin(origins = "*")
 public class SubjectProgressController {
 
     @Autowired

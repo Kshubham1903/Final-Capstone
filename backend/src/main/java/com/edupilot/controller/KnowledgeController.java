@@ -11,7 +11,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/knowledge")
-@CrossOrigin(origins = "*")
 public class KnowledgeController {
 
     @Autowired

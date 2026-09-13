@@ -14,7 +14,7 @@ public class GroqProvider implements LLMProvider {
     @Value("${llm.groq.api-key:mock-key}")
     private String apiKey;
 
-    @Value("${llm.groq.model:llama-3.3-70b-versatile}")
+    @Value("${llm.groq.model:qwen/qwen3.6-27b}")
     private String modelName;
 
     @Value("${llm.temperature:0.7}")
@@ -128,9 +128,11 @@ public class GroqProvider implements LLMProvider {
     }
 
     private String buildStructuredError(String errorType, String message, String suggestion) {
+        String cleanMsg = message != null ? message.replace("\"", "'").replace("\r", " ").replace("\n", " ") : "";
+        String cleanSugg = suggestion != null ? suggestion.replace("\"", "'").replace("\r", " ").replace("\n", " ") : "";
         return "{\"success\": false, \"provider\": \"Groq\", \"errorType\": \"" + errorType +
-               "\", \"message\": \"" + message.replace("\"", "'") +
-               "\", \"suggestion\": \"" + suggestion.replace("\"", "'") + "\"}";
+               "\", \"message\": \"" + cleanMsg +
+               "\", \"suggestion\": \"" + cleanSugg + "\"}";
     }
 
     @Override

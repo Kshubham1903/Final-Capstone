@@ -11,7 +11,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/planner")
-@CrossOrigin(origins = "*")
 public class LearningPlannerController {
 
     @Autowired

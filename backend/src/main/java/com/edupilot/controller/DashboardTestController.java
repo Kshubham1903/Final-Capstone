@@ -12,7 +12,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/dashboard-test")
-@CrossOrigin(origins = "*")
 public class DashboardTestController {
 
     @Autowired

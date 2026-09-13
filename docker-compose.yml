@@ -37,7 +37,7 @@ services:
       dockerfile: Dockerfile
     container_name: edupilot-backend
     ports:
-      - "8080:8080"
+      - "8085:8085"
     depends_on:
       - mongodb
       - redis
@@ -61,8 +61,8 @@ services:
     depends_on:
       - backend-api
     environment:
-      - VITE_API_URL=http://backend-api:8080
-      - NEXT_PUBLIC_API_URL=http://backend-api:8080
+      - VITE_API_URL=http://backend-api:8085
+      - NEXT_PUBLIC_API_URL=http://backend-api:8085
 
 volumes:
   mongo-data:
