@@ -33,37 +33,6 @@ if (-not $env:LLM_PROVIDER) {
     } else { $env:LLM_PROVIDER = 'groq' }
 }
 
-$port = if ($env:SERVER_PORT) { [int]$env:SERVER_PORT } else { 8080 }
-
-# 1. Check for any process currently listening on the target port and attempt termination
-$staleConnections = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-if ($staleConnections) {
-    foreach ($conn in $staleConnections) {
-        $pidToKill = $conn.OwningProcess
-        if ($pidToKill -and $pidToKill -ne 0) {
-            Write-Host "[run_backend.ps1] Found process PID $pidToKill listening on port $port. Attempting cleanup..." -ForegroundColor Yellow
-            taskkill /F /PID $pidToKill 2>$null | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                Stop-Process -Id $pidToKill -Force -ErrorAction SilentlyContinue
-            }
-        }
-    }
-    Start-Sleep -Seconds 1
-    
-    # 2. Check if port is still locked (e.g. requires Administrator rights to kill)
-    $stillOccupied = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-    if ($stillOccupied) {
-        $blockedPid = $stillOccupied[0].OwningProcess
-        Write-Host "[run_backend.ps1] WARNING: Port $port is locked by PID $blockedPid (Requires Admin privileges to terminate)." -ForegroundColor Red
-        Write-Host "[run_backend.ps1] Automatically switching application port to 8081..." -ForegroundColor Yellow
-        $port = 8081
-    }
-}
-
-Write-Host "[run_backend.ps1] Starting EduPilot Backend on port $port..." -ForegroundColor Green
-$env:SERVER_PORT = $port
-& "$PSScriptRoot\.maven_portable\apache-maven-3.9.6\bin\mvn.cmd" spring-boot:run
-
 # Validate and print masked status for LLM keys
 Write-Host "========== EDUPILOT ENVIRONMENT VALIDATION ==========" -ForegroundColor Cyan
 Write-Host "LLM Provider selected: $env:LLM_PROVIDER" -ForegroundColor Cyan
@@ -102,21 +71,6 @@ if ($staleConnections) {
         }
     }
     Start-Sleep -Seconds 1
-    
-    # 2. Enforce target port: Fail fast loudly if port is occupied by another process
-    $stillOccupied = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-    if ($stillOccupied) {
-        $blockedPid = $stillOccupied[0].OwningProcess
-        $procName = "Unknown"
-        try { $procName = (Get-Process -Id $blockedPid -ErrorAction SilentlyContinue).ProcessName } catch {}
-        Write-Host "======================================================================" -ForegroundColor Red
-        Write-Host "[ERROR] BACKEND PORT COLLISION DETECTED!" -ForegroundColor Red
-        Write-Host "Target port $port is already occupied by process '$procName' (PID: $blockedPid)." -ForegroundColor Red
-        Write-Host "Port fallback is disabled to prevent frontend CORS and session mismatches." -ForegroundColor Red
-        Write-Host "Please terminate PID $blockedPid ('$procName') or stop the conflicting service, then restart." -ForegroundColor Red
-        Write-Host "======================================================================" -ForegroundColor Red
-        exit 1
-    }
 }
 
 Write-Host "[run_backend.ps1] Starting EduPilot Backend on port $port..." -ForegroundColor Green

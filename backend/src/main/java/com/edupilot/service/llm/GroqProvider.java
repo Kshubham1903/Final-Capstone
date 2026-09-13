@@ -17,13 +17,13 @@ public class GroqProvider implements LLMProvider {
     @Value("${llm.groq.api-key:mock-key}")
     private String apiKey;
 
-    @Value("${llm.groq.model:qwen/qwen3.8-27b}")
+    @Value("${llm.groq.model:groq/compound-mini}")
     private String modelName;
 
     @Value("${llm.temperature:0.7}")
     private double temperature;
 
-    @Value("${llm.max-tokens:280}")
+    @Value("${llm.max-tokens:450}")
     private int maxTokens;
 
     private static final String GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
@@ -95,8 +95,8 @@ public class GroqProvider implements LLMProvider {
                 effectiveMaxTokens = Integer.parseInt(context.get("maxTokens").toString());
             } catch (Exception ignored) {}
         }
-        // Enforce hard upper bound of 280 maxTokens for Groq requests (enforced OTPM limit is 1000)
-        effectiveMaxTokens = Math.min(effectiveMaxTokens, 280);
+        // Enforce hard upper bound of 450 maxTokens for Groq requests to ensure full valid JSON objects
+        effectiveMaxTokens = Math.min(effectiveMaxTokens, 450);
 
         int promptChars = (systemPrompt != null ? systemPrompt.length() : 0) + (userMessage != null ? userMessage.length() : 0);
         int estPromptTokens = promptChars / 4;
@@ -163,9 +163,9 @@ public class GroqProvider implements LLMProvider {
             String rawBody = hsce.getResponseBodyAsString();
             System.err.println("[GroqProvider] HTTP " + status + ": " + rawBody);
 
-            if (status == 404 && rawBody != null && rawBody.contains("model_not_found") && !"llama-3.3-70b-versatile".equalsIgnoreCase(modelName)) {
-                System.out.println("[GroqProvider] Primary model " + modelName + " returned 404. Retrying with fallback model llama-3.3-70b-versatile...");
-                requestBody.put("model", "llama-3.3-70b-versatile");
+            if (status == 404 && rawBody != null && rawBody.contains("model_not_found") && !"groq/compound-mini".equalsIgnoreCase(modelName)) {
+                System.out.println("[GroqProvider] Primary model " + modelName + " returned 404. Retrying with fallback model groq/compound-mini...");
+                requestBody.put("model", "groq/compound-mini");
                 HttpEntity<Map<String, Object>> fallbackEntity = new HttpEntity<>(requestBody, headers);
                 try {
                     ResponseEntity<Map> fallbackResp = restTemplate.postForEntity(GROQ_ENDPOINT, fallbackEntity, Map.class);
@@ -180,7 +180,7 @@ public class GroqProvider implements LLMProvider {
                         }
                     }
                 } catch (Exception fallbackEx) {
-                    System.err.println("[GroqProvider] Fallback model llama-3.3-70b-versatile also failed: " + fallbackEx.getMessage());
+                    System.err.println("[GroqProvider] Fallback model groq/compound-mini also failed: " + fallbackEx.getMessage());
                 }
             }
 
