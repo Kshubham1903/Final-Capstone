@@ -32,6 +32,12 @@ public class LearningPlan {
         private String conceptName;
         private Recommendation.Priority priority = Recommendation.Priority.MEDIUM;
         private int estimatedStudyTimeMinutes = 20;
+        private String modality = "VISUAL";
+        private String pace = "NORMAL";
+        private String workload = "MEDIUM";
+        private String whatExplanation;
+        private String howExplanation;
+        private String paceExplanation;
         private int recommendedOrder = 1;
         private String reason; // Explainability text
         private String recommendedAction;
@@ -160,6 +166,54 @@ public class LearningPlan {
 
         public void setGeneratedFromRecommendationId(String generatedFromRecommendationId) {
             this.generatedFromRecommendationId = generatedFromRecommendationId;
+        }
+
+        public String getModality() {
+            return modality;
+        }
+
+        public void setModality(String modality) {
+            this.modality = modality;
+        }
+
+        public String getPace() {
+            return pace;
+        }
+
+        public void setPace(String pace) {
+            this.pace = pace;
+        }
+
+        public String getWorkload() {
+            return workload;
+        }
+
+        public void setWorkload(String workload) {
+            this.workload = workload;
+        }
+
+        public String getWhatExplanation() {
+            return whatExplanation;
+        }
+
+        public void setWhatExplanation(String whatExplanation) {
+            this.whatExplanation = whatExplanation;
+        }
+
+        public String getHowExplanation() {
+            return howExplanation;
+        }
+
+        public void setHowExplanation(String howExplanation) {
+            this.howExplanation = howExplanation;
+        }
+
+        public String getPaceExplanation() {
+            return paceExplanation;
+        }
+
+        public void setPaceExplanation(String paceExplanation) {
+            this.paceExplanation = paceExplanation;
         }
     }
 

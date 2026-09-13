@@ -25,7 +25,16 @@ public class AdaptiveSession {
     private int maxQuestions = 15;
     private List<String> usedQuestionIds = new ArrayList<>();
     private List<String> usedQuestionFingerprints = new ArrayList<>();
+    private ModuleType moduleType = ModuleType.ADAPTIVE;
     private Status status = Status.IN_PROGRESS;
+
+    public ModuleType getModuleType() {
+        return moduleType != null ? moduleType : ModuleType.ADAPTIVE;
+    }
+
+    public void setModuleType(ModuleType moduleType) {
+        this.moduleType = moduleType;
+    }
     private LocalDateTime startTime = LocalDateTime.now();
     private LocalDateTime endTime;
 

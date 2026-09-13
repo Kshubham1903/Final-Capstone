@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import Layout from "../../../components/Layout";
+import AssessmentFeedbackCard from "../../../components/dashboard/AssessmentFeedbackCard";
 import {
   GraduationCap,
   BrainCircuit,
@@ -29,7 +30,11 @@ import {
   startAdaptiveDiagnosticSession,
   fetchNextAdaptiveQuestion,
   submitAdaptiveQuestionAnswer,
-  fetchKnowledgeProfile
+  fetchKnowledgeProfile,
+  abandonAssessmentSession,
+  abandonAdaptiveSession,
+  abandonRemediationSession,
+  abandonQuizSession
 } from "../../../services/api";
 
 export default function Quizzes() {
@@ -68,10 +73,11 @@ export default function Quizzes() {
   const [assessmentStage, setAssessmentStage] = useState<"INITIAL" | "ADAPTIVE">("INITIAL");
   const [diagnosticSessionId, setDiagnosticSessionId] = useState<string | null>(null);
   const [adaptiveSessionId, setAdaptiveSessionId] = useState<string | null>(null);
-  const [maxQuestions, setMaxQuestions] = useState<number>(5);
+  const [maxQuestions, setMaxQuestions] = useState<number>(10);
   const [submittingAnswer, setSubmittingAnswer] = useState<boolean>(false);
   const [questionFeedback, setQuestionFeedback] = useState<any | null>(null);
   const [groqError, setGroqError] = useState<string | null>(null);
+  const [nextQuestionError, setNextQuestionError] = useState<string | null>(null);
   const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
   const [finalSkillProfile, setFinalSkillProfile] = useState<any | null>(null);
 
@@ -152,6 +158,7 @@ export default function Quizzes() {
     setIsGeneratingAi(true);
     setAiGenerationError(null);
     setGroqError(null);
+    setNextQuestionError(null);
     setRetryAction(null);
 
     highestQuestionNumberSeenRef.current = 0;
@@ -191,17 +198,45 @@ export default function Quizzes() {
         semester,
         subjectCode,
         subjectName: subj,
-        questionCount: 5
+        questionCount: 25
       });
       if (!startRes || startRes.error || !startRes.sessionId || startRes.sessionId.startsWith("sess_local_")) {
-        setGroqError(startRes?.message || "Failed to initialize diagnostic session. Please check connection and backend configuration.");
+        setGroqError(startRes?.message || "Failed to initialize valid diagnostic session on backend.");
+        setRetryAction(() => () => startAiQuiz(subj));
         return;
       }
 
       setDiagnosticSessionId(startRes.sessionId);
-      await loadNextInitialQuestion(startRes.sessionId);
+
+      if (startRes.questions && startRes.questions.length > 0) {
+        const q1 = startRes.questions[0];
+        const normalizedQ1 = {
+          ...q1,
+          questionId: q1.questionId || q1.id,
+          id: q1.questionId || q1.id,
+          concept: q1.concept || q1.topic || "General"
+        };
+        console.log("[QUESTION DELIVERY] position=1", normalizedQ1);
+        console.log("[ACTIVE QUESTION UPDATE] position=1, questionId=" + normalizedQ1.questionId);
+
+        setQuestionFeedback(null);
+        setActiveQuestion(normalizedQ1);
+        setCurrentDiff((normalizedQ1.difficulty as "EASY" | "MEDIUM" | "HARD") || "EASY");
+        setQuestionCount(0);
+        setMaxQuestions(startRes.totalQuestions || 25);
+        setSelectedOption(null);
+        setIsAnswered(false);
+        setSecondsSpent(0);
+
+        const qFp = normalizedQ1.questionFingerprint || normalizedQ1.questionId || normalizedQ1.questionText;
+        if (qFp) displayedAdaptiveFingerprintsRef.current.add(qFp);
+        highestQuestionNumberSeenRef.current = 1;
+      } else {
+        await loadNextInitialQuestion(startRes.sessionId);
+      }
     } catch (err: any) {
       setGroqError(err.message || "Diagnostic session setup failed.");
+      setRetryAction(() => () => startAiQuiz(subj));
     } finally {
       setIsGeneratingAi(false);
       setGeneratingSubject(null);
@@ -210,7 +245,8 @@ export default function Quizzes() {
 
   const loadNextInitialQuestion = async (sessId: string) => {
     if (!sessId || sessId.startsWith("sess_local_")) {
-      setGroqError("Session initialization incomplete: Missing backend session ID.");
+      setGroqError("Invalid diagnostic session ID. Please restart the session.");
+      setRetryAction(() => () => startAiQuiz(activeSubject || "Computer Science"));
       return;
     }
 
@@ -222,7 +258,10 @@ export default function Quizzes() {
     adaptiveNextRequestInFlightRef.current = true;
     const requestId = ++adaptiveRequestSequenceRef.current;
     setIsGeneratingAi(true);
-    setGroqError(null);
+    setNextQuestionError(null);
+    if (!activeQuestion) {
+      setGroqError(null);
+    }
 
     try {
       const res = await fetchNextInitialDiagnosticQuestion({ sessionId: sessId });
@@ -233,8 +272,30 @@ export default function Quizzes() {
       }
 
       if (res.error || !res.question) {
-        setGroqError(res.message || "Groq question generation failed.");
-        setRetryAction(() => () => loadNextInitialQuestion(sessId));
+        const errMsg = res.message || "Groq question generation failed.";
+        const targetPos = questionCount + 2;
+        const isSessionInvalid = !sessId || sessId.startsWith("sess_local_") || (res.message && res.message.toLowerCase().includes("session not found"));
+
+        if (activeQuestion && !isSessionInvalid) {
+          console.log("[NEXT QUESTION ERROR]", {
+            currentPosition: questionCount + 1,
+            targetPosition: targetPos,
+            currentQuestionId: activeQuestion.id || activeQuestion.questionId,
+            error: errMsg
+          });
+          setNextQuestionError(errMsg);
+          setRetryAction(() => () => {
+            console.log("[NEXT QUESTION RETRY]", { targetPosition: targetPos });
+            loadNextInitialQuestion(sessId);
+          });
+        } else {
+          setGroqError(errMsg);
+          if (isSessionInvalid) {
+            setRetryAction(() => () => startAiQuiz(activeSubject || "Computer Science"));
+          } else {
+            setRetryAction(() => () => loadNextInitialQuestion(sessId));
+          }
+        }
         return;
       }
 
@@ -245,7 +306,14 @@ export default function Quizzes() {
         return;
       }
 
-      const qFp = res.question.questionFingerprint || res.question.questionId || res.question.id || res.question.questionText;
+      const normalizedQ = {
+        ...res.question,
+        questionId: res.question.questionId || res.question.id,
+        id: res.question.questionId || res.question.id,
+        concept: res.question.concept || res.question.topic || "General"
+      };
+
+      const qFp = normalizedQ.questionFingerprint || normalizedQ.questionId || normalizedQ.questionText;
       if (qFp && displayedAdaptiveFingerprintsRef.current.has(qFp)) {
         console.warn(`[AdaptiveQuiz] Ignored duplicate initial question fingerprint="${qFp}"`);
         return;
@@ -254,10 +322,24 @@ export default function Quizzes() {
       highestQuestionNumberSeenRef.current = incomingQuestionNumber;
       if (qFp) displayedAdaptiveFingerprintsRef.current.add(qFp);
 
-      console.log(`[AdaptiveQuiz] Accepted initial question requestId=${requestId}, questionNumber=${incomingQuestionNumber}, fingerprint=${qFp}`);
+      console.log("[NEXT QUESTION SUCCESS]", {
+        position: incomingQuestionNumber,
+        questionId: normalizedQ.questionId
+      });
+      console.log("[DIAGNOSTIC NEXT DEBUG]", {
+        oldQuestionId: activeQuestion?.questionId || activeQuestion?.id,
+        oldPosition: questionCount + 1,
+        newQuestionId: normalizedQ.questionId,
+        newPosition: incomingQuestionNumber
+      });
+      console.log(`[QUESTION DELIVERY] position=${incomingQuestionNumber}`, normalizedQ);
+      console.log(`[ACTIVE QUESTION UPDATE] position=${incomingQuestionNumber}, questionId=${normalizedQ.questionId}`);
 
-      setActiveQuestion(res.question);
-      setCurrentDiff((res.question.difficulty as "EASY" | "MEDIUM" | "HARD") || "MEDIUM");
+      setNextQuestionError(null);
+      setGroqError(null);
+      setQuestionFeedback(null);
+      setActiveQuestion(normalizedQ);
+      setCurrentDiff((normalizedQ.difficulty as "EASY" | "MEDIUM" | "HARD") || "MEDIUM");
       setQuestionCount(incomingQuestionNumber - 1);
       setMaxQuestions(res.totalQuestions || 10);
       setSelectedOption(null);
@@ -265,8 +347,24 @@ export default function Quizzes() {
       setSecondsSpent(0);
     } catch (err: any) {
       if (requestId === adaptiveRequestSequenceRef.current) {
-        setGroqError(err.message || "Failed to fetch diagnostic question.");
-        setRetryAction(() => () => loadNextInitialQuestion(sessId));
+        const errMsg = err.message || "Failed to fetch diagnostic question.";
+        const targetPos = questionCount + 2;
+        if (activeQuestion) {
+          console.log("[NEXT QUESTION ERROR]", {
+            currentPosition: questionCount + 1,
+            targetPosition: targetPos,
+            currentQuestionId: activeQuestion.id || activeQuestion.questionId,
+            error: errMsg
+          });
+          setNextQuestionError(errMsg);
+          setRetryAction(() => () => {
+            console.log("[NEXT QUESTION RETRY]", { targetPosition: targetPos });
+            loadNextInitialQuestion(sessId);
+          });
+        } else {
+          setGroqError(errMsg);
+          setRetryAction(() => () => loadNextInitialQuestion(sessId));
+        }
       }
     } finally {
       if (requestId === adaptiveRequestSequenceRef.current) {
@@ -294,7 +392,10 @@ export default function Quizzes() {
     adaptiveNextRequestInFlightRef.current = true;
     const requestId = ++adaptiveRequestSequenceRef.current;
     setIsGeneratingAi(true);
-    setGroqError(null);
+    setNextQuestionError(null);
+    if (!activeQuestion) {
+      setGroqError(null);
+    }
 
     console.log(`[AdaptiveQuiz] Dispatched requestId=${requestId}, sessionId=${adapSessId}, highestSeen=${highestQuestionNumberSeenRef.current}`);
 
@@ -313,8 +414,24 @@ export default function Quizzes() {
       }
 
       if (res.error || !res.question) {
-        setGroqError(res.message || "Groq adaptive question generation failed.");
-        setRetryAction(() => () => loadNextAdaptiveQuestion(adapSessId));
+        const errMsg = res.message || "Groq adaptive question generation failed.";
+        const targetPos = questionCount + 2;
+        if (activeQuestion) {
+          console.log("[NEXT QUESTION ERROR]", {
+            currentPosition: questionCount + 1,
+            targetPosition: targetPos,
+            currentQuestionId: activeQuestion.id || activeQuestion.questionId,
+            error: errMsg
+          });
+          setNextQuestionError(errMsg);
+          setRetryAction(() => () => {
+            console.log("[NEXT QUESTION RETRY]", { targetPosition: targetPos });
+            loadNextAdaptiveQuestion(adapSessId);
+          });
+        } else {
+          setGroqError(errMsg);
+          setRetryAction(() => () => loadNextAdaptiveQuestion(adapSessId));
+        }
         return;
       }
 
@@ -334,8 +451,15 @@ export default function Quizzes() {
       highestQuestionNumberSeenRef.current = incomingQuestionNumber;
       if (qFp) displayedAdaptiveFingerprintsRef.current.add(qFp);
 
+      console.log("[NEXT QUESTION SUCCESS]", {
+        position: incomingQuestionNumber,
+        questionId: res.question.questionId || res.question.id
+      });
       console.log(`[AdaptiveQuiz] Accepted question requestId=${requestId}, questionNumber=${incomingQuestionNumber}, fingerprint=${qFp}`);
 
+      setNextQuestionError(null);
+      setGroqError(null);
+      setQuestionFeedback(null);
       setActiveQuestion(res.question);
       setCurrentDiff((res.question.difficulty as "EASY" | "MEDIUM" | "HARD") || "MEDIUM");
       setQuestionCount(incomingQuestionNumber - 1);
@@ -345,8 +469,24 @@ export default function Quizzes() {
       setSecondsSpent(0);
     } catch (err: any) {
       if (requestId === adaptiveRequestSequenceRef.current) {
-        setGroqError(err.message || "Failed to fetch adaptive question.");
-        setRetryAction(() => () => loadNextAdaptiveQuestion(adapSessId));
+        const errMsg = err.message || "Failed to fetch adaptive question.";
+        const targetPos = questionCount + 2;
+        if (activeQuestion) {
+          console.log("[NEXT QUESTION ERROR]", {
+            currentPosition: questionCount + 1,
+            targetPosition: targetPos,
+            currentQuestionId: activeQuestion.id || activeQuestion.questionId,
+            error: errMsg
+          });
+          setNextQuestionError(errMsg);
+          setRetryAction(() => () => {
+            console.log("[NEXT QUESTION RETRY]", { targetPosition: targetPos });
+            loadNextAdaptiveQuestion(adapSessId);
+          });
+        } else {
+          setGroqError(errMsg);
+          setRetryAction(() => () => loadNextAdaptiveQuestion(adapSessId));
+        }
       }
     } finally {
       if (requestId === adaptiveRequestSequenceRef.current) {
@@ -560,17 +700,42 @@ export default function Quizzes() {
   if (!profile) return null;
 
   const handleSubmitAnswer = async () => {
-    if (selectedOption === null || submittingAnswer || !activeQuestion) return;
+    const qId = activeQuestion?.questionId || activeQuestion?.id;
+    const sessId = diagnosticSessionId || adaptiveSessionId;
+    const pos = questionCount + 1;
+
+    console.log("[SUBMIT CLICKED]", {
+      sessionId: sessId,
+      questionId: qId,
+      position: pos,
+      selectedOption
+    });
+
+    if (selectedOption === null || !activeQuestion) {
+      console.warn("[SUBMIT HANDLER CANCELLED - Missing State]", { selectedOption, hasQuestion: !!activeQuestion });
+      return;
+    }
+
+    if (submittingAnswer) {
+      console.warn("[SUBMIT HANDLER CANCELLED - Request In Flight]");
+      return;
+    }
+
     setSubmittingAnswer(true);
+
+    console.log("[SUBMIT HANDLER START]", { sessionId: sessId, questionId: qId, position: pos, selectedOption });
 
     try {
       if (diagnosticSessionId && assessmentStage === "INITIAL") {
+        console.log("[SUBMIT API REQUEST START]", { sessionId: sessId, questionId: qId, position: pos, selectedOption });
         const res = await submitInitialDiagnosticAnswer({
           sessionId: diagnosticSessionId,
-          questionId: activeQuestion.questionId || activeQuestion.id,
+          questionId: qId,
           selectedOption,
           responseTimeSeconds: secondsSpent
         });
+
+        console.log("[SUBMIT API RESPONSE]", { sessionId: sessId, questionId: qId, position: pos, httpStatus: 200, res });
 
         const isCorrect = res.isCorrect;
         if (isCorrect) setCorrectAnswers(prev => prev + 1);
@@ -578,21 +743,46 @@ export default function Quizzes() {
         setQuestionFeedback(res);
         setIsAnswered(true);
 
-        setDiagnosticLog(prev => [...prev, {
+        const explanationStr = res.explanation || activeQuestion?.conceptualExplanation || "";
+        console.log("[DIAGNOSTIC SUBMIT DEBUG]", {
+          position: pos,
+          submittedQuestionId: qId,
+          activeQuestionId: activeQuestion?.id || activeQuestion?.questionId,
+          responseQuestionId: qId,
+          explanationPresent: !!explanationStr,
+          explanationLength: explanationStr.length
+        });
+        console.log("[DIAGNOSTIC FEEDBACK DEBUG]", {
+          position: pos,
+          questionId: qId,
+          explanationPresent: !!explanationStr,
+          explanationLength: explanationStr.length
+        });
+
+        const historyItem = {
+          position: pos,
+          questionId: qId,
+          questionText: activeQuestion.questionText,
+          concept: activeQuestion.concept || "General",
           difficulty: currentDiff,
           correct: isCorrect,
           reason: res.explanation || (isCorrect ? "Correct answer!" : "Incorrect option selected.")
-        }]);
+        };
+        console.log("[ADAPTIVE HISTORY APPEND]", historyItem);
+        setDiagnosticLog(prev => [...prev, historyItem]);
 
-        setQuestionCount(prev => prev + 1);
+        console.log("[SUBMIT HANDLER SUCCESS]", { sessionId: sessId, questionId: qId, position: pos });
 
       } else if (adaptiveSessionId && assessmentStage === "ADAPTIVE") {
+        console.log("[SUBMIT API REQUEST START]", { sessionId: sessId, questionId: qId, position: pos, selectedOption });
         const res = await submitAdaptiveQuestionAnswer({
           adaptiveSessionId: adaptiveSessionId,
-          questionId: activeQuestion.questionId || activeQuestion.id,
+          questionId: qId,
           selectedOption,
           responseTimeSeconds: secondsSpent
         });
+
+        console.log("[SUBMIT API RESPONSE]", { sessionId: sessId, questionId: qId, position: pos, httpStatus: 200, res });
 
         const isCorrect = res.isCorrect;
         if (isCorrect) setCorrectAnswers(prev => prev + 1);
@@ -603,56 +793,80 @@ export default function Quizzes() {
           setCurrentDiff(res.nextDifficulty as "EASY" | "MEDIUM" | "HARD");
         }
 
-        setDiagnosticLog(prev => [...prev, {
+        const historyItem = {
+          position: pos,
+          questionId: qId,
+          questionText: activeQuestion.questionText,
+          concept: activeQuestion.concept || "General",
           difficulty: currentDiff,
           correct: isCorrect,
           reason: res.explanation || (isCorrect ? "Correct answer!" : "Incorrect option selected.")
-        }]);
+        };
+        console.log("[ADAPTIVE HISTORY APPEND]", historyItem);
+        setDiagnosticLog(prev => [...prev, historyItem]);
 
-        setQuestionCount(prev => prev + 1);
+        console.log("[SUBMIT HANDLER SUCCESS]", { sessionId: sessId, questionId: qId, position: pos });
 
       } else {
-        // Fallback for isolated legacy verification quiz
-        const isCorrect = selectedOption === activeQuestion.correctOptionIndex;
-        if (isCorrect) setCorrectAnswers(prev => prev + 1);
+        // Fallback for isolated legacy practice or verification quiz
+        const legacyQId = activeQuestion.questionId || activeQuestion.id || `q_${questionCount}`;
+        setUserAnswers(prev => [...prev, { questionId: legacyQId, selectedOptionIndex: selectedOption }]);
 
-        const qId = activeQuestion.questionId || activeQuestion.id || `q_${questionCount}`;
-        setUserAnswers(prev => [...prev, { questionId: qId, selectedOptionIndex: selectedOption }]);
+        if (isVerificationMode && remediationSessionId) {
+          // Verification quiz answers are collected and graded on final submission via submitConceptRemediation
+          setQuestionFeedback({
+            isCorrect: true,
+            explanation: "Answer recorded for concept verification grading."
+          });
+          setIsAnswered(true);
+        } else {
+          const isCorrect = selectedOption === activeQuestion.correctOptionIndex;
+          if (isCorrect) setCorrectAnswers(prev => prev + 1);
 
-        const payload = {
-          profileId: profile.id || "",
-          subject: activeSubject,
-          concept: activeQuestion.concept,
-          difficulty: currentDiff,
-          isCorrect: isCorrect,
-          responseTimeSeconds: secondsSpent,
-          isVerification: isVerificationMode,
-          targetConcept: displayTargetConcept || undefined
-        };
+          const payload = {
+            profileId: profile.id || "",
+            subject: activeSubject,
+            concept: activeQuestion.concept,
+            difficulty: currentDiff,
+            isCorrect: isCorrect,
+            responseTimeSeconds: secondsSpent,
+            isVerification: isVerificationMode,
+            targetConcept: displayTargetConcept || undefined
+          };
 
-        const result = await submitQuizAnswer(payload);
-        const nextDifficulty = result.nextDifficulty as "EASY" | "MEDIUM" | "HARD";
-        const reasonText = result.reason;
+          const result = await submitQuizAnswer(payload);
+          const nextDifficulty = result?.nextDifficulty as "EASY" | "MEDIUM" | "HARD" || currentDiff;
+          const reasonText = result?.reason || (isCorrect ? "Correct answer!" : "Incorrect option selected.");
 
-        setCurrentDiff(nextDifficulty);
+          setCurrentDiff(nextDifficulty);
 
-        setDiagnosticLog(prev => [...prev, {
-          difficulty: currentDiff,
-          correct: isCorrect,
-          reason: reasonText
-        }]);
+          setDiagnosticLog(prev => [...prev, {
+            position: pos,
+            questionId: legacyQId,
+            questionText: activeQuestion.questionText,
+            concept: activeQuestion.concept || "General",
+            difficulty: currentDiff,
+            correct: isCorrect,
+            reason: reasonText
+          }]);
 
-        setQuestionCount(prev => prev + 1);
-        setIsAnswered(true);
+          setIsAnswered(true);
+        }
       }
     } catch (err: any) {
-      console.error("Error submitting answer:", err);
+      console.error("[SUBMIT HANDLER ERROR]", { sessionId: sessId, questionId: qId, position: pos, error: err?.message || err });
     } finally {
+      console.log("[SUBMIT HANDLER FINALLY]", { sessionId: sessId, questionId: qId, position: pos });
       setSubmittingAnswer(false);
     }
   };
 
   const handleNextStep = async () => {
+    if (submittingAnswer || isGeneratingAi || adaptiveNextRequestInFlightRef.current) {
+      console.warn("[QUIZ] handleNextStep ignored - request already in flight or generating.");
+      return;
+    }
+
     if (diagnosticSessionId || adaptiveSessionId) {
       const isCompleted = questionFeedback && questionFeedback.completed;
 
@@ -671,9 +885,6 @@ export default function Quizzes() {
           console.log("[QUIZ DEBUG] 10-question initial assessment batch completed. Transitioning directly to results/profile.");
           await finishDiagnosticSession();
         } else {
-          setQuestionFeedback(null);
-          setSelectedOption(null);
-          setIsAnswered(false);
           await loadNextInitialQuestion(diagnosticSessionId!);
         }
       } else if (assessmentStage === "ADAPTIVE") {
@@ -681,9 +892,6 @@ export default function Quizzes() {
           console.log("[QUIZ DEBUG] Adaptive stage completed. Transitioning to results/profile.");
           await finishDiagnosticSession();
         } else {
-          setQuestionFeedback(null);
-          setSelectedOption(null);
-          setIsAnswered(false);
           await loadNextAdaptiveQuestion(adaptiveSessionId!);
         }
       }
@@ -692,7 +900,8 @@ export default function Quizzes() {
 
     // Legacy fallback next step
     const totalSet = quizQuestions.length;
-    if (questionCount >= totalSet || questionCount >= 10) {
+    const nextIndex = questionCount + 1;
+    if (nextIndex >= totalSet || nextIndex >= 10) {
       if (isVerificationMode && remediationSessionId) {
         const activeUserId = profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") : "") || "";
         const remRes = await submitConceptRemediation(activeUserId, remediationSessionId, userAnswers);
@@ -715,7 +924,6 @@ export default function Quizzes() {
         applyResultsToProfileLocal();
       }
     } else {
-      const nextIndex = questionCount;
       let nextQ = quizQuestions[nextIndex];
 
       if (!nextQ) {
@@ -730,6 +938,7 @@ export default function Quizzes() {
       const key = nextQ.id || nextQ.questionText;
       savePersistedSeenId(activeSubject, key);
       setActiveQuestion(nextQ);
+      setQuestionCount(nextIndex);
 
       setSelectedOption(null);
       setIsAnswered(false);
@@ -773,6 +982,31 @@ export default function Quizzes() {
 
     mockData.saveStudentProfile(updatedProfile);
     setProfile(updatedProfile);
+  };
+
+  const handleExitActiveQuiz = async () => {
+    if (typeof window !== "undefined" && window.confirm("Are you sure you want to exit this quiz? Your active session progress will be abandoned.")) {
+      try {
+        if (diagnosticSessionId) {
+          await abandonAssessmentSession(diagnosticSessionId);
+        } else if (adaptiveSessionId) {
+          await abandonAdaptiveSession(adaptiveSessionId);
+        } else if (remediationSessionId) {
+          await abandonRemediationSession(remediationSessionId);
+        }
+      } catch (err) {
+        console.warn("Error abandoning quiz session:", err);
+      }
+      setQuizStarted(false);
+      setQuizFinished(false);
+      setDiagnosticSessionId("");
+      setAdaptiveSessionId("");
+      setRemediationSessionId("");
+      setActiveQuestion(null);
+      setSelectedOption(null);
+      setIsAnswered(false);
+      setQuestionCount(0);
+    }
   };
 
   return (
@@ -879,9 +1113,9 @@ export default function Quizzes() {
         {quizStarted && !activeQuestion && !isExhausted && !verificationError && !groqError && !quizFinished && (
           <div className="glass-panel p-12 rounded-2xl border border-white/10 text-center space-y-4 max-w-lg mx-auto">
             <div className="animate-spin h-10 w-10 border-4 border-purple-500 border-t-transparent rounded-full mx-auto" />
-            <h3 className="text-lg font-bold text-main-theme">Generating Groq Diagnostic Question...</h3>
+            <h3 className="text-lg font-bold text-main-theme">Preparing next question...</h3>
             <p className="text-xs text-secondary-theme">
-              Groq AI (<span className="text-purple-400 font-mono">llama-3.3-70b-versatile</span>) is constructing a dynamic question for <strong className="text-purple-theme">{displayTargetConcept || activeSubject || "Subject"}</strong>
+              Groq AI (<span className="text-purple-400 font-mono">qwen/qwen3.8-27b</span>) is constructing a dynamic question for <strong className="text-purple-theme">{displayTargetConcept || activeSubject || "Subject"}</strong>
             </p>
           </div>
         )}
@@ -908,10 +1142,14 @@ export default function Quizzes() {
               <button
                 onClick={() => {
                   setGroqError(null);
-                  if (retryAction) {
+                  if (diagnosticSessionId && diagnosticSessionId.startsWith("sess_local_")) {
+                    startAiQuiz(activeSubject);
+                  } else if (retryAction) {
                     retryAction();
                   } else if (diagnosticSessionId) {
                     loadNextInitialQuestion(diagnosticSessionId);
+                  } else {
+                    startAiQuiz(activeSubject);
                   }
                 }}
                 className="px-6 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-purple-600/30 cursor-pointer"
@@ -973,7 +1211,7 @@ export default function Quizzes() {
         )}
 
         {/* IN QUIZ PANEL */}
-        {quizStarted && !quizFinished && !isExhausted && activeQuestion && (
+        {quizStarted && !quizFinished && !isExhausted && !groqError && activeQuestion && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
             {/* Left Column: Active Question Form (2/3 width) */}
@@ -982,10 +1220,16 @@ export default function Quizzes() {
               {/* Question Header Status */}
               <div className="flex justify-between items-center border-b border-white/5 pb-4">
                 <span className="text-[10px] font-bold text-secondary-theme uppercase tracking-widest">
-                  Question {questionCount + 1} of {quizQuestions.length > 0 ? quizQuestions.length : 10}
+                  Question {questionCount + 1} of {quizQuestions.length > 0 ? quizQuestions.length : maxQuestions}
                 </span>
 
                 <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleExitActiveQuiz}
+                    className="px-3 py-1 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 text-xs font-bold border border-pink-500/30 transition-all cursor-pointer"
+                  >
+                    Exit Quiz
+                  </button>
                   <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${currentDiff === "EASY" ? "bg-emerald-500/10 text-emerald-theme" :
                     currentDiff === "MEDIUM" ? "bg-cyan-500/10 text-cyan-theme" : "bg-pink-500/10 text-pink-theme"
                     }`}>
@@ -1002,7 +1246,7 @@ export default function Quizzes() {
               <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
                 <div
                   className="bg-gradient-to-r from-purple-500 to-pink-500 h-full transition-all duration-300"
-                  style={{ width: `${((questionCount + 1) / (quizQuestions.length > 0 ? quizQuestions.length : 10)) * 100}%` }}
+                  style={{ width: `${((questionCount + 1) / (quizQuestions.length > 0 ? quizQuestions.length : maxQuestions)) * 100}%` }}
                 />
               </div>
 
@@ -1102,24 +1346,69 @@ export default function Quizzes() {
               )}
 
               {/* Submission Control */}
-              <div className="flex justify-end pt-4 border-t border-white/5">
-                {!isAnswered ? (
-                  <button
-                    disabled={selectedOption === null}
-                    onClick={handleSubmitAnswer}
-                    className="px-6 py-3 bg-purple-600 disabled:opacity-40 hover:bg-purple-500 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-purple-500/20 cursor-pointer"
-                  >
-                    Submit Answer
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleNextStep}
-                    className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-purple-500/20 flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>{questionCount >= quizQuestions.length ? "Complete Profile Update" : "Advance Question"}</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
+              <div className="space-y-3 pt-4 border-t border-white/5">
+                {nextQuestionError && (
+                  <div className="p-4 rounded-xl border border-red-500/30 bg-red-500/10 space-y-2">
+                    <div className="flex items-center gap-2 text-red-400 font-bold text-xs">
+                      <AlertCircle className="h-4 w-4" />
+                      <span>Failed to generate Question {questionCount + 2}</span>
+                    </div>
+                    <p className="text-xs text-red-200/80 leading-relaxed">{nextQuestionError}</p>
+                    <div className="pt-1 flex gap-2">
+                      <button
+                        onClick={() => {
+                          console.log("[NEXT QUESTION RETRY]", { targetPosition: questionCount + 2 });
+                          setNextQuestionError(null);
+                          if (retryAction) {
+                            retryAction();
+                          } else if (diagnosticSessionId) {
+                            loadNextInitialQuestion(diagnosticSessionId);
+                          } else if (adaptiveSessionId) {
+                            loadNextAdaptiveQuestion(adaptiveSessionId);
+                          }
+                        }}
+                        className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow-md cursor-pointer"
+                      >
+                        Retry Generation with Groq
+                      </button>
+                    </div>
+                  </div>
                 )}
+
+                <div className="flex justify-between items-center">
+                  {isGeneratingAi ? (
+                    <div className="flex items-center gap-2 text-xs text-purple-400 font-bold animate-pulse">
+                      <div className="animate-spin h-3.5 w-3.5 border-2 border-purple-400 border-t-transparent rounded-full" />
+                      <span>Generating Question {questionCount + 2}...</span>
+                    </div>
+                  ) : <div />}
+
+                  <div className="ml-auto">
+                    {!isAnswered ? (
+                      <button
+                        disabled={selectedOption === null || submittingAnswer}
+                        onClick={handleSubmitAnswer}
+                        className="px-6 py-3 bg-purple-600 disabled:opacity-40 hover:bg-purple-500 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-purple-500/20 cursor-pointer"
+                      >
+                        {submittingAnswer ? "Submitting..." : "Submit Answer"}
+                      </button>
+                    ) : (
+                      <button
+                        disabled={isGeneratingAi}
+                        onClick={handleNextStep}
+                        className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-purple-500/20 flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>
+                          {(diagnosticSessionId || adaptiveSessionId)
+                            ? (questionFeedback?.completed ? "Complete Profile Update" : "Next Question")
+                            : (questionCount + 1 >= quizQuestions.length ? "Complete Profile Update" : "Next Question")
+                          }
+                        </span>
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1173,21 +1462,21 @@ export default function Quizzes() {
                 }`}>
                 {isVerificationMode
                   ? (remediationResult?.passed ? "Concept Successfully Remediated!" : "Remediation Test Complete")
-                  : "10-Question Diagnostic Complete"}
+                  : "Assessment Complete"}
               </h2>
-              <p className="text-xs text-secondary-theme">
-                You correctly answered <strong className="text-purple-theme font-bold">{correctAnswers} out of {quizQuestions.length > 0 ? quizQuestions.length : 5} questions</strong> for:
-              </p>
               <p className="text-base font-bold text-main-theme">
                 {activeSubject} {displayTargetConcept ? `— ${displayTargetConcept}` : ""}
               </p>
-              {isVerificationMode && remediationResult?.message && (
-                <p className={`text-xs font-semibold max-w-md mx-auto pt-1 leading-relaxed ${remediationResult.passed ? "text-emerald-400" : "text-amber-400"
-                  }`}>
-                  {remediationResult.message}
-                </p>
-              )}
             </div>
+
+            {/* Assessment Feedback & Adaptation Section */}
+            <AssessmentFeedbackCard
+              studentId={profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") || "" : "")}
+              topic={displayTargetConcept || activeSubject || "Assessment"}
+              score={correctAnswers}
+              totalQuestions={quizQuestions.length > 0 ? quizQuestions.length : maxQuestions}
+              customFeedback={isVerificationMode && remediationResult?.message ? remediationResult.message : undefined}
+            />
 
             {/* Diagnostic Indicators */}
             <div className="grid grid-cols-2 gap-4 pt-2">
@@ -1199,7 +1488,7 @@ export default function Quizzes() {
               </div>
               <div className="p-4 bg-white/5 rounded-xl border border-white/5">
                 <span className="text-[10px] text-secondary-theme block uppercase">Accuracy Rate</span>
-                <span className="text-lg font-bold text-cyan-theme">{((correctAnswers / (quizQuestions.length > 0 ? quizQuestions.length : 5)) * 100).toFixed(0)}%</span>
+                <span className="text-lg font-bold text-cyan-theme">{((correctAnswers / (quizQuestions.length > 0 ? quizQuestions.length : maxQuestions)) * 100).toFixed(0)}%</span>
               </div>
             </div>
 
@@ -1214,7 +1503,7 @@ export default function Quizzes() {
                 {diagnosticLog.map((item, idx) => (
                   <div key={idx} className="p-4 bg-white/5 border border-white/5 rounded-xl space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-purple-theme">Question {idx + 1} of {quizQuestions.length > 0 ? quizQuestions.length : 5} ({item.difficulty})</span>
+                      <span className="text-xs font-bold text-purple-theme">Question {idx + 1} of {quizQuestions.length > 0 ? quizQuestions.length : maxQuestions} ({item.difficulty})</span>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${item.correct ? "bg-emerald-500/10 text-emerald-theme border border-emerald-500/20" : "bg-pink-500/10 text-pink-theme border border-pink-500/20"}`}>
                         {item.correct ? "CORRECT" : "INCORRECT"}
                       </span>

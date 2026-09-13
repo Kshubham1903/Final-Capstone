@@ -31,7 +31,7 @@ public class AssessmentSessionResponse {
                 this.topic = q.getTopic();
                 this.questionText = q.getQuestionText();
                 this.options = q.getOptions();
-                this.marks = q.getMarks();
+                this.marks = 1;
                 this.difficulty = q.getDifficulty() != null ? q.getDifficulty().name() : "MEDIUM";
             }
         }

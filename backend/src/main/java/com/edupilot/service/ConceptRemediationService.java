@@ -17,7 +17,7 @@ public class ConceptRemediationService {
     private QuizGenerationService quizGenerationService;
 
     @Autowired
-    private DashboardTestSessionRepository sessionRepository;
+    private RemediationSessionRepository remediationSessionRepository;
 
     @Autowired
     private QuizQuestionRepository questionRepository;
@@ -51,7 +51,7 @@ public class ConceptRemediationService {
         StudentProfile profile = studentService.findOrCreateProfile(studentId);
         String canonicalUserId = profile.getUserId() != null ? profile.getUserId() : profile.getId();
 
-        // 1. Generate 5 concept-targeted questions via QuizGenerationService
+        // 1. Generate 5 concept-targeted questions via QuizGenerationService (tagged as REMEDIATION)
         List<QuizQuestion> questions = quizGenerationService.generateForConcept(
                 subject.trim(), 
                 concept.trim(), 
@@ -75,15 +75,17 @@ public class ConceptRemediationService {
             ));
         }
 
-        // 2. Persist remediation session in MongoDB (reusing DashboardTestSession document)
-        DashboardTestSession session = new DashboardTestSession();
+        // 2. Persist remediation session in dedicated remediation_sessions MongoDB collection
+        RemediationSession session = new RemediationSession();
         session.setStudentId(studentId);
-        session.setSubjects(List.of(subject));
+        session.setSubject(subject.trim());
+        session.setConcept(concept.trim());
         session.setQuestionIds(questionIds);
         session.setCreatedAt(LocalDateTime.now());
         session.setCompleted(false);
+        session.setModuleType(ModuleType.REMEDIATION);
 
-        DashboardTestSession savedSession = sessionRepository.save(session);
+        RemediationSession savedSession = remediationSessionRepository.save(session);
 
         Map<String, Object> response = new HashMap<>();
         response.put("sessionId", savedSession.getId());
@@ -101,11 +103,23 @@ public class ConceptRemediationService {
             throw new IllegalArgumentException("sessionId is required");
         }
 
-        DashboardTestSession session = sessionRepository.findById(sessionId)
-                .orElseThrow(() -> new IllegalArgumentException("Remediation session not found: " + sessionId));
+        List<String> questionIds;
+        String subject = "General";
+        String concept = "Core Concept";
+        String effectiveStudentId = studentId;
 
-        List<String> questionIds = session.getQuestionIds();
-        List<QuizQuestion> questions = questionRepository.findAllById(questionIds);
+        RemediationSession session = remediationSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new IllegalArgumentException("Remediation session not found: " + sessionId));
+        questionIds = session.getQuestionIds();
+        subject = session.getSubject() != null ? session.getSubject() : "General";
+        concept = session.getConcept() != null ? session.getConcept() : "Core Concept";
+        if (effectiveStudentId == null || effectiveStudentId.isBlank()) {
+            effectiveStudentId = session.getStudentId();
+        }
+
+        List<QuizQuestion> questions = (questionIds != null && !questionIds.isEmpty()) 
+                ? questionRepository.findAllById(questionIds) 
+                : new ArrayList<>();
 
         Map<String, QuizQuestion> questionMap = new HashMap<>();
         for (QuizQuestion q : questions) {
@@ -114,8 +128,6 @@ public class ConceptRemediationService {
 
         int totalQuestions = questions.size();
         int correctCount = 0;
-        String subject = !session.getSubjects().isEmpty() ? session.getSubjects().get(0) : "General";
-        String concept = "Core Concept";
 
         if (answers != null) {
             for (DashboardTestSubmissionDTO.AnswerEntry ans : answers) {
@@ -135,9 +147,9 @@ public class ConceptRemediationService {
         boolean passed = (correctCount >= 4); // >= 80% required for remediation pass
 
         session.setCompleted(true);
-        sessionRepository.save(session);
+        remediationSessionRepository.save(session);
 
-        StudentProfile profile = studentService.findOrCreateProfile(studentId != null ? studentId : session.getStudentId());
+        StudentProfile profile = studentService.findOrCreateProfile(effectiveStudentId);
         String canonicalUserId = profile.getUserId() != null ? profile.getUserId() : profile.getId();
 
         if (passed) {
@@ -181,6 +193,13 @@ public class ConceptRemediationService {
             cm.setRecommendedAction("Remediated successfully! Concept cleared.");
             conceptMasteryRepository.save(cm);
 
+            // Synchronize StudentProfile.conceptMastery summary with ConceptMasteryRepository data
+            try {
+                studentService.syncConceptMasteryWithProfile(canonicalUserId, finalSubject);
+            } catch (Exception e) {
+                System.err.println("[ConceptRemediationService] Profile mastery sync error: " + e.getMessage());
+            }
+
             // 4. Force regenerate adaptive planner to clear remediated card from dashboard
             try {
                 plannerService.generateLearningPlan(canonicalUserId);
@@ -214,5 +233,19 @@ public class ConceptRemediationService {
         String clean1 = c1.trim().toLowerCase();
         String clean2 = c2.trim().toLowerCase();
         return clean1.equals(clean2) || clean1.contains(clean2) || clean2.contains(clean1);
+    }
+
+    public Map<String, Object> abandonRemediationSession(String sessionId) {
+        if (sessionId == null || sessionId.trim().isEmpty()) {
+            throw new IllegalArgumentException("sessionId is required");
+        }
+        Optional<RemediationSession> remSessionOpt = remediationSessionRepository.findById(sessionId.trim());
+        if (remSessionOpt.isPresent()) {
+            RemediationSession session = remSessionOpt.get();
+            session.setCompleted(false);
+            remediationSessionRepository.save(session);
+            return Map.of("status", "SESSION_ABANDONED", "sessionId", sessionId);
+        }
+        return Map.of("status", "SESSION_NOT_FOUND", "sessionId", sessionId);
     }
 }

@@ -14,12 +14,16 @@ import AdminDashboard from "./app/admin/page";
 import AITutorPage from "./pages/AITutorPage";
 import OnboardingGuard from "./components/OnboardingGuard";
 
+import SubjectsPage from "./app/dashboard/subjects/page";
+
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/dashboard" element={<OnboardingGuard><StudentDashboard /></OnboardingGuard>} />
+      <Route path="/dashboard/subjects" element={<OnboardingGuard><SubjectsPage /></OnboardingGuard>} />
+      <Route path="/dashboard/subjects/:subjectCode" element={<OnboardingGuard><SubjectsPage /></OnboardingGuard>} />
       <Route path="/dashboard/profile" element={<OnboardingGuard><ProfilePage /></OnboardingGuard>} />
       <Route path="/dashboard/career" element={<OnboardingGuard><CareerCenter /></OnboardingGuard>} />
       <Route path="/dashboard/pomodoro" element={<OnboardingGuard><Pomodoro /></OnboardingGuard>} />

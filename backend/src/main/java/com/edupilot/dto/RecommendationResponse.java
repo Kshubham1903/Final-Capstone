@@ -17,6 +17,12 @@ public class RecommendationResponse {
     private String recommendedAction;
     private int estimatedStudyTimeMinutes;
     private String difficulty;
+    private String modality;
+    private String pace;
+    private String workload;
+    private String whatExplanation;
+    private String howExplanation;
+    private String paceExplanation;
     private double confidenceScore;
     private double masteryScore;
     private double accuracy;
@@ -42,6 +48,12 @@ public class RecommendationResponse {
             this.recommendedAction = rec.getRecommendedAction();
             this.estimatedStudyTimeMinutes = rec.getEstimatedStudyTimeMinutes();
             this.difficulty = rec.getDifficulty();
+            this.modality = rec.getModality() != null ? rec.getModality() : "VISUAL";
+            this.pace = rec.getPace() != null ? rec.getPace() : "NORMAL";
+            this.workload = rec.getWorkload() != null ? rec.getWorkload() : "MEDIUM";
+            this.whatExplanation = rec.getWhatExplanation();
+            this.howExplanation = rec.getHowExplanation();
+            this.paceExplanation = rec.getPaceExplanation();
             this.confidenceScore = rec.getConfidenceScore();
             this.masteryScore = rec.getMasteryScore();
             this.accuracy = rec.getAccuracy();
@@ -202,5 +214,53 @@ public class RecommendationResponse {
 
     public void setPrevTopic(String prevTopic) {
         this.prevTopic = prevTopic;
+    }
+
+    public String getModality() {
+        return modality;
+    }
+
+    public void setModality(String modality) {
+        this.modality = modality;
+    }
+
+    public String getPace() {
+        return pace;
+    }
+
+    public void setPace(String pace) {
+        this.pace = pace;
+    }
+
+    public String getWorkload() {
+        return workload;
+    }
+
+    public void setWorkload(String workload) {
+        this.workload = workload;
+    }
+
+    public String getWhatExplanation() {
+        return whatExplanation;
+    }
+
+    public void setWhatExplanation(String whatExplanation) {
+        this.whatExplanation = whatExplanation;
+    }
+
+    public String getHowExplanation() {
+        return howExplanation;
+    }
+
+    public void setHowExplanation(String howExplanation) {
+        this.howExplanation = howExplanation;
+    }
+
+    public String getPaceExplanation() {
+        return paceExplanation;
+    }
+
+    public void setPaceExplanation(String paceExplanation) {
+        this.paceExplanation = paceExplanation;
     }
 }

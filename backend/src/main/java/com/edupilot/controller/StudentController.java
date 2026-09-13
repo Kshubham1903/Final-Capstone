@@ -22,6 +22,21 @@ public class StudentController {
     private StudentService studentService;
 
     @Autowired
+    private com.edupilot.service.StudentStateService studentStateService;
+
+    @Autowired
+    private com.edupilot.service.LearningGainService learningGainService;
+
+    @Autowired
+    private com.edupilot.service.StudentStateSnapshotService studentStateSnapshotService;
+
+    @Autowired
+    private com.edupilot.service.EvaluationService evaluationService;
+
+    @Autowired
+    private com.edupilot.repository.StudentSatisfactionRepository satisfactionRepository;
+
+    @Autowired
     private AiServiceClient aiServiceClient;
 
     @GetMapping("/onboarding-status/{userId}")
@@ -155,6 +170,71 @@ public class StudentController {
         } catch (Exception ex) {
             return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
         }
+    }
+
+    @GetMapping("/{userId}/state")
+    public ResponseEntity<?> getStudentState(@PathVariable String userId) {
+        try {
+            com.edupilot.dto.StudentStateResponse state = studentStateService.getStudentState(userId);
+            return ResponseEntity.ok(state);
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
+
+    @GetMapping("/state/{userId}")
+    public ResponseEntity<?> getStudentStateAlias(@PathVariable String userId) {
+        return getStudentState(userId);
+    }
+
+    @GetMapping("/{userId}/learning-gain")
+    public ResponseEntity<?> getLearningGain(@PathVariable String userId) {
+        try {
+            com.edupilot.dto.LearningGainResponse resp = learningGainService.calculateStudentLearningGain(userId);
+            return ResponseEntity.ok(resp);
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
+
+    @GetMapping("/{userId}/state/history")
+    public ResponseEntity<?> getStudentStateHistory(@PathVariable String userId) {
+        try {
+            List<com.edupilot.dto.StudentStateHistoryDTO> history = studentStateSnapshotService.getStudentStateHistoryDTO(userId);
+            return ResponseEntity.ok(history);
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
+
+    @GetMapping("/{userId}/evaluation")
+    public ResponseEntity<?> getEvaluationMetrics(@PathVariable String userId) {
+        try {
+            com.edupilot.dto.EvaluationMetricsResponse resp = evaluationService.calculateEvaluationMetrics(userId);
+            return ResponseEntity.ok(resp);
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+        }
+    }
+
+    @PostMapping("/{userId}/satisfaction")
+    public ResponseEntity<?> submitSatisfaction(
+            @PathVariable String userId,
+            @RequestBody com.edupilot.dto.SatisfactionRequest request) {
+        if (request == null || request.getRating() < 1 || request.getRating() > 5) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Rating must be between 1 and 5"));
+        }
+
+        String resolvedUserId = studentService.resolveUserId(userId);
+        com.edupilot.model.StudentSatisfaction satisfaction = new com.edupilot.model.StudentSatisfaction(
+                resolvedUserId,
+                request.getRating(),
+                request.getFeedbackType(),
+                request.getComment()
+        );
+
+        com.edupilot.model.StudentSatisfaction saved = satisfactionRepository.save(satisfaction);
+        return ResponseEntity.ok(saved);
     }
 
     @GetMapping("/health")

@@ -15,8 +15,11 @@ import DashboardHeader from "../../components/dashboard/DashboardHeader";
 import WelcomeCard from "../../components/dashboard/WelcomeCard";
 import TodaysLearningCard from "../../components/dashboard/TodaysLearningCard";
 import LearningProgressCard from "../../components/dashboard/LearningProgressCard";
-import SubjectKnowledgeTest from "../../components/dashboard/SubjectKnowledgeTest";
 import SubjectProgressPanel from "../../components/dashboard/SubjectProgressPanel";
+import LearningPreferencesCard from "../../components/dashboard/LearningPreferencesCard";
+import KnowledgeProgressCard from "../../components/dashboard/KnowledgeProgressCard";
+import LearningGainCard from "../../components/dashboard/LearningGainCard";
+import EvaluationMetricsCard from "../../components/dashboard/EvaluationMetricsCard";
 
 export default function StudentDashboard() {
   const [profile, setProfile] = useState<StudentProfile | null>(null);
@@ -55,6 +58,22 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     loadData();
+
+    const handleRefresh = () => {
+      console.log("[StudentDashboard] Event detected. Refreshing profile analytics...");
+      loadData();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("edupilot:assessment-completed", handleRefresh);
+      window.addEventListener("focus", handleRefresh);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("edupilot:assessment-completed", handleRefresh);
+        window.removeEventListener("focus", handleRefresh);
+      }
+    };
   }, []);
 
   if (!profile && isLoadingAI) {
@@ -143,9 +162,6 @@ export default function StudentDashboard() {
           {/* Left Column (2/3 width) - Focus areas & Mastery progress */}
           <div className="lg:col-span-2 space-y-6">
             
-            {/* Subject Knowledge Check Baseline Test */}
-            <SubjectKnowledgeTest profile={profile} />
-
             {/* Today's Learning Focus (Primary Highlight) */}
             <TodaysLearningCard profile={profile} />
 
@@ -154,6 +170,9 @@ export default function StudentDashboard() {
               profile={profile} 
               onSelectSubject={(subj, val) => setSelectedSubjectForHistory({ name: subj, mastery: val })}
             />
+
+            {/* Concept-Level Mastery & Knowledge Intelligence Engine */}
+            <KnowledgeProgressCard profile={profile} />
 
           </div>
 
@@ -211,6 +230,15 @@ export default function StudentDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* Calculated Learning Preferences Card (P vector from Student State API) */}
+            <LearningPreferencesCard profile={profile} />
+
+            {/* Normalized Learning Gain Metric Card (Pre vs Post Gain) */}
+            <LearningGainCard profile={profile} />
+
+            {/* Evaluation Analytics Card (Completion Rate & Time to Mastery) */}
+            <EvaluationMetricsCard profile={profile} />
 
             {/* Key AI Insights Card */}
             <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-4">

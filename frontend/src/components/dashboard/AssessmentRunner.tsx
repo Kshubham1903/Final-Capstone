@@ -11,7 +11,10 @@ import {
   submitAdaptiveQuestionAnswer,
   fetchNextInitialDiagnosticQuestion,
   submitInitialDiagnosticAnswer,
-  fetchKnowledgeProfile
+  fetchKnowledgeProfile,
+  fetchLatestDiagnosticResult,
+  abandonAssessmentSession,
+  abandonAdaptiveSession
 } from "../../services/api";
 
 interface AssessmentRunnerProps {
@@ -50,13 +53,14 @@ export default function AssessmentRunner({
   const [adaptiveSessionId, setAdaptiveSessionId] = useState<string | null>(null);
   const [adaptiveQuestion, setAdaptiveQuestion] = useState<any>(null);
   const [adaptiveQuestionNumber, setAdaptiveQuestionNumber] = useState(1);
-  const [adaptiveMaxQuestions, setAdaptiveMaxQuestions] = useState(15);
+  const [adaptiveMaxQuestions, setAdaptiveMaxQuestions] = useState(10);
   const [adaptiveSelectedOption, setAdaptiveSelectedOption] = useState<number | null>(null);
   const [adaptiveSubmitting, setAdaptiveSubmitting] = useState(false);
   const [adaptiveFeedback, setAdaptiveFeedback] = useState<any>(null);
   const [adaptiveStartTime, setAdaptiveStartTime] = useState<number>(Date.now());
   const [startingAdaptive, setStartingAdaptive] = useState(false);
   const [finalSkillProfile, setFinalSkillProfile] = useState<any>(null);
+  const [nextQuestionError, setNextQuestionError] = useState<string | null>(null);
 
   const adaptiveNextRequestInFlightRef = React.useRef<boolean>(false);
   const adaptiveRequestSequenceRef = React.useRef<number>(0);
@@ -94,10 +98,18 @@ export default function AssessmentRunner({
     return localStorage.getItem("edupilot_user_id") || localStorage.getItem("edupilot_profile_id") || "";
   };
 
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   // Start assessment session
   const handleStartSession = async (subjCode: string) => {
     setStartingTest(true);
+    setErrorMessage(null);
     const userId = getStudentUserId();
+
+    displayedAdaptiveFingerprintsRef.current.clear();
+    highestQuestionNumberSeenRef.current = 0;
+    adaptiveNextRequestInFlightRef.current = false;
+    adaptiveRequestSequenceRef.current = 0;
 
     try {
       const sess = await startDiagnosticAssessment({
@@ -105,30 +117,66 @@ export default function AssessmentRunner({
         branch,
         semester,
         subjectCode: subjCode,
-        questionCount: 5
+        questionCount: 25
       });
 
-      if (sess && !sess.error && sess.sessionId) {
+      if (sess && !sess.error && sess.sessionId && !sess.sessionId.startsWith("sess_local_")) {
         setSession(sess);
         setSelectedSubjectCode(subjCode);
         setCurrentIdx(0);
         setUserAnswers({});
         setSecondsRemaining(300);
 
-        // Fetch 1-by-1 Groq generated initial diagnostic question
-        const nextRes = await fetchNextInitialDiagnosticQuestion({ sessionId: sess.sessionId });
-        if (nextRes && nextRes.question) {
-          setAdaptiveQuestion(nextRes.question);
-          setAdaptiveQuestionNumber(nextRes.questionNumber || 1);
-          setAdaptiveMaxQuestions(nextRes.totalQuestions || 10);
+        if (sess.questions && sess.questions.length > 0) {
+          const q1 = sess.questions[0];
+          const normalizedQ1 = {
+            ...q1,
+            questionId: q1.questionId || q1.id,
+            id: q1.questionId || q1.id,
+            concept: q1.concept || q1.topic || "General"
+          };
+          console.log("[FRONTEND START SESSION DEBUG]", {
+            sessionId: sess.sessionId,
+            q1Id: normalizedQ1.questionId,
+            q1Position: 1
+          });
+          setAdaptiveQuestion(normalizedQ1);
+          setAdaptiveQuestionNumber(1);
+          setAdaptiveMaxQuestions(sess.totalQuestions || 25);
           setAdaptiveSelectedOption(null);
           setAdaptiveFeedback(null);
           setAdaptiveStartTime(Date.now());
           setStep("TESTING");
+
+          const qFp = normalizedQ1.questionFingerprint || normalizedQ1.questionId || normalizedQ1.questionText;
+          if (qFp) displayedAdaptiveFingerprintsRef.current.add(qFp);
+          highestQuestionNumberSeenRef.current = 1;
+        } else {
+          const nextRes = await fetchNextInitialDiagnosticQuestion({ sessionId: sess.sessionId });
+          if (nextRes && nextRes.question) {
+            const normalized = {
+              ...nextRes.question,
+              questionId: nextRes.question.questionId || nextRes.question.id,
+              id: nextRes.question.questionId || nextRes.question.id,
+              concept: nextRes.question.concept || nextRes.question.topic || "General"
+            };
+            setAdaptiveQuestion(normalized);
+            setAdaptiveQuestionNumber(nextRes.questionNumber || 1);
+            setAdaptiveMaxQuestions(nextRes.totalQuestions || 10);
+            setAdaptiveSelectedOption(null);
+            setAdaptiveFeedback(null);
+            setAdaptiveStartTime(Date.now());
+            setStep("TESTING");
+
+            const qFp = normalized.questionFingerprint || normalized.questionId || normalized.questionText;
+            if (qFp) displayedAdaptiveFingerprintsRef.current.add(qFp);
+            highestQuestionNumberSeenRef.current = nextRes.questionNumber || 1;
+          }
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to start assessment session:", err);
+      setErrorMessage(err.message || "Failed to start diagnostic assessment session. Please try again.");
     } finally {
       setStartingTest(false);
     }
@@ -170,18 +218,64 @@ export default function AssessmentRunner({
     if (adaptiveSelectedOption === null || !adaptiveQuestion || !session) return;
     setSubmitting(true);
     const timeTaken = Math.max(1, Math.round((Date.now() - adaptiveStartTime) / 1000));
+    const submittedQId = adaptiveQuestion.questionId || adaptiveQuestion.id;
+    const submittedPos = adaptiveQuestionNumber;
+
+    console.log("[FRONTEND SUBMIT ANSWER START]", {
+      submittedQuestionId: submittedQId,
+      submittedPosition: submittedPos,
+      selectedOption: adaptiveSelectedOption
+    });
+
     try {
       const submitRes = await submitInitialDiagnosticAnswer({
         sessionId: session.sessionId,
-        questionId: adaptiveQuestion.questionId,
+        questionId: submittedQId,
         selectedOption: adaptiveSelectedOption,
         responseTimeSeconds: timeTaken
       });
+
+      console.log("[FRONTEND SUBMIT ANSWER RESPONSE]", {
+        submittedQuestionId: submittedQId,
+        submittedPosition: submittedPos,
+        httpStatus: 200,
+        responseFieldNames: submitRes ? Object.keys(submitRes) : [],
+        submitRes
+      });
+
+      const explanationStr = submitRes?.explanation || adaptiveQuestion?.conceptualExplanation || "";
+      console.log("[DIAGNOSTIC SUBMIT DEBUG]", {
+        position: submittedPos,
+        submittedQuestionId: submittedQId,
+        activeQuestionId: adaptiveQuestion?.questionId || adaptiveQuestion?.id,
+        responseQuestionId: submittedQId,
+        explanationPresent: !!explanationStr,
+        explanationLength: explanationStr.length
+      });
+      console.log("[DIAGNOSTIC FEEDBACK DEBUG]", {
+        position: submittedPos,
+        questionId: submittedQId,
+        explanationPresent: !!explanationStr,
+        explanationLength: explanationStr.length
+      });
+
       setAdaptiveFeedback(submitRes);
-      if (submitRes && submitRes.completed && submitRes.result) {
-        setAssessmentResult(submitRes.result);
+      if (submitRes && submitRes.completed) {
+        if (submitRes.result) {
+          setAssessmentResult(submitRes.result);
+        } else {
+          const userId = getStudentUserId();
+          if (userId) {
+            const latest = await fetchLatestDiagnosticResult(userId);
+            if (latest) setAssessmentResult(latest);
+          }
+        }
+        if (typeof window !== "undefined") {
+          const userId = getStudentUserId();
+          window.dispatchEvent(new CustomEvent("edupilot:assessment-completed", { detail: { userId } }));
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to submit initial question answer:", err);
     } finally {
       setSubmitting(false);
@@ -193,12 +287,22 @@ export default function AssessmentRunner({
     if (adaptiveFeedback && adaptiveFeedback.completed) {
       if (adaptiveFeedback.result) {
         setAssessmentResult(adaptiveFeedback.result);
+      } else {
+        const userId = getStudentUserId();
+        if (userId) {
+          const latest = await fetchLatestDiagnosticResult(userId);
+          if (latest) setAssessmentResult(latest);
+        }
+      }
+      if (typeof window !== "undefined") {
+        const userId = getStudentUserId();
+        window.dispatchEvent(new CustomEvent("edupilot:assessment-completed", { detail: { userId } }));
       }
       setStep("RESULT");
       return;
     }
 
-    if (adaptiveNextRequestInFlightRef.current) {
+    if (submitting || adaptiveNextRequestInFlightRef.current) {
       console.warn(`[AdaptiveRunner] Initial question request already in flight for session ${session.sessionId}. Ignoring duplicate call.`);
       return;
     }
@@ -206,6 +310,13 @@ export default function AssessmentRunner({
     adaptiveNextRequestInFlightRef.current = true;
     const requestId = ++adaptiveRequestSequenceRef.current;
     setSubmitting(true);
+    setNextQuestionError(null);
+
+    const activeQuestionIdBefore = adaptiveQuestion?.questionId || adaptiveQuestion?.id;
+    console.log("[FRONTEND ACTIVE QUESTION BEFORE STATE UPDATE]", {
+      activeQuestionIdBefore,
+      currentPosition: adaptiveQuestionNumber
+    });
 
     try {
       const nextRes = await fetchNextInitialDiagnosticQuestion({ sessionId: session.sessionId });
@@ -215,20 +326,39 @@ export default function AssessmentRunner({
         return;
       }
 
+      console.log("[FRONTEND NEXT QUESTION RESPONSE]", {
+        returnedNextQuestionId: nextRes?.question?.questionId || nextRes?.question?.id,
+        returnedNextQuestionPosition: nextRes?.questionNumber,
+        completed: nextRes?.completed,
+        nextRes
+      });
+
       if (nextRes && nextRes.completed) {
         if (nextRes.result) {
           setAssessmentResult(nextRes.result);
+        } else {
+          const userId = getStudentUserId();
+          if (userId) {
+            const latest = await fetchLatestDiagnosticResult(userId);
+            if (latest) setAssessmentResult(latest);
+          }
+        }
+        if (typeof window !== "undefined") {
+          const userId = getStudentUserId();
+          window.dispatchEvent(new CustomEvent("edupilot:assessment-completed", { detail: { userId } }));
         }
         setStep("RESULT");
       } else if (nextRes && nextRes.question) {
         const incomingQNum = nextRes.questionNumber || (adaptiveQuestionNumber + 1);
 
-        if (incomingQNum < highestQuestionNumberSeenRef.current) {
-          console.warn(`[AdaptiveRunner] Ignored regressive initial questionNumber=${incomingQNum} (highestSeen=${highestQuestionNumberSeenRef.current})`);
-          return;
-        }
+        const normalizedNextQ = {
+          ...nextRes.question,
+          questionId: nextRes.question.questionId || nextRes.question.id,
+          id: nextRes.question.questionId || nextRes.question.id,
+          concept: nextRes.question.concept || nextRes.question.topic || "General"
+        };
 
-        const qFp = nextRes.question.questionFingerprint || nextRes.question.questionId || nextRes.question.id || nextRes.question.questionText;
+        const qFp = normalizedNextQ.questionFingerprint || normalizedNextQ.questionId || normalizedNextQ.questionText;
         if (qFp && displayedAdaptiveFingerprintsRef.current.has(qFp)) {
           console.warn(`[AdaptiveRunner] Ignored duplicate initial question fingerprint="${qFp}"`);
           return;
@@ -237,15 +367,48 @@ export default function AssessmentRunner({
         highestQuestionNumberSeenRef.current = incomingQNum;
         if (qFp) displayedAdaptiveFingerprintsRef.current.add(qFp);
 
-        setAdaptiveQuestion(nextRes.question);
+        console.log("[NEXT QUESTION SUCCESS]", {
+          position: incomingQNum,
+          questionId: normalizedNextQ.questionId
+        });
+        console.log("[DIAGNOSTIC NEXT DEBUG]", {
+          oldQuestionId: activeQuestionIdBefore,
+          oldPosition: adaptiveQuestionNumber,
+          newQuestionId: normalizedNextQ.questionId,
+          newPosition: incomingQNum
+        });
+
+        setNextQuestionError(null);
+        setAdaptiveQuestion(normalizedNextQ);
         setAdaptiveQuestionNumber(incomingQNum);
         setAdaptiveMaxQuestions(nextRes.totalQuestions || 10);
         setAdaptiveSelectedOption(null);
         setAdaptiveFeedback(null);
         setAdaptiveStartTime(Date.now());
+
+        console.log("[FRONTEND ACTIVE QUESTION AFTER STATE UPDATE]", {
+          activeQuestionIdAfter: normalizedNextQ.questionId,
+          newQuestionNumber: incomingQNum
+        });
+      } else {
+        const errMsg = nextRes?.message || "Groq question generation failed.";
+        setNextQuestionError(errMsg);
+        console.log("[NEXT QUESTION ERROR]", {
+          currentPosition: adaptiveQuestionNumber,
+          targetPosition: adaptiveQuestionNumber + 1,
+          currentQuestionId: activeQuestionIdBefore,
+          error: errMsg
+        });
       }
-    } catch (err) {
-      console.error("Failed to fetch next initial question:", err);
+    } catch (err: any) {
+      const errMsg = err?.message || "Failed to fetch next initial question.";
+      setNextQuestionError(errMsg);
+      console.log("[NEXT QUESTION ERROR]", {
+        currentPosition: adaptiveQuestionNumber,
+        targetPosition: adaptiveQuestionNumber + 1,
+        currentQuestionId: activeQuestionIdBefore,
+        error: errMsg
+      });
     } finally {
       if (requestId === adaptiveRequestSequenceRef.current) {
         setSubmitting(false);
@@ -386,6 +549,31 @@ export default function AssessmentRunner({
     }
   };
 
+  const handleCloseRunner = async () => {
+    if (step === "TESTING" || step === "ADAPTIVE_TESTING") {
+      if (typeof window !== "undefined" && !window.confirm("Are you sure you want to exit this diagnostic test? Your active session progress will be abandoned.")) {
+        return;
+      }
+      try {
+        if (step === "TESTING" && session?.sessionId) {
+          await abandonAssessmentSession(session.sessionId);
+        } else if (step === "ADAPTIVE_TESTING" && adaptiveSessionId) {
+          await abandonAdaptiveSession(adaptiveSessionId);
+        }
+      } catch (err) {
+        console.warn("Error abandoning assessment session:", err);
+      }
+    } else {
+      if (typeof window !== "undefined") {
+        const userId = getStudentUserId();
+        window.dispatchEvent(new CustomEvent("edupilot:assessment-completed", {
+          detail: { userId }
+        }));
+      }
+    }
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="glass-panel p-6 rounded-3xl border border-white/10 shadow-2xl w-full max-w-3xl space-y-6 my-auto max-h-[90vh] overflow-y-auto">
@@ -404,13 +592,39 @@ export default function AssessmentRunner({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-secondary-theme hover:text-main-theme font-bold cursor-pointer"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {(step === "TESTING" || step === "ADAPTIVE_TESTING") && (
+              <button
+                onClick={handleCloseRunner}
+                className="px-3 py-1 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 text-xs font-bold border border-pink-500/30 transition-all cursor-pointer"
+              >
+                Exit Test
+              </button>
+            )}
+            <button
+              onClick={handleCloseRunner}
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-secondary-theme hover:text-main-theme font-bold cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
+
+        {errorMessage && (
+          <div className="p-4 rounded-2xl border border-pink-500/30 bg-pink-500/10 text-pink-300 text-xs flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-pink-400 shrink-0 mt-0.5" />
+            <div className="space-y-1 flex-1">
+              <span className="font-extrabold uppercase text-[10px]">Assessment Generation Error</span>
+              <p>{errorMessage}</p>
+            </div>
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="text-pink-400 hover:text-white text-xs font-bold px-2 py-1 rounded bg-black/30 cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* STEP 1: SELECT SUBJECT */}
         {step === "SELECT_SUBJECT" && (
@@ -449,7 +663,7 @@ export default function AssessmentRunner({
                       </h5>
                     </div>
                     <div className="pt-2 border-t border-white/5 flex justify-between items-center text-[10px] text-secondary-theme">
-                      <span>5 Diagnostic Questions</span>
+                      <span>10 Diagnostic Questions</span>
                       <span className="text-purple-theme font-bold flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                         <span>Start Test</span>
                         <ArrowRight className="h-3 w-3" />
@@ -540,6 +754,26 @@ export default function AssessmentRunner({
               </div>
             )}
 
+            {nextQuestionError && (
+              <div className="p-4 rounded-xl border border-pink-500/30 bg-pink-500/10 text-pink-300 text-xs space-y-2">
+                <div className="flex items-center gap-2 font-bold">
+                  <AlertCircle className="h-4 w-4 text-pink-400" />
+                  <span>Failed to generate Question {adaptiveQuestionNumber + 1}</span>
+                </div>
+                <p className="leading-relaxed">{nextQuestionError}</p>
+                <button
+                  onClick={() => {
+                    console.log("[NEXT QUESTION RETRY]", { targetPosition: adaptiveQuestionNumber + 1 });
+                    setNextQuestionError(null);
+                    handleNextInitialQuestionStep();
+                  }}
+                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs shadow-lg shadow-purple-600/30 cursor-pointer"
+                >
+                  Retry Generation with Groq
+                </button>
+              </div>
+            )}
+
             <div className="pt-4 border-t border-white/10 flex justify-between items-center">
               <button
                 onClick={onClose}
@@ -564,7 +798,7 @@ export default function AssessmentRunner({
                   className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-extrabold text-xs shadow-lg shadow-purple-600/30 flex items-center gap-2 transition-all cursor-pointer"
                 >
                   {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                  <span>Next Question</span>
+                  <span>{submitting ? "Preparing next question..." : "Next Question"}</span>
                 </button>
               )}
             </div>

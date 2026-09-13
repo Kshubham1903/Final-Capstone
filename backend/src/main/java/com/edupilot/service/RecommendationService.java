@@ -34,6 +34,9 @@ public class RecommendationService {
     @Autowired
     private LearningPlannerService plannerService;
 
+    @Autowired
+    private StudentStateService studentStateService;
+
     /**
      * Normalizes dynamically generated concept names so that the same
      * concept does not create multiple ConceptMastery records.
@@ -279,6 +282,15 @@ public class RecommendationService {
 
         List<Recommendation> generatedList = new ArrayList<>();
 
+        com.edupilot.dto.StudentStateResponse studentState = null;
+        try {
+            if (studentStateService != null) {
+                studentState = studentStateService.getStudentState(userId);
+            }
+        } catch (Exception ex) {
+            System.err.println("StudentStateService retrieval notice: " + ex.getMessage());
+        }
+
         /*
          * Latest quiz session is intentionally used as contextual information.
          * The final recommendation is still selected using historical
@@ -469,6 +481,8 @@ public class RecommendationService {
                 rec.setExpiresAt(
                         LocalDateTime.now().plusDays(7)
                 );
+
+                applyStudentStateAdaptation(rec, studentState, finalSubjectName + " Foundations", 50.0, previousTopic);
 
             } else {
 
@@ -731,63 +745,16 @@ public class RecommendationService {
                 }
 
                 rec.setPriority(priorityLevel);
-
-                /*
-                 * ========================================================
-                 * DIFFICULTY
-                 * ========================================================
-                 */
-                String difficulty = "MEDIUM";
-
-                if (accuracy < 50.0) {
-
-                    difficulty = "EASY";
-
-                } else if (accuracy >= 75.0) {
-
-                    difficulty = "HARD";
-                }
-
-                rec.setDifficulty(difficulty);
-
-                /*
-                 * ========================================================
-                 * RECOMMENDATION METADATA
-                 * ========================================================
-                 */
-                rec.setRecommendationType(
-                        Recommendation.RecommendationType.CONCEPT_REVISION
-                );
-
-                rec.setRecommendedAction(
-                        "Solve practice questions on "
-                                + highestPriorityTopic
-                                + "."
-                );
-
-                rec.setEstimatedStudyTimeMinutes(20);
-
+                rec.setRecommendationType(Recommendation.RecommendationType.CONCEPT_REVISION);
                 rec.setConfidenceScore(accuracy);
-
-                rec.setMasteryScore(
-                        bestCm != null
-                                ? bestCm.getMasteryScore()
-                                : 50.0
-                );
-
+                rec.setMasteryScore(bestCm != null ? bestCm.getMasteryScore() : 50.0);
                 rec.setAccuracy(accuracy);
-
                 rec.setPrevTopic(previousTopic);
-
-                rec.setStatus(
-                        Recommendation.Status.ACTIVE
-                );
-
+                rec.setStatus(Recommendation.Status.ACTIVE);
                 rec.setCreatedAt(LocalDateTime.now());
+                rec.setExpiresAt(LocalDateTime.now().plusDays(7));
 
-                rec.setExpiresAt(
-                        LocalDateTime.now().plusDays(7)
-                );
+                applyStudentStateAdaptation(rec, studentState, highestPriorityTopic, accuracy, previousTopic);
             }
 
             /*
@@ -1220,5 +1187,116 @@ public class RecommendationService {
                             + ex.getMessage()
             );
         }
+    }
+
+    /**
+     * Multi-Dimensional Student State Adaptation Engine [K, P, E, W].
+     *
+     * 1. WHAT to learn: Preserves topic accuracy & priority (K).
+     * 2. HOW to learn: Selects content modality (PRACTICE, VISUAL, TEXT, QUIZ_PRACTICE) from Preference P.
+     * 3. HOW MUCH / HOW FAST to learn: Selects pace, workload, and difficulty from Readiness W & Engagement E.
+     * 4. Explainability: Builds actual student-value explanations.
+     */
+    private void applyStudentStateAdaptation(
+            Recommendation rec,
+            com.edupilot.dto.StudentStateResponse studentState,
+            String topicName,
+            double accuracy,
+            String previousTopic) {
+
+        // 1. Extract P (Preference)
+        Map<String, Double> pref = studentState != null && studentState.getPreference() != null
+                ? studentState.getPreference() : Collections.emptyMap();
+
+        double visual = pref.getOrDefault("visual", 0.60);
+        double readingVerbal = pref.getOrDefault("readingVerbal", 0.50);
+        double practicalKinesthetic = pref.getOrDefault("practicalKinesthetic", 0.65);
+        double sequentialGlobal = pref.getOrDefault("sequentialGlobal", 0.75);
+        double feedbackPractice = pref.getOrDefault("feedbackPractice", 0.70);
+
+        String modality = "VISUAL";
+        double maxPrefVal = visual;
+        String maxPrefName = "Visual";
+
+        if (practicalKinesthetic > maxPrefVal) {
+            maxPrefVal = practicalKinesthetic;
+            modality = "PRACTICE";
+            maxPrefName = "Practical";
+        }
+        if (readingVerbal > maxPrefVal) {
+            maxPrefVal = readingVerbal;
+            modality = "TEXT";
+            maxPrefName = "Reading/Verbal";
+        }
+        if (feedbackPractice > maxPrefVal) {
+            maxPrefVal = feedbackPractice;
+            modality = "QUIZ_PRACTICE";
+            maxPrefName = "Feedback & Practice";
+        }
+
+        // 2. Extract E (Engagement) & W (Well-being / Readiness)
+        double engagement = studentState != null && studentState.getEngagement() != null
+                ? studentState.getEngagement() : 0.70;
+
+        Map<String, Object> wellbeing = studentState != null && studentState.getWellbeing() != null
+                ? studentState.getWellbeing() : Collections.emptyMap();
+
+        double readiness = 0.70;
+        if (wellbeing.containsKey("readiness") && wellbeing.get("readiness") instanceof Number) {
+            readiness = ((Number) wellbeing.get("readiness")).doubleValue();
+        }
+
+        // 3. Determine HOW MUCH / HOW FAST (Difficulty, Pace, Workload, Duration)
+        String difficulty = "MEDIUM";
+        String pace = "NORMAL";
+        String workload = "MEDIUM";
+        int duration = 20;
+
+        if (readiness < 0.40 || engagement < 0.40) {
+            difficulty = "EASY";
+            pace = "SLOW";
+            workload = "LOW";
+            duration = 15;
+        } else if (readiness >= 0.70 && engagement >= 0.70 && accuracy >= 75.0) {
+            difficulty = "HARD";
+            pace = "FAST";
+            workload = "HIGH";
+            duration = 30;
+        } else {
+            difficulty = "MEDIUM";
+            pace = "NORMAL";
+            workload = "MEDIUM";
+            duration = 20;
+        }
+
+        // 4. Generate Explainability Texts using ACTUAL student values
+        double normMastery = Math.round((accuracy / 100.0) * 100.0) / 100.0;
+        String whatExplanation = topicName + " was selected because topic mastery is " + normMastery + ".";
+        String howExplanation = maxPrefName + " (" + modality + ") was selected because " + maxPrefName.toLowerCase() + " preference (" + String.format("%.2f", maxPrefVal) + ") is highest.";
+        String paceExplanation = pace + " pace and " + workload.toLowerCase() + " workload were selected based on engagement (" + String.format("%.2f", engagement) + ") and learning readiness (" + String.format("%.2f", readiness) + ").";
+
+        String fullReason = whatExplanation + " " + howExplanation + " " + paceExplanation;
+
+        String actionText;
+        if ("PRACTICE".equals(modality)) {
+            actionText = "Solve practical exercises for " + topicName + ".";
+        } else if ("TEXT".equals(modality)) {
+            actionText = "Read core conceptual documentation for " + topicName + ".";
+        } else if ("QUIZ_PRACTICE".equals(modality)) {
+            actionText = "Attempt targeted practice quiz on " + topicName + ".";
+        } else {
+            actionText = "Watch visual demonstration for " + topicName + ".";
+        }
+
+        rec.setModality(modality);
+        rec.setPace(pace);
+        rec.setWorkload(workload);
+        rec.setDifficulty(difficulty);
+        rec.setEstimatedStudyTimeMinutes(duration);
+        rec.setWhatExplanation(whatExplanation);
+        rec.setHowExplanation(howExplanation);
+        rec.setPaceExplanation(paceExplanation);
+        rec.setReason(fullReason);
+        rec.setRecommendedAction(actionText);
     }
 }

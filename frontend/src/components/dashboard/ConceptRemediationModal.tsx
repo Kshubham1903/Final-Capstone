@@ -9,7 +9,8 @@ import {
   Target,
   ShieldCheck
 } from "lucide-react";
-import { startConceptRemediation, submitConceptRemediation } from "../../services/api";
+import { startConceptRemediation, submitConceptRemediation, abandonRemediationSession } from "../../services/api";
+import AssessmentFeedbackCard from "./AssessmentFeedbackCard";
 
 interface ConceptRemediationModalProps {
   studentId: string;
@@ -30,28 +31,32 @@ export default function ConceptRemediationModal({
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const subject = task.subjectName || task.subject || "Computer Science";
   const concept = task.conceptName || task.topic || "Core Concept";
 
-  useEffect(() => {
-    let isMounted = true;
-    const initTest = async () => {
-      setLoading(true);
+  const fetchRemediationQuestions = async () => {
+    setLoading(true);
+    setErrorMsg(null);
+    try {
       const data = await startConceptRemediation(studentId, subject, concept);
-      if (isMounted) {
-        if (data && data.questions && data.questions.length > 0) {
-          setSessionData(data);
-        }
-        setLoading(false);
+      if (data && data.questions && data.questions.length > 0) {
+        setSessionData(data);
+      } else {
+        setErrorMsg("No remediation questions were returned for this concept.");
       }
-    };
-    if (studentId && subject && concept) {
-      initTest();
+    } catch (err: any) {
+      setErrorMsg(err?.message || "Failed to load remediation questions.");
+    } finally {
+      setLoading(false);
     }
-    return () => {
-      isMounted = false;
-    };
+  };
+
+  useEffect(() => {
+    if (studentId && subject && concept) {
+      fetchRemediationQuestions();
+    }
   }, [studentId, subject, concept]);
 
   const questions = sessionData?.questions || [];
@@ -59,27 +64,49 @@ export default function ConceptRemediationModal({
 
   const handleSelectOption = (optIdx: number) => {
     if (!currentQuestion) return;
+    const qId = currentQuestion.questionId || currentQuestion.id;
     setSelectedAnswers(prev => ({
       ...prev,
-      [currentQuestion.questionId]: optIdx
+      [qId]: optIdx
     }));
   };
 
   const handleSubmit = async () => {
-    if (!sessionData?.sessionId) return;
+    if (!sessionData?.sessionId || submitting) return;
     setSubmitting(true);
 
-    const answersPayload = questions.map((q: any) => ({
-      questionId: q.questionId,
-      selectedOptionIndex: selectedAnswers[q.questionId] ?? 0
-    }));
+    const answersPayload = questions.map((q: any) => {
+      const qId = q.questionId || q.id;
+      return {
+        questionId: qId,
+        selectedOptionIndex: selectedAnswers[qId] !== undefined ? selectedAnswers[qId] : 0
+      };
+    });
 
-    const res = await submitConceptRemediation(studentId, sessionData.sessionId, answersPayload);
-    setSubmitting(false);
-
-    if (res) {
-      setResult(res);
+    try {
+      const res = await submitConceptRemediation(studentId, sessionData.sessionId, answersPayload);
+      if (res) {
+        setResult(res);
+      }
+    } catch (err) {
+      console.error("[ConceptRemediationModal] Submission error:", err);
+    } finally {
+      setSubmitting(false);
     }
+  };
+
+  const handleExitModal = async () => {
+    if (!result && sessionData?.sessionId) {
+      if (typeof window !== "undefined" && !window.confirm("Are you sure you want to exit this remediation test? Your session will be abandoned.")) {
+        return;
+      }
+      try {
+        await abandonRemediationSession(sessionData.sessionId);
+      } catch (err) {
+        console.warn("Error abandoning remediation session:", err);
+      }
+    }
+    onClose();
   };
 
   return (
@@ -107,12 +134,22 @@ export default function ConceptRemediationModal({
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-secondary-theme hover:text-main-theme transition-colors cursor-pointer"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {!result && (
+              <button
+                onClick={handleExitModal}
+                className="px-3 py-1 rounded-lg bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 text-xs font-bold border border-pink-500/30 transition-all cursor-pointer"
+              >
+                Exit Test
+              </button>
+            )}
+            <button
+              onClick={handleExitModal}
+              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-secondary-theme hover:text-main-theme transition-colors cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Body Content */}
@@ -124,30 +161,15 @@ export default function ConceptRemediationModal({
           </div>
         ) : result ? (
           /* Result View */
-          <div className="py-6 text-center space-y-5">
-            <div className="flex justify-center">
-              {result.passed ? (
-                <div className="h-16 w-16 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center text-emerald-400">
-                  <ShieldCheck className="h-10 w-10" />
-                </div>
-              ) : (
-                <div className="h-16 w-16 rounded-full bg-amber-500/20 border-2 border-amber-500 flex items-center justify-center text-amber-400">
-                  <XCircle className="h-10 w-10" />
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <h4 className={`text-lg font-black ${result.passed ? "text-emerald-400" : "text-amber-400"}`}>
-                {result.passed ? "Concept Successfully Remediated!" : "Remediation Needs Further Practice"}
-              </h4>
-              <p className="text-sm font-extrabold text-main-theme">
-                Score: {result.correctCount} / {result.totalQuestions} ({Math.round(result.percentage)}%)
-              </p>
-              <p className="text-xs text-secondary-theme max-w-sm mx-auto pt-1 leading-relaxed">
-                {result.message}
-              </p>
-            </div>
+          <div className="py-4 space-y-5 text-center">
+            <AssessmentFeedbackCard
+              studentId={studentId}
+              topic={concept}
+              score={result.correctCount}
+              totalQuestions={result.totalQuestions}
+              percentage={result.percentage}
+              customFeedback={result.message}
+            />
 
             <button
               onClick={() => {
@@ -186,7 +208,8 @@ export default function ConceptRemediationModal({
             {/* Options */}
             <div className="space-y-2">
               {currentQuestion.options.map((opt: string, optIdx: number) => {
-                const isSelected = selectedAnswers[currentQuestion.questionId] === optIdx;
+                const qId = currentQuestion.questionId || currentQuestion.id;
+                const isSelected = selectedAnswers[qId] === optIdx;
                 return (
                   <button
                     key={optIdx}
@@ -248,15 +271,25 @@ export default function ConceptRemediationModal({
             </div>
           </div>
         ) : (
-          <div className="py-8 text-center space-y-2">
+          <div className="py-8 text-center space-y-3">
             <XCircle className="h-8 w-8 text-pink-400 mx-auto" />
-            <p className="text-xs font-bold text-main-theme">Failed to load remediation questions.</p>
-            <button
-              onClick={onClose}
-              className="px-4 py-1.5 bg-white/10 text-xs font-bold rounded-lg cursor-pointer mt-2"
-            >
-              Close
-            </button>
+            <p className="text-xs font-bold text-main-theme">
+              {errorMsg || "Failed to load remediation questions."}
+            </p>
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <button
+                onClick={fetchRemediationQuestions}
+                className="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg cursor-pointer transition-all"
+              >
+                Retry
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-1.5 bg-white/10 hover:bg-white/20 text-xs font-bold rounded-lg cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         )}
 

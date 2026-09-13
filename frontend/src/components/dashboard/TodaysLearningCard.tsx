@@ -180,6 +180,16 @@ export default function TodaysLearningCard({ profile }: TodaysLearningCardProps)
                       <span className="text-[10px] font-bold text-secondary-theme bg-white/5 px-2 py-0.5 rounded border border-white/10">
                         {task.subjectCode || "CS301"}
                       </span>
+                      {task.modality && (
+                        <span className="text-[10px] font-extrabold text-cyan-300 bg-cyan-500/15 px-2 py-0.5 rounded border border-cyan-500/30 uppercase">
+                          {task.modality}
+                        </span>
+                      )}
+                      {task.pace && (
+                        <span className="text-[10px] font-extrabold text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded border border-emerald-500/30 uppercase">
+                          {task.pace} Pace
+                        </span>
+                      )}
                       {isPendingVerification && (
                         <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30 animate-pulse">
                           Verification Required
@@ -304,6 +314,9 @@ export default function TodaysLearningCard({ profile }: TodaysLearningCardProps)
                   totalTasks: remaining.length
                 };
               });
+            }
+            if (remediated && typeof window !== "undefined") {
+              window.dispatchEvent(new CustomEvent("edupilot:assessment-completed"));
             }
             loadPlan();
           }}

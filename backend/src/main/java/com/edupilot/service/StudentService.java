@@ -3,6 +3,8 @@ package com.edupilot.service;
 import com.edupilot.model.*;
 import com.edupilot.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.event.EventListener;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -25,6 +27,33 @@ public class StudentService {
     private PersonalInformationRepository personalRepository;
 
     @Autowired
+    private LearningPreferenceQuestionnaireRepository learningPreferenceQuestionnaireRepository;
+
+    @Autowired
+    private WellBeingLearningContextRepository wellBeingLearningContextRepository;
+
+    private static final List<String> SLEEP_DURATION_OPTIONS = List.of(
+        "Less than 5 hours", "5–6 hours", "6–7 hours", "7–8 hours", "More than 8 hours"
+    );
+    private static final List<String> PREFERRED_STUDY_TIME_OPTIONS = List.of(
+        "Morning", "Afternoon", "Evening", "Night"
+    );
+    private static final List<String> STUDY_ENVIRONMENT_OPTIONS = List.of(
+        "Quiet", "Moderate", "Distracting"
+    );
+    private static final List<String> CURRENT_ACADEMIC_WORKLOAD_OPTIONS = List.of(
+        "Low", "Moderate", "High"
+    );
+    private static final List<String> PENDING_ASSIGNMENTS_OPTIONS = List.of(
+        "0", "1", "2", "3+"
+    );
+    private static final List<String> MAJOR_ACADEMIC_DIFFICULTY_OPTIONS = List.of(
+        "Understanding concepts", "Solving problems", "Programming / Coding",
+        "Managing study time", "Keeping up with coursework", "Preparing for assessments",
+        "Maintaining concentration", "No major difficulty", "Other"
+    );
+
+    @Autowired
     private AcademicProfileRepository academicRepository;
 
     @Autowired
@@ -33,6 +62,24 @@ public class StudentService {
     @Autowired
     private AiServiceClient aiServiceClient;
 
+    @Autowired
+    private ConceptMasteryRepository conceptMasteryRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private AssessmentResultRepository assessmentResultRepository;
+
+    @Autowired
+    private KnowledgeProfileRepository knowledgeProfileRepository;
+
+    @Autowired
+    private QuizSessionRepository quizSessionRepository;
+
+    @Autowired
+    private RemediationSessionRepository remediationSessionRepository;
+
     /**
      * Helper to resolve canonical student userId from user ID or email address.
      */
@@ -40,40 +87,64 @@ public class StudentService {
         if (emailOrId == null || emailOrId.trim().isEmpty() || "anonymous_student".equalsIgnoreCase(emailOrId)) {
             return "anonymous_student";
         }
-        Optional<StudentProfile> opt = profileRepository.findByUserId(emailOrId);
+        String trimmed = emailOrId.trim();
+
+        // 1. If input is an email address, resolve via UserRepository FIRST
+        if (trimmed.contains("@")) {
+            if (userRepository != null) {
+                Optional<User> userOpt = userRepository.findByEmail(trimmed);
+                if (userOpt.isPresent() && userOpt.get().getId() != null) {
+                    return userOpt.get().getId();
+                }
+            }
+            Optional<StudentProfile> profOpt = profileRepository.findByEmail(trimmed);
+            if (profOpt.isPresent()) {
+                return profOpt.get().getUserId() != null ? profOpt.get().getUserId() : profOpt.get().getId();
+            }
+        }
+
+        // 2. If input is an ID, check UserRepository first by ID
+        if (userRepository != null) {
+            Optional<User> userOpt = userRepository.findById(trimmed);
+            if (userOpt.isPresent() && userOpt.get().getId() != null) {
+                return userOpt.get().getId();
+            }
+        }
+
+        // 3. Fallback to profile check by userId or id
+        Optional<StudentProfile> opt = profileRepository.findByUserId(trimmed);
         if (opt.isPresent() && opt.get().getUserId() != null) {
             return opt.get().getUserId();
         }
-        opt = profileRepository.findByEmail(emailOrId);
+        opt = profileRepository.findById(trimmed);
         if (opt.isPresent()) {
             return opt.get().getUserId() != null ? opt.get().getUserId() : opt.get().getId();
         }
-        opt = profileRepository.findById(emailOrId);
-        if (opt.isPresent()) {
-            return opt.get().getUserId() != null ? opt.get().getUserId() : opt.get().getId();
-        }
-        return emailOrId;
+
+        return trimmed;
     }
 
     /**
      * Defensive helper to find profile by MongoDB document ID or User ID, or auto-create if missing.
      */
-    public StudentProfile findOrCreateProfile(String idOrUserId) {
+    public synchronized StudentProfile findOrCreateProfile(String idOrUserId) {
         if (idOrUserId == null || idOrUserId.trim().isEmpty()) {
             idOrUserId = "anonymous_student";
         }
-        Optional<StudentProfile> opt = profileRepository.findById(idOrUserId);
+        String canonicalId = resolveUserId(idOrUserId);
+
+        Optional<StudentProfile> opt = profileRepository.findByUserId(canonicalId);
         if (opt.isPresent()) {
             return ensureSubjectMastery(opt.get());
         }
-        opt = profileRepository.findByUserId(idOrUserId);
+        opt = profileRepository.findById(canonicalId);
         if (opt.isPresent()) {
             return ensureSubjectMastery(opt.get());
         }
 
-        // Initialize new StudentProfile for this userId
+        // Initialize new StudentProfile for this canonicalId
         StudentProfile newProfile = StudentProfile.builder()
-                .userId(idOrUserId)
+                .userId(canonicalId)
                 .institution("EduPilot Academy")
                 .degree("B.Tech")
                 .branch("Computer Science & Engineering")
@@ -93,9 +164,148 @@ public class StudentService {
                 .conceptMastery(new HashMap<>())
                 .weakConcepts(new HashMap<>())
                 .strongConcepts(new HashMap<>())
+                .completedQuizzesCount(0)
+                .predictedCgpa(3.0)
+                .academicRiskLevel("LOW")
+                .parentalInvolvement("Medium")
+                .accessToResources("High")
+                .extracurricularActivities("Yes")
+                .motivationLevel("High")
+                .internetAccess("Yes")
+                .tutoringSessions(1)
+                .familyIncome("Medium")
+                .teacherQuality("Medium")
+                .schoolType("Public")
+                .peerInfluence("Positive")
+                .learningDisabilities("No")
+                .parentalEducationLevel("College")
+                .distanceFromHome("Near")
+                .gender("Male")
                 .build();
 
         return profileRepository.save(newProfile);
+    }
+
+    /**
+     * Automatic startup migration to safely consolidate legacy email-keyed records into canonical User ID partitions.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void reconcileLegacyUserPartitions() {
+        if (userRepository == null) return;
+        try {
+            List<User> allUsers = userRepository.findAll();
+            for (User user : allUsers) {
+                if (user.getId() == null || user.getEmail() == null || user.getEmail().isBlank()) continue;
+                String canonicalUserId = user.getId();
+                String email = user.getEmail().trim();
+                if (canonicalUserId.equals(email)) continue;
+
+                // 1. Migrate ConceptMastery
+                List<ConceptMastery> emailCmList = conceptMasteryRepository.findByUserId(email);
+                for (ConceptMastery emailCm : emailCmList) {
+                    String subjectCode = emailCm.getSubjectCode() != null ? emailCm.getSubjectCode() : "";
+                    String topic = emailCm.getTopic() != null ? emailCm.getTopic() : emailCm.getConceptName();
+                    Optional<ConceptMastery> canonicalCmOpt = conceptMasteryRepository
+                            .findByUserIdAndSubjectCodeAndTopicAndConceptName(canonicalUserId, subjectCode, topic, topic);
+                    if (canonicalCmOpt.isPresent()) {
+                        ConceptMastery canonicalCm = canonicalCmOpt.get();
+                        // Merge metrics safely
+                        if (emailCm.getAttemptCount() > 0) {
+                            canonicalCm.setAttemptCount(canonicalCm.getAttemptCount() + emailCm.getAttemptCount());
+                            canonicalCm.setCorrectCount(canonicalCm.getCorrectCount() + emailCm.getCorrectCount());
+                            canonicalCm.setWrongCount(canonicalCm.getWrongCount() + emailCm.getWrongCount());
+                            if (emailCm.getAccuracy() > canonicalCm.getAccuracy()) {
+                                canonicalCm.setAccuracy(emailCm.getAccuracy());
+                                canonicalCm.setMasteryScore(emailCm.getMasteryScore());
+                                canonicalCm.setStatus(emailCm.getStatus());
+                                canonicalCm.setMasteryLevel(emailCm.getMasteryLevel());
+                            }
+                        }
+                        conceptMasteryRepository.save(canonicalCm);
+                        conceptMasteryRepository.delete(emailCm);
+                    } else {
+                        emailCm.setUserId(canonicalUserId);
+                        emailCm.setStudentProfileId(canonicalUserId);
+                        conceptMasteryRepository.save(emailCm);
+                    }
+                }
+
+                // 2. Migrate AssessmentResult
+                if (assessmentResultRepository != null) {
+                    List<AssessmentResult> emailResults = assessmentResultRepository.findByUserId(email);
+                    for (AssessmentResult ar : emailResults) {
+                        ar.setUserId(canonicalUserId);
+                        ar.setStudentProfileId(canonicalUserId);
+                        assessmentResultRepository.save(ar);
+                    }
+                }
+
+                // 3. Migrate KnowledgeProfile
+                if (knowledgeProfileRepository != null) {
+                    List<KnowledgeProfile> emailKpList = knowledgeProfileRepository.findAll().stream()
+                            .filter(kp -> email.equalsIgnoreCase(kp.getUserId()))
+                            .toList();
+                    Optional<KnowledgeProfile> canonicalKpOpt = knowledgeProfileRepository.findByUserId(canonicalUserId);
+                    for (KnowledgeProfile emailKp : emailKpList) {
+                        if (canonicalKpOpt.isPresent() && !emailKp.getId().equals(canonicalKpOpt.get().getId())) {
+                            KnowledgeProfile canonicalKp = canonicalKpOpt.get();
+                            if (emailKp.getWeakConcepts() != null && !emailKp.getWeakConcepts().isEmpty()) {
+                                Set<String> combinedWeak = new LinkedHashSet<>(canonicalKp.getWeakConcepts() != null ? canonicalKp.getWeakConcepts() : List.of());
+                                combinedWeak.addAll(emailKp.getWeakConcepts());
+                                canonicalKp.setWeakConcepts(new ArrayList<>(combinedWeak));
+                            }
+                            if (emailKp.getStrongConcepts() != null && !emailKp.getStrongConcepts().isEmpty()) {
+                                Set<String> combinedStrong = new LinkedHashSet<>(canonicalKp.getStrongConcepts() != null ? canonicalKp.getStrongConcepts() : List.of());
+                                combinedStrong.addAll(emailKp.getStrongConcepts());
+                                canonicalKp.setStrongConcepts(new ArrayList<>(combinedStrong));
+                            }
+                            knowledgeProfileRepository.save(canonicalKp);
+                            knowledgeProfileRepository.delete(emailKp);
+                        } else {
+                            emailKp.setUserId(canonicalUserId);
+                            knowledgeProfileRepository.save(emailKp);
+                        }
+                    }
+                }
+
+                // 4. Migrate Duplicate StudentProfile
+                Optional<StudentProfile> emailProfOpt = profileRepository.findByUserId(email);
+                Optional<StudentProfile> canonicalProfOpt = profileRepository.findByUserId(canonicalUserId);
+
+                if (emailProfOpt.isPresent()) {
+                    StudentProfile emailProf = emailProfOpt.get();
+                    if (canonicalProfOpt.isPresent() && !emailProf.getId().equals(canonicalProfOpt.get().getId())) {
+                        StudentProfile canonicalProf = canonicalProfOpt.get();
+                        if (emailProf.getConceptMastery() != null) {
+                            Map<String, Double> combinedMastery = canonicalProf.getConceptMastery() != null ? canonicalProf.getConceptMastery() : new HashMap<>();
+                            emailProf.getConceptMastery().forEach((sub, val) -> {
+                                if (val != null && val > 0) {
+                                    combinedMastery.put(sub, val);
+                                }
+                            });
+                            canonicalProf.setConceptMastery(combinedMastery);
+                        }
+                        if (emailProf.getCompletedQuizzesCount() > 0) {
+                            canonicalProf.setCompletedQuizzesCount(canonicalProf.getCompletedQuizzesCount() + emailProf.getCompletedQuizzesCount());
+                        }
+                        profileRepository.save(canonicalProf);
+                        profileRepository.delete(emailProf);
+                    } else if (canonicalProfOpt.isEmpty()) {
+                        emailProf.setUserId(canonicalUserId);
+                        profileRepository.save(emailProf);
+                    }
+                }
+
+                // 5. Sync canonical profile and knowledge map
+                for (String subject : List.of("Data Structures & Algorithms", "Database Management Systems", "Artificial Intelligence")) {
+                    try {
+                        syncConceptMasteryWithProfile(canonicalUserId, subject);
+                    } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception ex) {
+            System.err.println("[StudentService] Startup partition reconciliation error: " + ex.getMessage());
+        }
     }
 
     /**
@@ -154,9 +364,8 @@ public class StudentService {
 
         OnboardingStatus status = statusOpt.get();
         boolean personalDone = personalRepository.findByUserId(userId).isPresent();
-        boolean academicDone = academicRepository.findByUserId(userId).isPresent();
-        boolean questionnaireDone = questionnaireRepository.findByStudentProfileId(userId).isPresent() 
-                || questionnaireRepository.findAll().stream().anyMatch(q -> userId.equals(q.getStudentProfileId()));
+        boolean academicDone = learningPreferenceQuestionnaireRepository.findByUserId(userId).isPresent();
+        boolean questionnaireDone = wellBeingLearningContextRepository.findLatestByUserId(userId).isPresent();
 
         status.setPersonalCompleted(personalDone);
         status.setAcademicCompleted(academicDone);
@@ -218,43 +427,171 @@ public class StudentService {
             if (payload.containsKey("rollNumber")) personal.setRollNumber(parseString(payload.get("rollNumber")));
             if (payload.containsKey("admissionYear")) personal.setAdmissionYear(parseInt(payload.get("admissionYear"), 2022));
             if (payload.containsKey("expectedGraduationYear")) personal.setExpectedGraduationYear(parseInt(payload.get("expectedGraduationYear"), 2026));
+
+            // Form A specific fields
+            if (payload.containsKey("academicYear")) personal.setAcademicYear(parseString(payload.get("academicYear")));
+            if (payload.containsKey("division")) personal.setDivision(parseString(payload.get("division")));
+            if (payload.containsKey("previousProgrammingExperience")) personal.setPreviousProgrammingExperience(parseString(payload.get("previousProgrammingExperience")));
+
+            if (payload.containsKey("previousSemesterSgpa")) {
+                personal.setPreviousSemesterSgpa(validateDoubleField(payload.get("previousSemesterSgpa"), "previousSemesterSgpa", 0.0, 10.0));
+            }
+            if (payload.containsKey("previousSemesterPercentage")) {
+                personal.setPreviousSemesterPercentage(validateDoubleField(payload.get("previousSemesterPercentage"), "previousSemesterPercentage", 0.0, 100.0));
+            }
+            if (payload.containsKey("mathematicsScore")) {
+                personal.setMathematicsScore(validateDoubleField(payload.get("mathematicsScore"), "mathematicsScore", 0.0, 100.0));
+            }
+            if (payload.containsKey("programmingScore")) {
+                personal.setProgrammingScore(validateDoubleField(payload.get("programmingScore"), "programmingScore", 0.0, 100.0));
+            }
+            if (payload.containsKey("dataStructuresScore")) {
+                personal.setDataStructuresScore(validateDoubleField(payload.get("dataStructuresScore"), "dataStructuresScore", 0.0, 100.0));
+            }
+            if (payload.containsKey("dbmsScore")) {
+                personal.setDbmsScore(validateDoubleField(payload.get("dbmsScore"), "dbmsScore", 0.0, 100.0));
+            }
+            if (payload.containsKey("attendancePercentage")) {
+                personal.setAttendancePercentage(validateDoubleField(payload.get("attendancePercentage"), "attendancePercentage", 0.0, 100.0));
+            }
+            if (payload.containsKey("numberOfBacklogs")) {
+                personal.setNumberOfBacklogs(validateIntField(payload.get("numberOfBacklogs"), "numberOfBacklogs", 0, Integer.MAX_VALUE));
+            }
+            if (payload.containsKey("programmingConfidence")) {
+                personal.setProgrammingConfidence(validateIntField(payload.get("programmingConfidence"), "programmingConfidence", 1, 5));
+            }
+            if (payload.containsKey("dataStructuresConfidence")) {
+                personal.setDataStructuresConfidence(validateIntField(payload.get("dataStructuresConfidence"), "dataStructuresConfidence", 1, 5));
+            }
+            if (payload.containsKey("dbmsConfidence")) {
+                personal.setDbmsConfidence(validateIntField(payload.get("dbmsConfidence"), "dbmsConfidence", 1, 5));
+            }
+            if (payload.containsKey("mathematicsConfidence")) {
+                personal.setMathematicsConfidence(validateIntField(payload.get("mathematicsConfidence"), "mathematicsConfidence", 1, 5));
+            }
+            if (payload.containsKey("algorithmsConfidence")) {
+                personal.setAlgorithmsConfidence(validateIntField(payload.get("algorithmsConfidence"), "algorithmsConfidence", 1, 5));
+            }
+
             personal.setUpdatedAt(LocalDateTime.now());
 
             personalRepository.save(personal);
             status.setPersonalCompleted(true);
 
-        } else if (step == 2) { // Academic Profile
-            AcademicProfile academic = academicRepository.findByUserId(userId)
-                    .orElseGet(() -> {
-                        AcademicProfile a = new AcademicProfile();
-                        a.setUserId(userId);
-                        return a;
-                    });
+        } else if (step == 2) { // Form B Learning Preferences
+            // Form B responses processing
+            if (payload.containsKey("responses")) {
+                Map<String, Object> rawResponses = (Map<String, Object>) payload.get("responses");
+                Map<String, Integer> validatedResponses = new HashMap<>();
+                for (int section = 1; section <= 5; section++) {
+                    for (int q = 1; q <= 4; q++) {
+                        String key = "B" + section + "." + q;
+                        if (!rawResponses.containsKey(key)) {
+                            throw new IllegalArgumentException("Question " + key + " is required.");
+                        }
+                        Object rawVal = rawResponses.get(key);
+                        int val = validateIntField(rawVal, key, 1, 5);
+                        validatedResponses.put(key, val);
+                    }
+                }
 
-            if (payload.containsKey("institution")) academic.setInstitution(parseString(payload.get("institution")));
-            if (payload.containsKey("degree")) academic.setDegree(parseString(payload.get("degree")));
-            if (payload.containsKey("engineeringBranch")) academic.setEngineeringBranch(parseString(payload.get("engineeringBranch")));
-            if (payload.containsKey("semester")) academic.setSemester(parseInt(payload.get("semester"), 1));
-            if (payload.containsKey("currentCgpa")) academic.setCurrentCgpa(parseDouble(payload.get("currentCgpa"), 8.0));
-            if (payload.containsKey("targetCgpa")) academic.setTargetCgpa(parseDouble(payload.get("targetCgpa"), 9.0));
-            if (payload.containsKey("currentSubjects")) academic.setCurrentSubjects(parseList(payload.get("currentSubjects")));
-            if (payload.containsKey("weakSubjects")) academic.setWeakSubjects(parseList(payload.get("weakSubjects")));
-            if (payload.containsKey("strongSubjects")) academic.setStrongSubjects(parseList(payload.get("strongSubjects")));
-            if (payload.containsKey("careerGoal")) academic.setCareerGoal(parseString(payload.get("careerGoal")));
-            if (payload.containsKey("dreamCompany")) academic.setDreamCompany(parseString(payload.get("dreamCompany")));
-            if (payload.containsKey("programmingLanguages")) academic.setProgrammingLanguages(parseList(payload.get("programmingLanguages")));
-            if (payload.containsKey("frameworks")) academic.setFrameworks(parseList(payload.get("frameworks")));
-            if (payload.containsKey("githubUrl")) academic.setGithubUrl(parseString(payload.get("githubUrl")));
-            if (payload.containsKey("linkedInUrl")) academic.setLinkedInUrl(parseString(payload.get("linkedInUrl")));
-            if (payload.containsKey("leetcodeUrl")) academic.setLeetcodeUrl(parseString(payload.get("leetcodeUrl")));
-            if (payload.containsKey("weeklyCodingHours")) academic.setWeeklyCodingHours(parseDouble(payload.get("weeklyCodingHours"), 10.0));
-            if (payload.containsKey("preferredLearningStyle")) academic.setPreferredLearningStyle(parseString(payload.get("preferredLearningStyle")));
-            academic.setUpdatedAt(LocalDateTime.now());
+                LearningPreferenceQuestionnaire questionnaire = learningPreferenceQuestionnaireRepository.findByUserId(userId)
+                        .orElseGet(() -> {
+                            LearningPreferenceQuestionnaire l = new LearningPreferenceQuestionnaire();
+                            l.setUserId(userId);
+                            return l;
+                        });
+                questionnaire.setResponses(validatedResponses);
+                questionnaire.setUpdatedAt(LocalDateTime.now());
+                learningPreferenceQuestionnaireRepository.save(questionnaire);
+            } else {
+                throw new IllegalArgumentException("Form B responses are required.");
+            }
 
-            academicRepository.save(academic);
             status.setAcademicCompleted(true);
 
-        } else if (step >= 3 && step <= 7) { // Lifestyle Assessment Sections
+        } else if (step == 3) { // Form C - Well-being & Learning Context
+            if (payload.containsKey("consent")) {
+                Object rawConsent = payload.get("consent");
+                boolean consentVal = false;
+                if (rawConsent instanceof Boolean) {
+                    consentVal = (Boolean) rawConsent;
+                } else if (rawConsent instanceof String) {
+                    consentVal = "I Agree".equalsIgnoreCase((String) rawConsent) || "true".equalsIgnoreCase((String) rawConsent);
+                }
+
+                WellBeingLearningContext context = new WellBeingLearningContext();
+                context.setUserId(userId);
+                context.setConsent(consentVal);
+                context.setUpdatedAt(LocalDateTime.now());
+
+                if (consentVal) {
+                    // Collect and validate all 14 questions
+                    context.setMotivation(validateIntField(payload.get("motivation"), "motivation", 1, 5));
+                    context.setFocus(validateIntField(payload.get("focus"), "focus", 1, 5));
+                    context.setMentalFatigue(validateIntField(payload.get("mentalFatigue"), "mentalFatigue", 1, 5));
+                    context.setAcademicStress(validateIntField(payload.get("academicStress"), "academicStress", 1, 5));
+                    context.setCurrentLearningConfidence(validateIntField(payload.get("currentLearningConfidence"), "currentLearningConfidence", 1, 5));
+                    context.setWorkloadComfort(validateIntField(payload.get("workloadComfort"), "workloadComfort", 1, 5));
+                    context.setLearningSatisfaction(validateIntField(payload.get("learningSatisfaction"), "learningSatisfaction", 1, 5));
+
+                    String sleep = parseString(payload.get("sleepDuration"));
+                    if (!SLEEP_DURATION_OPTIONS.contains(sleep)) {
+                        throw new IllegalArgumentException("sleepDuration option is invalid: " + sleep);
+                    }
+                    context.setSleepDuration(sleep);
+
+                    String studyTime = parseString(payload.get("preferredStudyTime"));
+                    if (!PREFERRED_STUDY_TIME_OPTIONS.contains(studyTime)) {
+                        throw new IllegalArgumentException("preferredStudyTime option is invalid: " + studyTime);
+                    }
+                    context.setPreferredStudyTime(studyTime);
+
+                    String env = parseString(payload.get("studyEnvironment"));
+                    if (!STUDY_ENVIRONMENT_OPTIONS.contains(env)) {
+                        throw new IllegalArgumentException("studyEnvironment option is invalid: " + env);
+                    }
+                    context.setStudyEnvironment(env);
+
+                    String workload = parseString(payload.get("currentAcademicWorkload"));
+                    if (!CURRENT_ACADEMIC_WORKLOAD_OPTIONS.contains(workload)) {
+                        throw new IllegalArgumentException("currentAcademicWorkload option is invalid: " + workload);
+                    }
+                    context.setCurrentAcademicWorkload(workload);
+
+                    String assignments = parseString(payload.get("pendingAssignments"));
+                    if (!PENDING_ASSIGNMENTS_OPTIONS.contains(assignments)) {
+                        throw new IllegalArgumentException("pendingAssignments option is invalid: " + assignments);
+                    }
+                    context.setPendingAssignments(assignments);
+
+                    String difficulty = parseString(payload.get("majorAcademicDifficulty"));
+                    if (!MAJOR_ACADEMIC_DIFFICULTY_OPTIONS.contains(difficulty)) {
+                        throw new IllegalArgumentException("majorAcademicDifficulty option is invalid: " + difficulty);
+                    }
+                    context.setMajorAcademicDifficulty(difficulty);
+
+                    Boolean needsSupport = null;
+                    Object rawSupport = payload.get("needsAcademicSupport");
+                    if (rawSupport instanceof Boolean) {
+                        needsSupport = (Boolean) rawSupport;
+                    } else if (rawSupport instanceof String) {
+                        String s = (String) rawSupport;
+                        if ("Yes".equalsIgnoreCase(s) || "true".equalsIgnoreCase(s)) needsSupport = true;
+                        else if ("No".equalsIgnoreCase(s) || "false".equalsIgnoreCase(s)) needsSupport = false;
+                    }
+                    if (needsSupport == null) {
+                        throw new IllegalArgumentException("needsAcademicSupport is required (Yes or No).");
+                    }
+                    context.setNeedsAcademicSupport(needsSupport);
+                }
+
+                wellBeingLearningContextRepository.save(context);
+            } else {
+                throw new IllegalArgumentException("Consent choice is required.");
+            }
+
+        } else if (step >= 4 && step <= 7) { // Lifestyle Assessment Sections
             LifestyleQuestionnaire quest = questionnaireRepository.findByStudentProfileId(userId)
                     .orElseGet(() -> {
                         LifestyleQuestionnaire q = new LifestyleQuestionnaire();
@@ -301,12 +638,12 @@ public class StudentService {
     /**
      * Onboard / Complete Onboarding for a student.
      */
-    public StudentProfile onboardStudent(String userId, String course, int semester, 
-                                         List<String> subjects, List<String> goals, 
+    public StudentProfile onboardStudent(String userId, String course, int semester,
+                                         List<String> subjects, List<String> goals,
                                          double studyHours, double targetCgpa,
                                          double sleepHours, double stressLevel,
                                          int exerciseMinutes, String learningStyle) {
-        
+
         StudentProfile profile = findOrCreateProfile(userId);
 
         profile.setCourse(course != null ? course : "Computer Science & Engineering");
@@ -377,9 +714,9 @@ public class StudentService {
 
     public StudentProfile submitQuestionnaireAndRunAnalytics(String idOrUserId, LifestyleQuestionnaire questionnaireInput) {
         StudentProfile profile = findOrCreateProfile(idOrUserId);
-        
+
         questionnaireInput.setStudentProfileId(profile.getId());
-        
+
         Optional<LifestyleQuestionnaire> existingOpt = questionnaireRepository.findByStudentProfileId(profile.getId());
         if (existingOpt.isEmpty()) {
             existingOpt = questionnaireRepository.findByStudentProfileId(idOrUserId);
@@ -388,7 +725,7 @@ public class StudentService {
             questionnaireInput.setId(existingOpt.get().getId());
         }
         questionnaireRepository.save(questionnaireInput);
-        
+
         runSilentBackgroundPrediction(profile);
         return profileRepository.save(profile);
     }
@@ -443,7 +780,7 @@ public class StudentService {
         double avgStudyHoursWeekly = profile.getPreferredStudyHoursPerDay() * 7;
         double avgAttendance = 92.0;
         double avgExerciseHoursWeekly = 3.5;
-        
+
         List<LifestyleData> history = lifestyleRepository.findByStudentProfileId(profile.getId());
         if (history != null && !history.isEmpty()) {
             double totalSleep = 0;
@@ -576,12 +913,16 @@ public class StudentService {
         Optional<AcademicProfile> academicOpt = academicRepository.findByUserId(userId);
         Optional<LifestyleQuestionnaire> questionnaireOpt = getQuestionnaireByProfileId(userId);
         Optional<OnboardingStatus> statusOpt = statusRepository.findByUserId(userId);
+        Optional<LearningPreferenceQuestionnaire> learningPreferenceOpt = learningPreferenceQuestionnaireRepository.findByUserId(userId);
+        Optional<WellBeingLearningContext> wellBeingOpt = wellBeingLearningContextRepository.findLatestByUserId(userId);
 
         fullProfile.put("profile", profile);
         fullProfile.put("personalInfo", personalOpt.orElse(null));
         fullProfile.put("academicProfile", academicOpt.orElse(null));
         fullProfile.put("lifestyleQuestionnaire", questionnaireOpt.orElse(null));
         fullProfile.put("onboardingStatus", statusOpt.orElse(null));
+        fullProfile.put("learningPreferenceQuestionnaire", learningPreferenceOpt.orElse(null));
+        fullProfile.put("wellBeingLearningContext", wellBeingOpt.orElse(null));
         return fullProfile;
     }
 
@@ -624,21 +965,153 @@ public class StudentService {
         return Collections.emptyList();
     }
 
-    private StudentProfile ensureSubjectMastery(StudentProfile profile) {
-        if (profile != null && profile.getSubjects() != null && !profile.getSubjects().isEmpty()) {
-            Map<String, Double> masteryMap = profile.getConceptMastery() != null ? profile.getConceptMastery() : new HashMap<>();
-            boolean updated = false;
-            for (String subj : profile.getSubjects()) {
-                if (subj != null && !subj.trim().isEmpty() && !masteryMap.containsKey(subj)) {
-                    masteryMap.put(subj, 0.0);
-                    updated = true;
-                }
-            }
-            if (updated) {
-                profile.setConceptMastery(masteryMap);
-                return profileRepository.save(profile);
+
+    private double validateDoubleField(Object raw, String fieldName, double min, double max) {
+    if (raw == null) {
+        throw new IllegalArgumentException(fieldName + " is required.");
+    }
+    double val;
+    if (raw instanceof Number) {
+        val = ((Number) raw).doubleValue();
+    } else if (raw instanceof String) {
+        try {
+            val = Double.parseDouble((String) raw);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(fieldName + " must be a valid numeric value.");
+        }
+    } else {
+        throw new IllegalArgumentException(fieldName + " is invalid.");
+    }
+    if (val < min || val > max) {
+        throw new IllegalArgumentException(
+            fieldName + " must be between " + min + " and " + max + " inclusive."
+        );
+    }
+    return val;
+}
+
+private int validateIntField(Object raw, String fieldName, int min, int max) {
+    if (raw == null) {
+        throw new IllegalArgumentException(fieldName + " is required.");
+    }
+    int val;
+    if (raw instanceof Number) {
+        val = ((Number) raw).intValue();
+    } else if (raw instanceof String) {
+        try {
+            val = Integer.parseInt((String) raw);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(fieldName + " must be a valid integer.");
+        }
+    } else {
+        throw new IllegalArgumentException(fieldName + " is invalid.");
+    }
+    if (val < min || val > max) {
+        throw new IllegalArgumentException(
+            fieldName + " must be between " + min + " and " + max + " inclusive."
+        );
+    }
+    return val;
+}
+
+private StudentProfile ensureSubjectMastery(StudentProfile profile) {
+    if (profile != null && profile.getSubjects() != null && !profile.getSubjects().isEmpty()) {
+        Map<String, Double> masteryMap =
+            profile.getConceptMastery() != null
+                ? profile.getConceptMastery()
+                : new HashMap<>();
+
+        boolean updated = false;
+
+        for (String subj : profile.getSubjects()) {
+            if (subj != null && !subj.trim().isEmpty() && !masteryMap.containsKey(subj)) {
+                masteryMap.put(subj, 0.0);
+                updated = true;
             }
         }
-        return profile;
+
+        if (updated) {
+            profile.setConceptMastery(masteryMap);
+            return profileRepository.save(profile);
+        }
+    }
+
+    return profile;
+}
+
+    /**
+     * Phase 1 Mastery / Profile Synchronization:
+     * Centralized method to synchronize StudentProfile.conceptMastery summary
+     * directly from authoritative ConceptMasteryRepository data.
+     */
+    public synchronized StudentProfile syncConceptMasteryWithProfile(String userIdOrEmail, String subjectName) {
+        if (userIdOrEmail == null || userIdOrEmail.trim().isEmpty() || "anonymous_student".equalsIgnoreCase(userIdOrEmail)) {
+            return null;
+        }
+
+        String canonicalUserId = resolveUserId(userIdOrEmail);
+        StudentProfile profile = findOrCreateProfile(canonicalUserId);
+        if (profile == null) return null;
+
+        List<ConceptMastery> cmList = conceptMasteryRepository.findByUserId(canonicalUserId);
+        if ((cmList == null || cmList.isEmpty()) && profile.getId() != null && !profile.getId().equals(canonicalUserId)) {
+            cmList = conceptMasteryRepository.findByUserId(profile.getId());
+        }
+
+        if (cmList == null) {
+            cmList = Collections.emptyList();
+        }
+
+        Map<String, Double> masteryMap = profile.getConceptMastery() != null ? new HashMap<>(profile.getConceptMastery()) : new HashMap<>();
+
+        if (!cmList.isEmpty()) {
+            Map<String, List<ConceptMastery>> bySubject = new HashMap<>();
+            for (ConceptMastery cm : cmList) {
+                String sName = cm.getSubjectName();
+                if (sName != null && !sName.isBlank()) {
+                    bySubject.computeIfAbsent(sName.trim(), k -> new ArrayList<>()).add(cm);
+                }
+            }
+
+            for (Map.Entry<String, List<ConceptMastery>> entry : bySubject.entrySet()) {
+                List<ConceptMastery> list = entry.getValue();
+                if (!list.isEmpty()) {
+                    double sum = 0.0;
+                    for (ConceptMastery cm : list) {
+                        sum += cm.getAccuracy();
+                    }
+                    double avg = Math.round((sum / list.size()) * 10.0) / 10.0;
+                    masteryMap.put(entry.getKey(), avg);
+                }
+            }
+        }
+
+        if (subjectName != null && !subjectName.isBlank()) {
+            String targetSubj = subjectName.trim();
+            List<ConceptMastery> subjectConcepts = new ArrayList<>();
+            for (ConceptMastery cm : cmList) {
+                if (cm.getSubjectName() != null && isSameSubject(cm.getSubjectName(), targetSubj)) {
+                    subjectConcepts.add(cm);
+                }
+            }
+            if (!subjectConcepts.isEmpty()) {
+                double sum = 0.0;
+                for (ConceptMastery cm : subjectConcepts) {
+                    sum += cm.getAccuracy();
+                }
+                double avg = Math.round((sum / subjectConcepts.size()) * 10.0) / 10.0;
+                masteryMap.put(targetSubj, avg);
+            }
+        }
+
+        profile.setConceptMastery(masteryMap);
+        return profileRepository.save(profile);
+    }
+
+    private boolean isSameSubject(String s1, String s2) {
+        if (s1 == null || s2 == null) return false;
+        String clean1 = s1.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
+        String clean2 = s2.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
+        return clean1.equals(clean2) || clean1.contains(clean2) || clean2.contains(clean1);
     }
 }
