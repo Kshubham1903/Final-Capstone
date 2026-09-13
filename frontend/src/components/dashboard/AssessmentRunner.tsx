@@ -649,8 +649,8 @@ export default function AssessmentRunner({
                       <div
                         key={evalItem.concept}
                         className={`px-3 py-1 rounded-xl text-[11px] font-bold border flex items-center gap-2 ${evalItem.requiresAdaptiveTesting
-                            ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
-                            : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                          ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                          : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
                           }`}
                       >
                         <span>{evalItem.concept}</span>

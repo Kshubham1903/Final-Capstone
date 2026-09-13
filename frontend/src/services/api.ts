@@ -1,6 +1,6 @@
 import { StudentProfile, LifestyleLog, getStoredStudentProfile, saveStudentProfile, calculateLocalSgi, QUESTION_BANK } from "./mockData";
 
-let activeBackendUrl = (import.meta as any).env?.VITE_API_URL || "http://127.0.0.1:8085";
+let activeBackendUrl = (import.meta as any).env?.VITE_API_URL || "http://127.0.0.1:8080";
 
 export function getBackendUrl(): string {
   return activeBackendUrl;
@@ -31,8 +31,11 @@ export function handleAuthError(res: Response): void {
 export async function checkBackendConnection(): Promise<boolean> {
   const candidateUrls = Array.from(new Set([
     (import.meta as any).env?.VITE_API_URL,
-    "http://127.0.0.1:8085",
-    "http://localhost:8085"
+    activeBackendUrl,
+    "http://127.0.0.1:8080",
+    "http://localhost:8080",
+    "http://127.0.0.1:8081",
+    "http://localhost:8081"
   ].filter(Boolean)));
 
   for (const url of candidateUrls) {
@@ -850,33 +853,25 @@ export async function startDiagnosticAssessment(payload: {
   questionCount?: number;
 }): Promise<any> {
   const online = await checkBackendConnection();
-  if (online) {
-    try {
-      const res = await fetch(`${getBackendUrl()}/api/assessment/start`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        return data;
-      }
-      return {
-        error: "ASSESSMENT_START_FAILED",
-        message: data.message || `Failed to start diagnostic assessment (HTTP ${res.status}).`
-      };
-    } catch (err: any) {
-      console.warn("Error starting diagnostic assessment on backend:", err);
-      return {
-        error: "ASSESSMENT_START_FAILED",
-        message: err.message || "Failed to communicate with diagnostic backend service."
-      };
-    }
+  if (!online) {
+    throw new Error("Backend service is offline. Cannot start diagnostic assessment session.");
   }
-  return {
-    error: "ASSESSMENT_START_FAILED",
-    message: "Backend service is offline."
-  };
+
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/assessment/start`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => null);
+    if (res.ok && data) {
+      return data;
+    }
+    throw new Error(data?.message || `Failed to start diagnostic assessment session (HTTP ${res.status}).`);
+  } catch (err: any) {
+    console.error("Error starting diagnostic assessment on backend:", err);
+    throw new Error(err.message || "Failed to start diagnostic assessment session.");
+  }
 }
 
 export async function submitDiagnosticAssessment(payload: {
@@ -1008,39 +1003,23 @@ export async function submitAdaptiveQuestionAnswer(payload: {
 }): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
-    try {
-      const res = await fetch(`${getBackendUrl()}/api/assessment/adaptive/submit`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch (err) {
-      console.warn("Error submitting adaptive answer:", err);
+    const res = await fetch(`${getBackendUrl()}/api/assessment/adaptive/submit`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok) {
+      return data;
     }
+    throw new Error(data.message || `Failed to submit adaptive answer (HTTP ${res.status}).`);
   }
-  return {
-    adaptiveSessionId: payload.adaptiveSessionId,
-    isCorrect: payload.selectedOption === 2,
-    explanation: "Correct! Searching in an unbalanced BST degrades to O(N) linear time.",
-    completed: false,
-    updatedConceptStatus: "UNCERTAIN",
-    updatedConceptConfidence: 50.0,
-    nextDifficulty: "HARD"
-  };
+  throw new Error("Backend service is offline. Cannot submit adaptive answer.");
 }
 
 export async function fetchNextInitialDiagnosticQuestion(payload: {
   sessionId: string;
 }): Promise<any> {
-  if (!payload || !payload.sessionId || payload.sessionId.startsWith("sess_local_")) {
-    return {
-      error: "INVALID_SESSION_ID",
-      message: "Cannot fetch diagnostic question: Session ID is missing or invalid."
-    };
-  }
   const online = await checkBackendConnection();
   if (online) {
     try {
@@ -1049,11 +1028,11 @@ export async function fetchNextInitialDiagnosticQuestion(payload: {
         headers: getAuthHeaders(),
         body: JSON.stringify({ adaptiveSessionId: payload.sessionId })
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await res.json();
       if (res.ok) {
         return data;
       }
-      return { error: data.error || "QUESTION_GENERATION_FAILED", message: data.message || `Failed to fetch diagnostic question (HTTP ${res.status}).` };
+      return { error: "QUESTION_GENERATION_FAILED", message: data.message || "Groq API question generation failed." };
     } catch (err: any) {
       console.warn("Error fetching next initial diagnostic question:", err);
       return { error: "QUESTION_GENERATION_FAILED", message: err.message || "Failed to communicate with diagnostic service." };
@@ -1070,33 +1049,23 @@ export async function submitInitialDiagnosticAnswer(payload: {
 }): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
-    try {
-      const res = await fetch(`${getBackendUrl()}/api/assessment/initial/submit`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          adaptiveSessionId: payload.sessionId,
-          questionId: payload.questionId,
-          selectedOption: payload.selectedOption,
-          responseTimeSeconds: payload.responseTimeSeconds
-        })
-      });
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch (err) {
-      console.warn("Error submitting initial diagnostic answer:", err);
+    const res = await fetch(`${getBackendUrl()}/api/assessment/initial/submit`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        adaptiveSessionId: payload.sessionId,
+        questionId: payload.questionId,
+        selectedOption: payload.selectedOption,
+        responseTimeSeconds: payload.responseTimeSeconds
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      return data;
     }
+    throw new Error(data.message || `Failed to submit initial diagnostic answer (HTTP ${res.status}).`);
   }
-  return {
-    adaptiveSessionId: payload.sessionId,
-    isCorrect: payload.selectedOption === 2,
-    explanation: "In an unbalanced BST, search degrades to linear scan O(N).",
-    completed: false,
-    updatedConceptStatus: "UNCERTAIN",
-    updatedConceptConfidence: 25.0,
-    nextDifficulty: "MEDIUM"
-  };
+  throw new Error("Backend service is offline. Cannot submit initial diagnostic answer.");
 }
 
 // Knowledge Intelligence Engine Master APIs
@@ -1490,80 +1459,7 @@ export interface DashboardTestSubmissionDTO {
   }>;
 }
 
-export interface DashboardTestResultDTO {
-  sessionId: string;
-  studentId: string;
-  subjectScorePercentage: Record<string, number>;
-  correctCountPerSubject: Record<string, number>;
-  totalQuestions: number;
-  totalCorrect: number;
-  overallPercentage: number;
-  createdAt: string;
-  hasResults?: boolean;
-}
 
-export async function generateDashboardTest(studentId: string): Promise<{
-  ok: boolean;
-  message?: string;
-  sessionId?: string;
-  subjects?: string[];
-  totalQuestions?: number;
-  questions?: DashboardTestQuestionDTO[];
-}> {
-  try {
-    const res = await fetch(`${getBackendUrl()}/api/dashboard-test/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-      body: JSON.stringify({ studentId })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      return { ok: false, message: data.message || "Failed to generate knowledge test." };
-    }
-    return { ok: true, ...data };
-  } catch (err: any) {
-    return { ok: false, message: "Network error generating dashboard test: " + err.message };
-  }
-}
-
-export async function submitDashboardTest(submission: DashboardTestSubmissionDTO): Promise<{
-  ok: boolean;
-  message?: string;
-  result?: DashboardTestResultDTO;
-}> {
-  try {
-    const res = await fetch(`${getBackendUrl()}/api/dashboard-test/submit`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-      body: JSON.stringify(submission)
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      return { ok: false, message: data.message || "Failed to grade submission." };
-    }
-    return { ok: true, result: data };
-  } catch (err: any) {
-    return { ok: false, message: "Network error submitting test: " + err.message };
-  }
-}
-
-export async function getLatestDashboardTestResult(studentId: string): Promise<DashboardTestResultDTO | null> {
-  try {
-    const res = await fetch(`${getBackendUrl()}/api/dashboard-test/latest-result/${studentId}`, {
-      headers: getAuthHeaders()
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.hasResults === false) {
-        return null;
-      }
-      return data as DashboardTestResultDTO;
-    }
-  } catch (err) {
-    console.warn("Failed to fetch latest dashboard test result:", err);
-  }
-  return null;
-}
 
 export interface DailyMasteryPointDTO {
   date: string;
@@ -1582,8 +1478,8 @@ export interface AttemptMasteryPointDTO {
 }
 
 export async function fetchSubjectProgressHistory(
-  studentId: string, 
-  subject: string, 
+  studentId: string,
+  subject: string,
   days: number = 30,
   granularity: string = "perAttempt"
 ): Promise<AttemptMasteryPointDTO[]> {
@@ -1612,13 +1508,18 @@ export async function startConceptRemediation(
       headers: { "Content-Type": "application/json", ...getAuthHeaders() },
       body: JSON.stringify({ studentId, subject, concept })
     });
-    if (res.ok) {
-      return await res.json();
+    const data = await res.json().catch(() => null);
+    if (res.ok && data) {
+      return data;
     }
-  } catch (err) {
+    if (data && data.message) {
+      throw new Error(data.message);
+    }
+    throw new Error(`Failed to start concept remediation test (HTTP ${res.status}).`);
+  } catch (err: any) {
     console.warn("Failed to start concept remediation test:", err);
+    throw err;
   }
-  return null;
 }
 
 export async function submitConceptRemediation(
@@ -1675,4 +1576,238 @@ export async function fetchStudyResources(subject: string, concept: string): Pro
     console.warn("Failed to fetch study resources:", err);
   }
   return null;
+}
+
+export async function fetchStudentState(studentId: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/students/${studentId}/state`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to fetch student state vector:", err);
+    }
+  }
+  return null;
+}
+
+export async function fetchLearningGain(studentId: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/students/${studentId}/learning-gain`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to fetch student learning gain:", err);
+    }
+  }
+  return null;
+}
+
+export async function fetchStudentStateHistory(studentId: string): Promise<any[]> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/students/${studentId}/state/history`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to fetch student state history:", err);
+    }
+  }
+  return [];
+}
+
+export async function fetchEvaluationMetrics(studentId: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/students/${studentId}/evaluation`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to fetch evaluation metrics:", err);
+    }
+  }
+  return null;
+}
+
+export async function postStudentSatisfaction(
+  studentId: string,
+  rating: number,
+  feedbackType: string = "LEARNING_ACTIVITY",
+  comment?: string
+): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/students/${studentId}/satisfaction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ rating, feedbackType, comment })
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to post student satisfaction rating:", err);
+    }
+  }
+  return null;
+}
+
+export async function abandonAssessmentSession(sessionId: string): Promise<any> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/assessment/abandon`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ sessionId })
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Failed to abandon assessment session:", err);
+  }
+  return null;
+}
+
+export async function abandonAdaptiveSession(sessionId: string): Promise<any> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/assessment/adaptive/abandon`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ sessionId, adaptiveSessionId: sessionId })
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Failed to abandon adaptive session:", err);
+  }
+  return null;
+}
+
+export async function abandonQuizSession(sessionId: string): Promise<any> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/quizzes/abandon`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ sessionId })
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Failed to abandon quiz session:", err);
+  }
+  return null;
+}
+
+export async function abandonRemediationSession(sessionId: string): Promise<any> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/concept-remediation/abandon`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ sessionId })
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Failed to abandon remediation session:", err);
+  }
+  return null;
+}
+
+export async function abandonDashboardTestSession(sessionId: string): Promise<any> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/dashboard-test/abandon`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ sessionId })
+    });
+    if (res.ok) return await res.json();
+  } catch (err) {
+    console.warn("Failed to abandon dashboard test session:", err);
+  }
+  return null;
+}
+
+// Personalized Subject Roadmap API Helpers
+
+export async function fetchSubjectRoadmap(subjectCode: string, userId?: string, subjectName?: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const params = new URLSearchParams();
+      if (userId) params.append("userId", userId);
+      if (subjectName) params.append("subjectName", subjectName);
+      const queryString = params.toString() ? `?${params.toString()}` : "";
+
+      const res = await fetch(`${getBackendUrl()}/api/roadmaps/subject/${encodeURIComponent(subjectCode)}${queryString}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to fetch subject roadmap from backend:", err);
+    }
+  }
+  return null;
+}
+
+export async function generateSubjectRoadmap(payload: { subjectCode: string; subjectName?: string; userId?: string }): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/roadmaps/generate`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to generate subject roadmap:", err);
+    }
+  }
+  return null;
+}
+
+export async function fetchRoadmapTopicResources(
+  subjectCode: string,
+  conceptId: string,
+  conceptName?: string,
+  subjectName?: string,
+  userId?: string
+): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const params = new URLSearchParams();
+      if (conceptName) params.append("conceptName", conceptName);
+      if (subjectName) params.append("subjectName", subjectName);
+      if (userId) params.append("userId", userId);
+      const queryString = params.toString() ? `?${params.toString()}` : "";
+
+      const res = await fetch(`${getBackendUrl()}/api/roadmaps/subject/${encodeURIComponent(subjectCode)}/topic/${encodeURIComponent(conceptId)}/resources${queryString}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to fetch VARK-ranked roadmap topic resources from backend:", err);
+    }
+  }
+  return fetchStudyResources(subjectName || subjectCode, conceptName || conceptId);
 }

@@ -30,20 +30,26 @@ public class QuizGenerationService {
         if (profile.getConceptMastery() != null) {
             Double mastery = profile.getConceptMastery().get(subject);
             if (mastery != null) {
-                if (mastery < 40) return QuizQuestion.Difficulty.EASY;
-                if (mastery < 75) return QuizQuestion.Difficulty.MEDIUM;
+                if (mastery < 40)
+                    return QuizQuestion.Difficulty.EASY;
+                if (mastery < 75)
+                    return QuizQuestion.Difficulty.MEDIUM;
                 return QuizQuestion.Difficulty.HARD;
             }
         }
 
         String risk = profile.getAcademicRiskLevel();
         if (risk != null) {
-            if (risk.equalsIgnoreCase("HIGH")) return QuizQuestion.Difficulty.EASY;
-            if (risk.equalsIgnoreCase("MEDIUM")) return QuizQuestion.Difficulty.MEDIUM;
+            if (risk.equalsIgnoreCase("HIGH"))
+                return QuizQuestion.Difficulty.EASY;
+            if (risk.equalsIgnoreCase("MEDIUM"))
+                return QuizQuestion.Difficulty.MEDIUM;
         }
 
-        if (profile.getCurrentCgpa() >= 8.0) return QuizQuestion.Difficulty.HARD;
-        if (profile.getCurrentCgpa() >= 6.0) return QuizQuestion.Difficulty.MEDIUM;
+        if (profile.getCurrentCgpa() >= 8.0)
+            return QuizQuestion.Difficulty.HARD;
+        if (profile.getCurrentCgpa() >= 6.0)
+            return QuizQuestion.Difficulty.MEDIUM;
         return QuizQuestion.Difficulty.EASY;
     }
 
@@ -59,14 +65,18 @@ public class QuizGenerationService {
         return generate(subject, difficulty, count, Map.of());
     }
 
-    public List<QuizQuestion> generate(String subject, QuizQuestion.Difficulty difficulty, int count, Map<String, Object> callerContext) {
+    public List<QuizQuestion> generate(String subject, QuizQuestion.Difficulty difficulty, int count,
+            Map<String, Object> callerContext) {
         int targetCount = Math.min(count > 0 ? count : 5, 5);
         String systemPrompt = buildSystemPrompt();
         String userPrompt = buildUserPrompt(subject, difficulty, targetCount, callerContext);
         Map<String, Object> context = new HashMap<>();
-        if (callerContext != null) context.putAll(callerContext);
-        if (!context.containsKey("maxTokens")) context.put("maxTokens", 1200);
-        if (!context.containsKey("purpose")) context.put("purpose", "DASHBOARD_BATCH");
+        if (callerContext != null)
+            context.putAll(callerContext);
+        if (!context.containsKey("maxTokens"))
+            context.put("maxTokens", 1200);
+        if (!context.containsKey("purpose"))
+            context.put("purpose", "DASHBOARD_BATCH");
 
         int maxRetries = 2;
         String lastError = "Unknown error";
@@ -79,9 +89,13 @@ public class QuizGenerationService {
             try {
                 String rawResponse = groqProvider.generateResponse(systemPrompt, currentPrompt, context);
 
-                if (rawResponse != null && (rawResponse.contains("RATE_LIMIT_TPD") || rawResponse.contains("retryAfterMs=9") || rawResponse.contains("retryAfterMs=8") || rawResponse.contains("retryAfterMs=7") || rawResponse.contains("retryAfterMs=6"))) {
-                    System.err.println("[QuizGenerationService] Groq Daily Quota Exceeded (TPD). Halting automatic retries.");
-                    throw new IllegalStateException("Groq daily token quota (TPD) reached. Assessment question not consumed. Please retry after quota resets.");
+                if (rawResponse != null && (rawResponse.contains("RATE_LIMIT_TPD")
+                        || rawResponse.contains("retryAfterMs=9") || rawResponse.contains("retryAfterMs=8")
+                        || rawResponse.contains("retryAfterMs=7") || rawResponse.contains("retryAfterMs=6"))) {
+                    System.err.println(
+                            "[QuizGenerationService] Groq Daily Quota Exceeded (TPD). Halting automatic retries.");
+                    throw new IllegalStateException(
+                            "Groq daily token quota (TPD) reached. Assessment question not consumed. Please retry after quota resets.");
                 }
 
                 List<QuizQuestion> questions = parseQuestions(rawResponse, subject, difficulty);
@@ -96,10 +110,12 @@ public class QuizGenerationService {
                 }
             }
         }
-        throw new IllegalStateException("Groq API question generation failed for subject '" + subject + "' after " + maxRetries + " attempts. Last failure: " + lastError);
+        throw new IllegalStateException("Groq API question generation failed for subject '" + subject + "' after "
+                + maxRetries + " attempts. Last failure: " + lastError);
     }
 
-    public List<QuizQuestion> generateForConcept(String subject, String concept, QuizQuestion.Difficulty difficulty, int count) {
+    public List<QuizQuestion> generateForConcept(String subject, String concept, QuizQuestion.Difficulty difficulty,
+            int count) {
         if (concept == null || concept.trim().isEmpty()) {
             return generate(subject, difficulty != null ? difficulty : QuizQuestion.Difficulty.MEDIUM, count);
         }
@@ -123,9 +139,13 @@ public class QuizGenerationService {
             try {
                 String rawResponse = groqProvider.generateResponse(systemPrompt, currentPrompt, context);
 
-                if (rawResponse != null && (rawResponse.contains("RATE_LIMIT_TPD") || rawResponse.contains("retryAfterMs=9") || rawResponse.contains("retryAfterMs=8") || rawResponse.contains("retryAfterMs=7") || rawResponse.contains("retryAfterMs=6"))) {
-                    System.err.println("[QuizGenerationService] Groq Daily Quota Exceeded (TPD). Halting automatic retries.");
-                    throw new IllegalStateException("Groq daily token quota (TPD) reached. Assessment question not consumed. Please retry after quota resets.");
+                if (rawResponse != null && (rawResponse.contains("RATE_LIMIT_TPD")
+                        || rawResponse.contains("retryAfterMs=9") || rawResponse.contains("retryAfterMs=8")
+                        || rawResponse.contains("retryAfterMs=7") || rawResponse.contains("retryAfterMs=6"))) {
+                    System.err.println(
+                            "[QuizGenerationService] Groq Daily Quota Exceeded (TPD). Halting automatic retries.");
+                    throw new IllegalStateException(
+                            "Groq daily token quota (TPD) reached. Assessment question not consumed. Please retry after quota resets.");
                 }
 
                 List<QuizQuestion> questions = parseQuestions(rawResponse, subject, difficulty);
@@ -143,7 +163,8 @@ public class QuizGenerationService {
                 }
             }
         }
-        throw new IllegalStateException("Groq API question generation failed for concept '" + concept + "' after " + maxRetries + " attempts. Last failure: " + lastError);
+        throw new IllegalStateException("Groq API question generation failed for concept '" + concept + "' after "
+                + maxRetries + " attempts. Last failure: " + lastError);
     }
 
     public static class QuestionBlueprintSpec {
@@ -151,7 +172,8 @@ public class QuizGenerationService {
         private String concept;
         private QuizQuestion.Difficulty difficulty;
 
-        public QuestionBlueprintSpec() {}
+        public QuestionBlueprintSpec() {
+        }
 
         public QuestionBlueprintSpec(int position, String concept, QuizQuestion.Difficulty difficulty) {
             this.position = position;
@@ -159,25 +181,46 @@ public class QuizGenerationService {
             this.difficulty = difficulty;
         }
 
-        public int getPosition() { return position; }
-        public void setPosition(int position) { this.position = position; }
-        public String getConcept() { return concept; }
-        public void setConcept(String concept) { this.concept = concept; }
-        public QuizQuestion.Difficulty getDifficulty() { return difficulty; }
-        public void setDifficulty(QuizQuestion.Difficulty difficulty) { this.difficulty = difficulty; }
+        public int getPosition() {
+            return position;
+        }
+
+        public void setPosition(int position) {
+            this.position = position;
+        }
+
+        public String getConcept() {
+            return concept;
+        }
+
+        public void setConcept(String concept) {
+            this.concept = concept;
+        }
+
+        public QuizQuestion.Difficulty getDifficulty() {
+            return difficulty;
+        }
+
+        public void setDifficulty(QuizQuestion.Difficulty difficulty) {
+            this.difficulty = difficulty;
+        }
     }
 
-    public List<QuizQuestion> generateBatchDiagnosticQuestionsViaGroq(String subject, List<QuestionBlueprintSpec> blueprint, Map<String, Object> context) {
+    public List<QuizQuestion> generateBatchDiagnosticQuestionsViaGroq(String subject,
+            List<QuestionBlueprintSpec> blueprint, Map<String, Object> context) {
         if (blueprint == null || blueprint.isEmpty()) {
             throw new IllegalArgumentException("Blueprint cannot be null or empty");
         }
 
         Map<String, Object> genContext = context != null ? new HashMap<>(context) : new HashMap<>();
-        if (!genContext.containsKey("maxTokens")) genContext.put("maxTokens", 8000);
-        if (!genContext.containsKey("purpose")) genContext.put("purpose", "DIAGNOSTIC_BATCH_10");
+        if (!genContext.containsKey("maxTokens"))
+            genContext.put("maxTokens", 8000);
+        if (!genContext.containsKey("purpose"))
+            genContext.put("purpose", "DIAGNOSTIC_BATCH_10");
 
-        List<String> excludeTexts = genContext.containsKey("excludeQuestions") 
-                ? (List<String>) genContext.get("excludeQuestions") : List.of();
+        List<String> excludeTexts = genContext.containsKey("excludeQuestions")
+                ? (List<String>) genContext.get("excludeQuestions")
+                : List.of();
 
         List<String> cleanExclusions = new ArrayList<>();
         if (excludeTexts != null) {
@@ -193,13 +236,16 @@ public class QuizGenerationService {
 
         String systemPrompt = "You are an expert academic assessment question generator for " + subject + ".\n" +
                 "CRITICAL INSTRUCTIONS:\n" +
-                "1. You MUST respond with ONLY a single valid JSON object. Do NOT include markdown code blocks (such as ```json), preambles, or commentary.\n" +
-                "2. All keys and string values MUST use strict double quotes (\"). NEVER use single quotes (') or unescaped control characters.\n" +
+                "1. You MUST respond with ONLY a single valid JSON object. Do NOT include markdown code blocks (such as ```json), preambles, or commentary.\n"
+                +
+                "2. All keys and string values MUST use strict double quotes (\"). NEVER use single quotes (') or unescaped control characters.\n"
+                +
                 "3. Ensure all brackets, braces, and double quotes are perfectly closed and valid RFC-8259 syntax.\n" +
                 "4. Follow the exact JSON structure specified below.";
 
         StringBuilder baseUserPrompt = new StringBuilder();
-        baseUserPrompt.append("Generate EXACTLY ").append(blueprint.size()).append(" multiple-choice diagnostic questions for subject \"").append(subject)
+        baseUserPrompt.append("Generate EXACTLY ").append(blueprint.size())
+                .append(" multiple-choice diagnostic questions for subject \"").append(subject)
                 .append("\" strictly following the 10-question blueprint below.\n\n")
                 .append("10-QUESTION BLUEPRINT:\n");
 
@@ -210,7 +256,9 @@ public class QuizGenerationService {
         }
 
         baseUserPrompt.append("\nRequirements:\n")
-                .append("- Generate EXACTLY ").append(blueprint.size()).append(" questions matching blueprint items 1 through ").append(blueprint.size()).append(" in exact sequential order.\n")
+                .append("- Generate EXACTLY ").append(blueprint.size())
+                .append(" questions matching blueprint items 1 through ").append(blueprint.size())
+                .append(" in exact sequential order.\n")
                 .append("- Question 1 MUST match blueprint item 1, Question 2 MUST match blueprint item 2, ..., Question 10 MUST match blueprint item 10.\n")
                 .append("- Do NOT change the assigned concept or difficulty for any question.\n")
                 .append("- Each question must test genuine conceptual understanding.\n")
@@ -253,7 +301,8 @@ public class QuizGenerationService {
         }
         System.out.println("Blueprint:");
         for (QuestionBlueprintSpec spec : blueprint) {
-            System.out.println("Q" + spec.getPosition() + ": " + spec.getConcept() + " / " + spec.getDifficulty().name());
+            System.out
+                    .println("Q" + spec.getPosition() + ": " + spec.getConcept() + " / " + spec.getDifficulty().name());
         }
         System.out.println("Prompt Characters: " + promptChars);
         System.out.println("Estimated Prompt Tokens: " + estTokens);
@@ -265,16 +314,20 @@ public class QuizGenerationService {
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             StringBuilder currentPrompt = new StringBuilder(baseUserPrompt);
             if (attempt > 1) {
-                currentPrompt.append("\n\nSTRICT JSON RETRY NOTICE (Attempt ").append(attempt).append(" of ").append(maxRetries).append("):\n")
+                currentPrompt.append("\n\nSTRICT JSON RETRY NOTICE (Attempt ").append(attempt).append(" of ")
+                        .append(maxRetries).append("):\n")
                         .append("Your previous output failed validation. Output strictly valid RFC-8259 JSON containing an array of exactly 10 questions matching the blueprint.");
             }
 
             try {
                 String rawResponse = groqProvider.generateResponse(systemPrompt, currentPrompt.toString(), genContext);
 
-                if (rawResponse != null && (rawResponse.contains("RATE_LIMIT_TPD") || rawResponse.contains("retryAfterMs=9") || rawResponse.contains("retryAfterMs=8"))) {
-                    System.err.println("[QuizGenerationService] Groq Daily Quota Exceeded (TPD). Halting automatic retries.");
-                    throw new IllegalStateException("Groq daily token quota (TPD) reached. Please retry after quota resets.");
+                if (rawResponse != null && (rawResponse.contains("RATE_LIMIT_TPD")
+                        || rawResponse.contains("retryAfterMs=9") || rawResponse.contains("retryAfterMs=8"))) {
+                    System.err.println(
+                            "[QuizGenerationService] Groq Daily Quota Exceeded (TPD). Halting automatic retries.");
+                    throw new IllegalStateException(
+                            "Groq daily token quota (TPD) reached. Please retry after quota resets.");
                 }
 
                 List<QuizQuestion> parsedBatch = parseBatchQuestions(rawResponse, subject, blueprint);
@@ -287,21 +340,27 @@ public class QuizGenerationService {
                     System.out.println("=========================================");
                     return savedBatch;
                 } else {
-                    lastError = "Parsed batch size (" + parsedBatch.size() + ") did not match requested blueprint size (" + blueprint.size() + ")";
+                    lastError = "Parsed batch size (" + parsedBatch.size()
+                            + ") did not match requested blueprint size (" + blueprint.size() + ")";
                 }
             } catch (Exception ex) {
                 lastError = ex.getMessage();
-                System.err.println("[QuizGenerationService] Batch generation attempt " + attempt + " failed: " + lastError);
-                if (lastError != null && lastError.contains("daily token quota")) throw ex;
+                System.err.println(
+                        "[QuizGenerationService] Batch generation attempt " + attempt + " failed: " + lastError);
+                if (lastError != null && lastError.contains("daily token quota"))
+                    throw ex;
             }
         }
 
-        throw new IllegalStateException("Groq API 10-question batch generation failed after " + maxRetries + " attempts. Last error: " + lastError);
+        throw new IllegalStateException("Groq API 10-question batch generation failed after " + maxRetries
+                + " attempts. Last error: " + lastError);
     }
 
-    private List<QuizQuestion> parseBatchQuestions(String rawJson, String subject, List<QuestionBlueprintSpec> blueprint) {
+    private List<QuizQuestion> parseBatchQuestions(String rawJson, String subject,
+            List<QuestionBlueprintSpec> blueprint) {
         List<QuizQuestion> result = new ArrayList<>();
-        if (rawJson == null || rawJson.isBlank()) return result;
+        if (rawJson == null || rawJson.isBlank())
+            return result;
 
         String cleanJson = rawJson.trim();
         if (cleanJson.startsWith("```json")) {
@@ -324,7 +383,9 @@ public class QuizGenerationService {
 
             JsonNode questionsNode = root.get("questions");
             if (questionsNode == null || !questionsNode.isArray() || questionsNode.size() != blueprint.size()) {
-                System.err.println("[QuizGenerationService] Invalid questions array in batch response. Expected " + blueprint.size() + ", got: " + (questionsNode != null && questionsNode.isArray() ? questionsNode.size() : "none"));
+                System.err.println("[QuizGenerationService] Invalid questions array in batch response. Expected "
+                        + blueprint.size() + ", got: "
+                        + (questionsNode != null && questionsNode.isArray() ? questionsNode.size() : "none"));
                 return result;
             }
 
@@ -335,13 +396,15 @@ public class QuizGenerationService {
                 QuestionBlueprintSpec spec = blueprint.get(i);
 
                 if (!qNode.has("questionText") || !qNode.has("options") || !qNode.get("options").isArray()) {
-                    System.err.println("[QuizGenerationService] Question " + (i+1) + " missing questionText or options array");
+                    System.err.println(
+                            "[QuizGenerationService] Question " + (i + 1) + " missing questionText or options array");
                     return new ArrayList<>();
                 }
 
                 String questionText = qNode.path("questionText").asText().trim();
                 if (questionText.isEmpty() || seenTexts.contains(questionText.toLowerCase())) {
-                    System.err.println("[QuizGenerationService] Duplicate or empty questionText at index " + i + ": " + questionText);
+                    System.err.println("[QuizGenerationService] Duplicate or empty questionText at index " + i + ": "
+                            + questionText);
                     return new ArrayList<>();
                 }
                 seenTexts.add(questionText.toLowerCase());
@@ -349,7 +412,8 @@ public class QuizGenerationService {
                 List<String> options = new ArrayList<>();
                 qNode.get("options").forEach(opt -> options.add(opt.asText().trim()));
                 if (options.size() != 4) {
-                    System.err.println("[QuizGenerationService] Question " + (i+1) + " options size is not 4: " + options.size());
+                    System.err.println("[QuizGenerationService] Question " + (i + 1) + " options size is not 4: "
+                            + options.size());
                     return new ArrayList<>();
                 }
 
@@ -358,7 +422,8 @@ public class QuizGenerationService {
                     correctIdx = 0;
                 }
 
-                String explanation = qNode.path("conceptualExplanation").asText("Conceptual explanation for " + spec.getConcept()).trim();
+                String explanation = qNode.path("conceptualExplanation")
+                        .asText("Conceptual explanation for " + spec.getConcept()).trim();
                 if (explanation.isEmpty()) {
                     explanation = "Conceptual explanation for " + spec.getConcept();
                 }
@@ -386,16 +451,22 @@ public class QuizGenerationService {
         return result;
     }
 
-    public QuizQuestion generateOneDiagnosticQuestionViaGroq(String subject, String concept, QuizQuestion.Difficulty difficulty, Map<String, Object> context) {
-        if (difficulty == null) difficulty = QuizQuestion.Difficulty.MEDIUM;
-        if (concept == null || concept.isBlank()) concept = "General Principles";
+    public QuizQuestion generateOneDiagnosticQuestionViaGroq(String subject, String concept,
+            QuizQuestion.Difficulty difficulty, Map<String, Object> context) {
+        if (difficulty == null)
+            difficulty = QuizQuestion.Difficulty.MEDIUM;
+        if (concept == null || concept.isBlank())
+            concept = "General Principles";
 
         Map<String, Object> genContext = context != null ? new HashMap<>(context) : new HashMap<>();
-        if (!genContext.containsKey("maxTokens")) genContext.put("maxTokens", 800);
-        if (!genContext.containsKey("purpose")) genContext.put("purpose", "DIAGNOSTIC_ONE_BY_ONE");
+        if (!genContext.containsKey("maxTokens"))
+            genContext.put("maxTokens", 800);
+        if (!genContext.containsKey("purpose"))
+            genContext.put("purpose", "DIAGNOSTIC_ONE_BY_ONE");
 
-        List<String> excludeTexts = genContext.containsKey("excludeQuestions") 
-                ? (List<String>) genContext.get("excludeQuestions") : List.of();
+        List<String> excludeTexts = genContext.containsKey("excludeQuestions")
+                ? (List<String>) genContext.get("excludeQuestions")
+                : List.of();
 
         System.out.println("[QuizGenerationService] Adaptive question generation: concept = " + concept +
                 ", difficulty = " + difficulty.name() +
@@ -407,8 +478,10 @@ public class QuizGenerationService {
 
         String systemPrompt = "You are an expert academic assessment question generator for " + subject + ".\n" +
                 "CRITICAL INSTRUCTIONS:\n" +
-                "1. You MUST respond with ONLY a single valid JSON object. Do NOT include markdown code blocks (such as ```json), preambles, or commentary.\n" +
-                "2. All keys and string values MUST use strict double quotes (\"). NEVER use single quotes (') or unescaped control characters.\n" +
+                "1. You MUST respond with ONLY a single valid JSON object. Do NOT include markdown code blocks (such as ```json), preambles, or commentary.\n"
+                +
+                "2. All keys and string values MUST use strict double quotes (\"). NEVER use single quotes (') or unescaped control characters.\n"
+                +
                 "3. Ensure all brackets, braces, and double quotes are perfectly closed and valid RFC-8259 syntax.\n" +
                 "4. Follow the exact JSON structure specified below.";
 
@@ -451,43 +524,55 @@ public class QuizGenerationService {
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             StringBuilder currentPrompt = new StringBuilder(baseUserPrompt);
             if (attempt > 1) {
-                currentPrompt.append("\n\nSTRICT JSON RETRY NOTICE (Attempt ").append(attempt).append(" of ").append(maxRetries).append("):\n")
+                currentPrompt.append("\n\nSTRICT JSON RETRY NOTICE (Attempt ").append(attempt).append(" of ")
+                        .append(maxRetries).append("):\n")
                         .append("Your previous output failed JSON validation. Output strictly valid RFC-8259 JSON using double quotes for all keys and string values.");
             }
 
             try {
                 String rawResponse = groqProvider.generateResponse(systemPrompt, currentPrompt.toString(), genContext);
 
-                if (rawResponse != null && (rawResponse.contains("RATE_LIMIT_TPD") || rawResponse.contains("retryAfterMs=9") || rawResponse.contains("retryAfterMs=8") || rawResponse.contains("retryAfterMs=7") || rawResponse.contains("retryAfterMs=6"))) {
-                    System.err.println("[QuizGenerationService] Groq Daily Quota Exceeded (TPD). Halting automatic retries.");
-                    throw new IllegalStateException("Groq daily token quota (TPD) reached. Assessment question not consumed. Please retry after quota resets.");
+                if (rawResponse != null && (rawResponse.contains("RATE_LIMIT_TPD")
+                        || rawResponse.contains("retryAfterMs=9") || rawResponse.contains("retryAfterMs=8")
+                        || rawResponse.contains("retryAfterMs=7") || rawResponse.contains("retryAfterMs=6"))) {
+                    System.err.println(
+                            "[QuizGenerationService] Groq Daily Quota Exceeded (TPD). Halting automatic retries.");
+                    throw new IllegalStateException(
+                            "Groq daily token quota (TPD) reached. Assessment question not consumed. Please retry after quota resets.");
                 }
 
-                if (rawResponse != null && (rawResponse.contains("RATE_LIMIT_TPM") || rawResponse.contains("RATE_LIMITED"))) {
+                if (rawResponse != null
+                        && (rawResponse.contains("RATE_LIMIT_TPM") || rawResponse.contains("RATE_LIMITED"))) {
                     long retryDelayMs = 2000;
                     if (rawResponse.contains("retryAfterMs=")) {
                         try {
                             int startIdx = rawResponse.indexOf("retryAfterMs=") + 13;
                             int endIdx = rawResponse.indexOf("\"", startIdx);
-                            if (endIdx < 0) endIdx = rawResponse.indexOf("}", startIdx);
+                            if (endIdx < 0)
+                                endIdx = rawResponse.indexOf("}", startIdx);
                             if (endIdx > startIdx) {
                                 retryDelayMs = Long.parseLong(rawResponse.substring(startIdx, endIdx));
                             }
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
                     }
 
                     if (retryDelayMs >= 60000) {
-                        System.err.println("[QuizGenerationService] TPD delay detected (" + retryDelayMs + "ms). Halting automatic retries.");
-                        throw new IllegalStateException("Groq daily token quota (TPD) reached. Assessment question not consumed. Please retry after quota resets.");
+                        System.err.println("[QuizGenerationService] TPD delay detected (" + retryDelayMs
+                                + "ms). Halting automatic retries.");
+                        throw new IllegalStateException(
+                                "Groq daily token quota (TPD) reached. Assessment question not consumed. Please retry after quota resets.");
                     }
 
-                    System.err.println("[QuizGenerationService] Groq rate limited (TPM): retryAfter = " + retryDelayMs + "ms, attempt = " + attempt);
+                    System.err.println("[QuizGenerationService] Groq rate limited (TPM): retryAfter = " + retryDelayMs
+                            + "ms, attempt = " + attempt);
                     lastError = "Groq API TPM rate limit (429) exceeded.";
 
                     if (attempt < maxRetries) {
                         try {
                             Thread.sleep(Math.min(retryDelayMs, 4000));
-                        } catch (InterruptedException ignored) {}
+                        } catch (InterruptedException ignored) {
+                        }
                         continue;
                     }
                 }
@@ -502,31 +587,37 @@ public class QuizGenerationService {
                     q.setQuestionFingerprint(fp);
                     return questionRepository.save(q);
                 } else {
-                    lastError = "Parsed questions list was empty (raw response: " + (rawResponse != null ? rawResponse.replaceAll("\\s+", " ") : "null") + ")";
+                    lastError = "Parsed questions list was empty (raw response: "
+                            + (rawResponse != null ? rawResponse.replaceAll("\\s+", " ") : "null") + ")";
                 }
             } catch (Exception ex) {
                 lastError = ex.getMessage();
-                System.err.println("[QuizGenerationService] Groq generation attempt " + attempt + " failed: " + lastError);
+                System.err.println(
+                        "[QuizGenerationService] Groq generation attempt " + attempt + " failed: " + lastError);
             }
         }
 
-        // Absolute No-Fallback Principle: NEVER return static fallback questions for diagnostic tests!
-        throw new IllegalStateException("Groq API question generation failed after " + maxRetries + " attempts. Last error: " + lastError);
+        // Absolute No-Fallback Principle: NEVER return static fallback questions for
+        // diagnostic tests!
+        throw new IllegalStateException(
+                "Groq API question generation failed after " + maxRetries + " attempts. Last error: " + lastError);
     }
 
     private String buildSystemPrompt() {
         return "You are an expert academic question generator.\n" +
-               "CRITICAL INSTRUCTIONS:\n" +
-               "1. You MUST respond with ONLY a single valid JSON object. Do NOT include markdown code blocks (such as ```json), preambles, or commentary.\n" +
-               "2. All keys and string values MUST use strict double quotes (\"). NEVER use single quotes (').\n" +
-               "3. Ensure the JSON structure matches the specified schema with valid syntax.";
+                "CRITICAL INSTRUCTIONS:\n" +
+                "1. You MUST respond with ONLY a single valid JSON object. Do NOT include markdown code blocks (such as ```json), preambles, or commentary.\n"
+                +
+                "2. All keys and string values MUST use strict double quotes (\"). NEVER use single quotes (').\n" +
+                "3. Ensure the JSON structure matches the specified schema with valid syntax.";
     }
 
     private String buildUserPrompt(String subject, QuizQuestion.Difficulty difficulty, int count) {
         return buildUserPrompt(subject, difficulty, count, Map.of());
     }
 
-    private String buildUserPrompt(String subject, QuizQuestion.Difficulty difficulty, int count, Map<String, Object> context) {
+    private String buildUserPrompt(String subject, QuizQuestion.Difficulty difficulty, int count,
+            Map<String, Object> context) {
         StringBuilder prompt = new StringBuilder("Generate ").append(count)
                 .append(" multiple-choice quiz questions for subject \"").append(subject)
                 .append("\" at ").append(difficulty.name()).append(" difficulty level.\n\n")
@@ -539,7 +630,9 @@ public class QuizGenerationService {
         if (context != null && context.containsKey("excludeQuestions")) {
             List<String> excludeTexts = (List<String>) context.get("excludeQuestions");
             if (excludeTexts != null && !excludeTexts.isEmpty()) {
-                List<String> recent = excludeTexts.size() > 6 ? excludeTexts.subList(excludeTexts.size() - 6, excludeTexts.size()) : excludeTexts;
+                List<String> recent = excludeTexts.size() > 6
+                        ? excludeTexts.subList(excludeTexts.size() - 6, excludeTexts.size())
+                        : excludeTexts;
                 prompt.append("- DO NOT generate questions similar to these previous question fingerprints/texts:\n");
                 for (String exc : recent) {
                     String shortExc = exc.length() > 60 ? exc.substring(0, 60) + "..." : exc;
@@ -563,27 +656,30 @@ public class QuizGenerationService {
         return prompt.toString();
     }
 
-    private String buildUserPromptForConcept(String subject, String concept, QuizQuestion.Difficulty difficulty, int count) {
+    private String buildUserPromptForConcept(String subject, String concept, QuizQuestion.Difficulty difficulty,
+            int count) {
         return "Generate " + count + " multiple-choice quiz questions specifically testing the concept \"" + concept +
-               "\" within the subject \"" + subject + "\" at " + difficulty.name() + " difficulty level.\n\n" +
-               "Requirements:\n" +
-               "- Each question must test genuine conceptual understanding of " + concept + ".\n" +
-               "- Exactly 4 answer options per question, only one correct.\n" +
-               "- Include a short explanation of why the correct answer is correct.\n" +
-               "- CRITICAL: Use strict double quotes (\") for all JSON keys and string values. Never use single quotes (').\n\n" +
-               "Respond with JSON in exactly this shape:\n" +
-               "{\"questions\": [{" +
-               "\"concept\": \"" + concept + "\", " +
-               "\"questionText\": \"the question\", " +
-               "\"options\": [\"option A\", \"option B\", \"option C\", \"option D\"], " +
-               "\"correctOptionIndex\": 0, " +
-               "\"conceptualExplanation\": \"why this answer is correct\"" +
-               "}]}";
+                "\" within the subject \"" + subject + "\" at " + difficulty.name() + " difficulty level.\n\n" +
+                "Requirements:\n" +
+                "- Each question must test genuine conceptual understanding of " + concept + ".\n" +
+                "- Exactly 4 answer options per question, only one correct.\n" +
+                "- Include a short explanation of why the correct answer is correct.\n" +
+                "- CRITICAL: Use strict double quotes (\") for all JSON keys and string values. Never use single quotes (').\n\n"
+                +
+                "Respond with JSON in exactly this shape:\n" +
+                "{\"questions\": [{" +
+                "\"concept\": \"" + concept + "\", " +
+                "\"questionText\": \"the question\", " +
+                "\"options\": [\"option A\", \"option B\", \"option C\", \"option D\"], " +
+                "\"correctOptionIndex\": 0, " +
+                "\"conceptualExplanation\": \"why this answer is correct\"" +
+                "}]}";
     }
 
     private List<QuizQuestion> parseQuestions(String rawJson, String subject, QuizQuestion.Difficulty difficulty) {
         List<QuizQuestion> result = new ArrayList<>();
-        if (rawJson == null || rawJson.isBlank()) return result;
+        if (rawJson == null || rawJson.isBlank())
+            return result;
 
         String cleanJson = rawJson.trim();
         if (cleanJson.startsWith("```json")) {
@@ -611,12 +707,14 @@ public class QuizGenerationService {
             }
 
             for (JsonNode q : questionsNode) {
-                if (!q.has("questionText") || !q.has("options") || !q.get("options").isArray()) continue;
+                if (!q.has("questionText") || !q.has("options") || !q.get("options").isArray())
+                    continue;
 
                 List<String> options = new ArrayList<>();
                 q.get("options").forEach(opt -> options.add(opt.asText()));
 
-                if (options.size() != 4) continue;
+                if (options.size() != 4)
+                    continue;
 
                 QuizQuestion question = QuizQuestion.builder()
                         .subject(subject)
@@ -625,7 +723,8 @@ public class QuizGenerationService {
                         .questionText(q.path("questionText").asText())
                         .options(options)
                         .correctOptionIndex(q.path("correctOptionIndex").asInt(0))
-                        .conceptualExplanation(q.path("conceptualExplanation").asText("Conceptual explanation for " + subject))
+                        .conceptualExplanation(
+                                q.path("conceptualExplanation").asText("Conceptual explanation for " + subject))
                         .build();
 
                 question.setQuestionSource("GROQ_AI_GENERATED");

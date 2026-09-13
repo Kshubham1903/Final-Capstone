@@ -1,5 +1,5 @@
 server:
-  port: ${SERVER_PORT:8085}
+  port: ${SERVER_PORT:8080}
 
 spring:
   application:
@@ -21,7 +21,7 @@ ai:
 
 # LLM Provider Configuration
 llm:
-  provider: ${LLM_PROVIDER:groq} # groq, gemini, openai, or mock
+  provider: ${LLM_PROVIDER:gemini} # gemini, openai, or mock
   openai:
     api-key: ${OPENAI_API_KEY:mock-key}
     model: ${OPENAI_MODEL:gpt-4o-mini}
@@ -30,7 +30,7 @@ llm:
     model: ${GEMINI_MODEL:gemini-flash-latest}
   groq:
     api-key: ${GROQ_API_KEY:}
-    model: ${GROQ_MODEL:qwen/qwen3.6-27b}
+    model: ${GROQ_MODEL:qwen/qwen3.8-27b}
   temperature: ${LLM_TEMPERATURE:0.7}
   top-p: ${LLM_TOP_P:0.95}
   top-k: ${LLM_TOP_K:40}
