@@ -198,10 +198,10 @@ export default function Quizzes() {
         semester,
         subjectCode,
         subjectName: subj,
-        questionCount: 10
+        questionCount: 25
       });
-      if (!startRes || !startRes.sessionId || startRes.sessionId.startsWith("sess_local_")) {
-        setGroqError("Failed to initialize valid diagnostic session on backend.");
+      if (!startRes || startRes.error || !startRes.sessionId || startRes.sessionId.startsWith("sess_local_")) {
+        setGroqError(startRes?.message || "Failed to initialize valid diagnostic session on backend.");
         setRetryAction(() => () => startAiQuiz(subj));
         return;
       }
@@ -223,7 +223,7 @@ export default function Quizzes() {
         setActiveQuestion(normalizedQ1);
         setCurrentDiff((normalizedQ1.difficulty as "EASY" | "MEDIUM" | "HARD") || "EASY");
         setQuestionCount(0);
-        setMaxQuestions(startRes.totalQuestions || 10);
+        setMaxQuestions(startRes.totalQuestions || 25);
         setSelectedOption(null);
         setIsAnswered(false);
         setSecondsSpent(0);
@@ -1068,8 +1068,8 @@ export default function Quizzes() {
                           <div className="flex justify-between items-center">
                             <span className="text-[9px] font-bold text-purple-theme tracking-wide uppercase">Recommended for You</span>
                             <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${rec.priority === "High" ? "bg-red-500/10 text-red-400 border border-red-500/10" :
-                                rec.priority === "Medium" ? "bg-amber-500/10 text-amber-400 border border-amber-500/10" :
-                                  "bg-emerald-500/10 text-emerald-400 border border-emerald-500/10"
+                              rec.priority === "Medium" ? "bg-amber-500/10 text-amber-400 border border-amber-500/10" :
+                                "bg-emerald-500/10 text-emerald-400 border border-emerald-500/10"
                               }`}>
                               {rec.priority} Priority
                             </span>
@@ -1231,7 +1231,7 @@ export default function Quizzes() {
                     Exit Quiz
                   </button>
                   <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${currentDiff === "EASY" ? "bg-emerald-500/10 text-emerald-theme" :
-                      currentDiff === "MEDIUM" ? "bg-cyan-500/10 text-cyan-theme" : "bg-pink-500/10 text-pink-theme"
+                    currentDiff === "MEDIUM" ? "bg-cyan-500/10 text-cyan-theme" : "bg-pink-500/10 text-pink-theme"
                     }`}>
                     {currentDiff} DIFFICULTY
                   </span>
@@ -1314,8 +1314,8 @@ export default function Quizzes() {
               {/* Conceptual Review Explanation */}
               {isAnswered && (
                 <div className={`p-4 rounded-xl text-xs space-y-2 border ${(questionFeedback?.isCorrect ?? (selectedOption === activeQuestion?.correctOptionIndex))
-                    ? "bg-emerald-500/5 border-emerald-500/20"
-                    : "bg-red-500/5 border-red-500/20"
+                  ? "bg-emerald-500/5 border-emerald-500/20"
+                  : "bg-red-500/5 border-red-500/20"
                   }`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 font-bold">
@@ -1447,8 +1447,8 @@ export default function Quizzes() {
         {quizStarted && quizFinished && (
           <div className="w-full max-w-3xl mx-auto glass-panel p-8 rounded-2xl border border-white/10 space-y-6 text-center">
             <div className={`h-16 w-16 rounded-full flex items-center justify-center mx-auto border ${isVerificationMode
-                ? (remediationResult?.passed ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-theme" : "bg-amber-500/10 border-amber-500/20 text-amber-400")
-                : "bg-emerald-500/10 border-emerald-500/20 text-emerald-theme"
+              ? (remediationResult?.passed ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-theme" : "bg-amber-500/10 border-amber-500/20 text-amber-400")
+              : "bg-emerald-500/10 border-emerald-500/20 text-emerald-theme"
               }`}>
               {isVerificationMode && !remediationResult?.passed ? (
                 <AlertCircle className="h-8 w-8 text-amber-400" />

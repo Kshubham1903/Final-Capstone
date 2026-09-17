@@ -1,6 +1,6 @@
 import { StudentProfile, LifestyleLog, getStoredStudentProfile, saveStudentProfile, calculateLocalSgi, QUESTION_BANK } from "./mockData";
 
-let activeBackendUrl = (import.meta as any).env?.VITE_API_URL || "http://127.0.0.1:8080";
+let activeBackendUrl = (import.meta as any).env?.VITE_API_URL || "http://127.0.0.1:8085";
 
 export function getBackendUrl(): string {
   return activeBackendUrl;
@@ -32,6 +32,8 @@ export async function checkBackendConnection(): Promise<boolean> {
   const candidateUrls = Array.from(new Set([
     (import.meta as any).env?.VITE_API_URL,
     activeBackendUrl,
+    "http://127.0.0.1:8085",
+    "http://localhost:8085",
     "http://127.0.0.1:8080",
     "http://localhost:8080",
     "http://127.0.0.1:8081",
@@ -47,10 +49,13 @@ export async function checkBackendConnection(): Promise<boolean> {
         signal: controller.signal
       });
       clearTimeout(id);
-      if (res.ok || res.status === 401 || res.status === 403 || res.status === 404) {
-        activeBackendUrl = url as string;
-        isBackendOnline = true;
-        return true;
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data && (data.status === "UP" || data.status === "OK")) {
+          activeBackendUrl = url as string;
+          isBackendOnline = true;
+          return true;
+        }
       }
     } catch (err) {
       // try next candidate
@@ -1478,8 +1483,8 @@ export interface AttemptMasteryPointDTO {
 }
 
 export async function fetchSubjectProgressHistory(
-  studentId: string, 
-  subject: string, 
+  studentId: string,
+  subject: string,
   days: number = 30,
   granularity: string = "perAttempt"
 ): Promise<AttemptMasteryPointDTO[]> {
@@ -1647,9 +1652,9 @@ export async function fetchEvaluationMetrics(studentId: string): Promise<any> {
 }
 
 export async function postStudentSatisfaction(
-  studentId: string, 
-  rating: number, 
-  feedbackType: string = "LEARNING_ACTIVITY", 
+  studentId: string,
+  rating: number,
+  feedbackType: string = "LEARNING_ACTIVITY",
   comment?: string
 ): Promise<any> {
   const online = await checkBackendConnection();
@@ -1784,10 +1789,10 @@ export async function generateSubjectRoadmap(payload: { subjectCode: string; sub
 }
 
 export async function fetchRoadmapTopicResources(
-  subjectCode: string, 
-  conceptId: string, 
-  conceptName?: string, 
-  subjectName?: string, 
+  subjectCode: string,
+  conceptId: string,
+  conceptName?: string,
+  subjectName?: string,
   userId?: string
 ): Promise<any> {
   const online = await checkBackendConnection();

@@ -12,7 +12,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/concept-remediation")
-@CrossOrigin(origins = "*")
 public class ConceptRemediationController {
 
     @Autowired

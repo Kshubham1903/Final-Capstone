@@ -11,7 +11,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/recommendations")
-@CrossOrigin(origins = "*")
 public class RecommendationController {
 
     @Autowired

@@ -117,10 +117,10 @@ export default function AssessmentRunner({
         branch,
         semester,
         subjectCode: subjCode,
-        questionCount: 10
+        questionCount: 25
       });
 
-      if (sess && sess.sessionId && !sess.sessionId.startsWith("sess_local_")) {
+      if (sess && !sess.error && sess.sessionId && !sess.sessionId.startsWith("sess_local_")) {
         setSession(sess);
         setSelectedSubjectCode(subjCode);
         setCurrentIdx(0);
@@ -142,7 +142,7 @@ export default function AssessmentRunner({
           });
           setAdaptiveQuestion(normalizedQ1);
           setAdaptiveQuestionNumber(1);
-          setAdaptiveMaxQuestions(sess.totalQuestions || 10);
+          setAdaptiveMaxQuestions(sess.totalQuestions || 25);
           setAdaptiveSelectedOption(null);
           setAdaptiveFeedback(null);
           setAdaptiveStartTime(Date.now());
@@ -883,8 +883,8 @@ export default function AssessmentRunner({
                       <div
                         key={evalItem.concept}
                         className={`px-3 py-1 rounded-xl text-[11px] font-bold border flex items-center gap-2 ${evalItem.requiresAdaptiveTesting
-                            ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
-                            : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                          ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                          : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
                           }`}
                       >
                         <span>{evalItem.concept}</span>

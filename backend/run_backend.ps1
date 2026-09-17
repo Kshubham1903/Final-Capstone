@@ -33,7 +33,29 @@ if (-not $env:LLM_PROVIDER) {
     } else { $env:LLM_PROVIDER = 'groq' }
 }
 
-$port = if ($env:SERVER_PORT) { [int]$env:SERVER_PORT } else { 8080 }
+# Validate and print masked status for LLM keys
+Write-Host "========== EDUPILOT ENVIRONMENT VALIDATION ==========" -ForegroundColor Cyan
+Write-Host "LLM Provider selected: $env:LLM_PROVIDER" -ForegroundColor Cyan
+Write-Host "Groq Model selected: $env:GROQ_MODEL" -ForegroundColor Cyan
+
+if (-not $env:GROQ_API_KEY -or $env:GROQ_API_KEY.Length -lt 10) {
+    Write-Host "[ERROR] GROQ_API_KEY is missing or invalid in process environment and .env files!" -ForegroundColor Red
+    Write-Host "Please set a valid GROQ_API_KEY in .env or system environment variables before starting." -ForegroundColor Red
+    exit 1
+} else {
+    $maskedGroq = $env:GROQ_API_KEY.Substring(0, [Math]::Min(7, $env:GROQ_API_KEY.Length)) + "..." + $env:GROQ_API_KEY.Substring([Math]::Max(0, $env:GROQ_API_KEY.Length - 4))
+    Write-Host "GROQ_API_KEY loaded successfully: $maskedGroq (Length: $($env:GROQ_API_KEY.Length))" -ForegroundColor Green
+}
+
+if (-not $env:GEMINI_API_KEY -or $env:GEMINI_API_KEY.Length -lt 10) {
+    Write-Host "[WARNING] GEMINI_API_KEY is missing or invalid in .env files." -ForegroundColor Yellow
+} else {
+    $maskedGemini = $env:GEMINI_API_KEY.Substring(0, [Math]::Min(4, $env:GEMINI_API_KEY.Length)) + "..." + $env:GEMINI_API_KEY.Substring([Math]::Max(0, $env:GEMINI_API_KEY.Length - 4))
+    Write-Host "GEMINI_API_KEY loaded successfully: $maskedGemini (Length: $($env:GEMINI_API_KEY.Length))" -ForegroundColor Green
+}
+Write-Host "=====================================================" -ForegroundColor Cyan
+
+$port = if ($env:SERVER_PORT) { [int]$env:SERVER_PORT } else { 8085 }
 
 # 1. Check for any process currently listening on the target port and attempt termination
 $staleConnections = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
@@ -49,15 +71,6 @@ if ($staleConnections) {
         }
     }
     Start-Sleep -Seconds 1
-    
-    # 2. Check if port is still locked (e.g. requires Administrator rights to kill)
-    $stillOccupied = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-    if ($stillOccupied) {
-        $blockedPid = $stillOccupied[0].OwningProcess
-        Write-Host "[run_backend.ps1] WARNING: Port $port is locked by PID $blockedPid (Requires Admin privileges to terminate)." -ForegroundColor Red
-        Write-Host "[run_backend.ps1] Automatically switching application port to 8081..." -ForegroundColor Yellow
-        $port = 8081
-    }
 }
 
 Write-Host "[run_backend.ps1] Starting EduPilot Backend on port $port..." -ForegroundColor Green

@@ -11,7 +11,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/study-resources")
-@CrossOrigin(origins = "*")
 public class StudyResourceController {
 
     @Autowired
