@@ -72,6 +72,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/recommendations/**").permitAll()
                         .requestMatchers("/api/planner/**").permitAll()
                         .requestMatchers("/api/students/**").permitAll()
+                        .requestMatchers("/api/student-growth/**").permitAll()
                         .requestMatchers("/api/quizzes/**").permitAll()
                         .requestMatchers("/api/assessment/**").permitAll()
                         .requestMatchers("/api/knowledge/**").permitAll()

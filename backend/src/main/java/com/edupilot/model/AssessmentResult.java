@@ -45,16 +45,22 @@ public class AssessmentResult {
         private int selectedOption;
         private boolean isCorrect;
         private int marksObtained;
+        private Double responseTimeSeconds;
 
         public UserAnswer() {
         }
 
         public UserAnswer(String questionId, String topic, int selectedOption, boolean isCorrect, int marksObtained) {
+            this(questionId, topic, selectedOption, isCorrect, marksObtained, null);
+        }
+
+        public UserAnswer(String questionId, String topic, int selectedOption, boolean isCorrect, int marksObtained, Double responseTimeSeconds) {
             this.questionId = questionId;
             this.topic = topic;
             this.selectedOption = selectedOption;
             this.isCorrect = isCorrect;
             this.marksObtained = marksObtained;
+            this.responseTimeSeconds = responseTimeSeconds;
         }
 
         public String getQuestionId() {
@@ -95,6 +101,14 @@ public class AssessmentResult {
 
         public void setMarksObtained(int marksObtained) {
             this.marksObtained = marksObtained;
+        }
+
+        public Double getResponseTimeSeconds() {
+            return responseTimeSeconds;
+        }
+
+        public void setResponseTimeSeconds(Double responseTimeSeconds) {
+            this.responseTimeSeconds = responseTimeSeconds;
         }
     }
 

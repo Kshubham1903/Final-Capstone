@@ -883,7 +883,7 @@ export async function submitDiagnosticAssessment(payload: {
   sessionId: string;
   userId: string;
   timeTakenSeconds: number;
-  answers: Array<{ questionId: string; selectedOption: number }>;
+  answers: Array<{ questionId: string; selectedOption: number; responseTimeSeconds?: number }>;
 }): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
@@ -1527,6 +1527,34 @@ export async function startConceptRemediation(
   }
 }
 
+export async function startConceptVerification(
+  studentId: string,
+  subject: string,
+  concept: string
+): Promise<any> {
+  try {
+    const res = await fetch(`${getBackendUrl()}/api/concept-remediation/start-verification`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+      body: JSON.stringify({ studentId, subject, concept })
+    });
+    const data = await res.json().catch(() => null);
+    if (res.ok && data) {
+      return data;
+    }
+    if (data && data.message) {
+      throw new Error(data.message);
+    }
+    throw new Error(`Failed to start concept verification test (HTTP ${res.status}).`);
+  } catch (err: any) {
+    console.warn("Failed to start concept verification test:", err);
+    throw err;
+  }
+}
+
+
+
+
 export async function submitConceptRemediation(
   studentId: string,
   sessionId: string,
@@ -1583,6 +1611,103 @@ export async function fetchStudyResources(subject: string, concept: string): Pro
   return null;
 }
 
+export interface TrajectoryPoint {
+  assessmentIndex: number;
+  sessionType: string;
+  timestamp: string;
+  scorePercentage: number;
+  conceptsCovered: string[];
+  cumulativeGrowthPp: number | null;
+  recentGainPp: number | null;
+}
+
+export interface SubjectProgressData {
+  subject: string;
+  baselineAccuracy: number;
+  currentAccuracy: number;
+  growthPp: number;
+  conceptsCount: number;
+  assessedConceptsCount: number;
+}
+
+export interface ConceptGrowthDetail {
+  conceptId: string;
+  conceptName: string;
+  subject: string;
+  baselineAccuracy: number | null;
+  currentAccuracy: number;
+  growthPp: number | null;
+  isImproved: boolean;
+  baselineAssessed: boolean;
+  assessmentCount: number;
+  lastAssessedTimestamp: string;
+}
+
+export interface TimelineEvent {
+  id: string;
+  title: string;
+  subtitle: string;
+  timestamp: string;
+  type: string;
+  scorePercentage: number | null;
+  details: string;
+}
+
+export interface SubjectGrowthDTO {
+  subjectName: string;
+  baselineKnowledge: number | null;
+  currentKnowledge: number | null;
+  cumulativeGrowth: number | null;
+  totalConcepts: number;
+  weakConcepts: number;
+}
+
+export interface GrowthTrajectoryPointDTO {
+  eventId: string;
+  timestamp: string;
+  assessmentType: string;
+  subjectName: string;
+  knowledgeScore: number;
+  baselineKnowledge: number;
+  cumulativeGrowth: number;
+  recentGain: number;
+  description: string;
+}
+
+export interface ConceptImprovementDTO {
+  conceptName: string;
+  subjectName: string;
+  baselineAccuracy: number;
+  currentAccuracy: number;
+  growthPoints: number;
+  isImproved: boolean;
+}
+
+export interface StudentGrowthData {
+  userId: string;
+  hasDiagnostic: boolean;
+  baselineKnowledge: number | null;
+  currentKnowledge: number | null;
+  cumulativeGrowth: number | null;
+  recentGain: number | null;
+  conceptsImproved: number;
+  weakConceptsRemaining: number;
+  baselineOverallAccuracy: number | null;
+  currentOverallAccuracy: number | null;
+  cumulativeGrowthPp: number | null;
+  recentGainPp: number | null;
+  baselineTimestamp: string | null;
+  lastAssessmentTimestamp: string | null;
+  totalAssessmentsCount: number;
+  conceptsAssessedCount: number;
+  conceptsImprovedCount: number;
+  trajectory: TrajectoryPoint[];
+  subjectProgress: SubjectProgressData[];
+  conceptMasteries: ConceptGrowthDetail[];
+  timeline: TimelineEvent[];
+  dataSufficiencyNote?: string;
+}
+
 export async function fetchStudentState(studentId: string): Promise<any> {
   const online = await checkBackendConnection();
   if (online) {
@@ -1595,6 +1720,139 @@ export async function fetchStudentState(studentId: string): Promise<any> {
       }
     } catch (err) {
       console.warn("Failed to fetch student state vector:", err);
+    }
+  }
+  return null;
+}
+
+export async function fetchStudentGrowth(studentId: string): Promise<StudentGrowthData | null> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/student-growth/${studentId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data) {
+          const trajectory: TrajectoryPoint[] = (data.trajectory || []).map((tp: any) => ({
+            eventId: tp.eventId || tp.id || String(Math.random()),
+            timestamp: tp.timestamp,
+            assessmentType: tp.assessmentType || tp.type || "DIAGNOSTIC",
+            subjectName: tp.subjectName || "General",
+            knowledgeScore: tp.knowledgeScore ?? tp.scorePercentage ?? 50,
+            baselineKnowledge: tp.baselineKnowledge ?? data.baselineKnowledge ?? 50,
+            cumulativeGrowth: tp.cumulativeGrowth ?? 0,
+            recentGain: tp.recentGain ?? 0,
+            description: tp.description || ""
+          }));
+
+          const hasDiag = trajectory.length > 0;
+
+          const subjectProgress: SubjectProgressData[] = [];
+          if (data.subjectGrowth && typeof data.subjectGrowth === "object") {
+            for (const [sName, sDTO] of Object.entries<any>(data.subjectGrowth)) {
+              if (sDTO) {
+                subjectProgress.push({
+                  subject: sName,
+                  baselineAccuracy: sDTO.baselineKnowledge ?? 50.0,
+                  currentAccuracy: sDTO.currentKnowledge ?? 50.0,
+                  growthPp: sDTO.cumulativeGrowth ?? 0.0,
+                  conceptsCount: sDTO.totalConcepts ?? 0,
+                  assessedConceptsCount: Math.max(0, (sDTO.totalConcepts ?? 0) - (sDTO.weakConcepts ?? 0))
+                });
+              }
+            }
+          }
+
+          const conceptMasteries: ConceptGrowthDetail[] = (data.conceptImprovements || []).map((ci: any, idx: number) => {
+            const conceptName = ci.conceptName || ci.concept || `Concept ${idx + 1}`;
+            const conceptId = ci.conceptId || ci.conceptName || `concept-${idx + 1}`;
+            const subject = ci.subjectName || ci.subject || "General";
+            const baselineAccuracy = typeof ci.baselineAccuracy === "number" ? ci.baselineAccuracy : null;
+            const currentAccuracy = typeof ci.currentAccuracy === "number" ? ci.currentAccuracy : 0;
+            const growthPp = typeof ci.growthPoints === "number"
+              ? ci.growthPoints
+              : typeof ci.growthPp === "number"
+              ? ci.growthPp
+              : (baselineAccuracy !== null ? currentAccuracy - baselineAccuracy : null);
+            const isImproved = typeof ci.isImproved === "boolean"
+              ? ci.isImproved
+              : (growthPp !== null && growthPp > 0);
+            const baselineAssessed = typeof ci.baselineAssessed === "boolean"
+              ? ci.baselineAssessed
+              : (baselineAccuracy !== null);
+
+            return {
+              conceptId,
+              conceptName,
+              subject,
+              baselineAccuracy,
+              currentAccuracy,
+              growthPp,
+              isImproved,
+              baselineAssessed,
+              assessmentCount: ci.assessmentCount ?? (baselineAssessed ? 2 : 1),
+              lastAssessedTimestamp: ci.lastAssessedTimestamp || (data.trajectory && data.trajectory.length > 0 ? data.trajectory[data.trajectory.length - 1].timestamp : new Date().toISOString())
+            };
+          });
+
+          const timeline: TimelineEvent[] = trajectory.map((tp: any) => ({
+            id: tp.eventId,
+            title: tp.subjectName ? `${tp.subjectName} Assessment` : "Assessment Event",
+            subtitle: tp.description || tp.assessmentType || "Observed Assessment Event",
+            timestamp: tp.timestamp,
+            type: tp.assessmentType,
+            scorePercentage: tp.knowledgeScore,
+            details: `${tp.subjectName || "General"}: ${tp.description || "Assessment Event"}`
+          }));
+
+          return {
+            userId: data.userId || studentId,
+            hasDiagnostic: hasDiag,
+            baselineKnowledge: data.baselineKnowledge ?? null,
+            currentKnowledge: data.currentKnowledge ?? null,
+            cumulativeGrowth: data.cumulativeGrowth ?? null,
+            recentGain: data.recentGain ?? null,
+            conceptsImproved: data.conceptsImproved ?? 0,
+            weakConceptsRemaining: data.weakConceptsRemaining ?? 0,
+            baselineOverallAccuracy: data.baselineKnowledge ?? null,
+            currentOverallAccuracy: data.currentKnowledge ?? null,
+            cumulativeGrowthPp: data.cumulativeGrowth ?? null,
+            recentGainPp: data.recentGain ?? null,
+            baselineTimestamp: trajectory.length > 0 ? trajectory[0].timestamp : null,
+            lastAssessmentTimestamp: trajectory.length > 0 ? trajectory[trajectory.length - 1].timestamp : null,
+            totalAssessmentsCount: trajectory.length,
+            conceptsAssessedCount: conceptMasteries.length,
+            conceptsImprovedCount: data.conceptsImproved ?? 0,
+            trajectory: trajectory,
+            subjectProgress: subjectProgress,
+            conceptMasteries: conceptMasteries,
+            timeline: timeline,
+            dataSufficiencyNote: data.dataSufficiencyNote
+          };
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch student growth data:", err);
+    }
+  }
+  return null;
+}
+
+
+export async function fetchLatestAssessmentResult(userId: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/assessment/latest/${userId}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.warn("Failed to fetch latest assessment result:", err);
     }
   }
   return null;
@@ -1816,3 +2074,40 @@ export async function fetchRoadmapTopicResources(
   }
   return fetchStudyResources(subjectName || subjectCode, conceptName || conceptId);
 }
+
+// Reassessment & Concept Verification Loop API Helpers
+
+export async function fetchPendingReassessment(studentId: string, subject?: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const params = new URLSearchParams({ studentId });
+      if (subject) params.append("subject", subject);
+      const res = await fetch(`${getBackendUrl()}/api/concept-remediation/pending-check?${params.toString()}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) return await res.json();
+    } catch (err) {
+      console.warn("Failed to fetch pending reassessment check:", err);
+    }
+  }
+  return { hasPendingCheck: false };
+}
+
+export async function abandonConceptRemediationSession(sessionId: string): Promise<any> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/concept-remediation/abandon`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ sessionId })
+      });
+      if (res.ok) return await res.json();
+    } catch (err) {
+      console.warn("Failed to abandon concept remediation session:", err);
+    }
+  }
+  return null;
+}
+

@@ -22,7 +22,9 @@ import {
   checkBackendConnection,
   generateAiQuizQuestions,
   fetchStudentRecommendations,
+  fetchLatestAssessmentResult,
   startConceptRemediation,
+  startConceptVerification,
   submitConceptRemediation,
   startDiagnosticAssessment,
   fetchNextInitialDiagnosticQuestion,
@@ -80,6 +82,7 @@ export default function Quizzes() {
   const [nextQuestionError, setNextQuestionError] = useState<string | null>(null);
   const [retryAction, setRetryAction] = useState<(() => void) | null>(null);
   const [finalSkillProfile, setFinalSkillProfile] = useState<any | null>(null);
+  const [lastEvaluationResult, setLastEvaluationResult] = useState<any | null>(null);
 
   const [targetConcept, setTargetConcept] = useState(urlTargetConcept);
   const [isVerification, setIsVerification] = useState(urlIsVerification);
@@ -503,6 +506,10 @@ export default function Quizzes() {
     }
     const userId = profile?.userId || profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") : "") || "";
     if (userId) {
+      const latestResult = await fetchLatestAssessmentResult(userId);
+      if (latestResult) {
+        setLastEvaluationResult(latestResult);
+      }
       const updatedKp = await fetchKnowledgeProfile(userId);
       setFinalSkillProfile(updatedKp);
       const updatedProf = await fetchProfile(userId);
@@ -541,7 +548,7 @@ export default function Quizzes() {
 
     try {
       const activeUserId = profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") : "") || "";
-      const res = await startConceptRemediation(activeUserId, subj, conc);
+      const res = await startConceptVerification(activeUserId, subj, conc);
       if (!res || !res.questions || !Array.isArray(res.questions) || res.questions.length === 0) {
         setVerificationError("No verification questions available for this concept.");
         setVerificationLoading(false);
@@ -1473,8 +1480,9 @@ export default function Quizzes() {
             <AssessmentFeedbackCard
               studentId={profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") || "" : "")}
               topic={displayTargetConcept || activeSubject || "Assessment"}
-              score={correctAnswers}
-              totalQuestions={quizQuestions.length > 0 ? quizQuestions.length : maxQuestions}
+              score={remediationResult?.correctCount !== undefined ? remediationResult.correctCount : (lastEvaluationResult?.correctAnswers !== undefined ? lastEvaluationResult.correctAnswers : correctAnswers)}
+              totalQuestions={remediationResult?.totalQuestions !== undefined ? remediationResult.totalQuestions : (lastEvaluationResult?.totalQuestions !== undefined ? lastEvaluationResult.totalQuestions : (quizQuestions.length > 0 ? quizQuestions.length : 25))}
+              percentage={remediationResult?.percentage !== undefined ? remediationResult.percentage : (lastEvaluationResult?.percentage !== undefined ? lastEvaluationResult.percentage : lastEvaluationResult?.accuracy)}
               customFeedback={isVerificationMode && remediationResult?.message ? remediationResult.message : undefined}
             />
 
@@ -1483,12 +1491,20 @@ export default function Quizzes() {
               <div className="p-4 bg-white/5 rounded-xl border border-white/5">
                 <span className="text-[10px] text-secondary-theme block uppercase">Status Result</span>
                 <span className={`text-lg font-bold ${isVerificationMode ? (remediationResult?.passed ? "text-emerald-400" : "text-amber-400") : "text-purple-theme"}`}>
-                  {isVerificationMode ? (remediationResult?.passed ? "REMEDIATED" : "PRACTICE NEEDED") : `+${correctAnswers >= 7 ? "0.4" : "0.1"} Growth`}
+                  {isVerificationMode 
+                    ? (remediationResult?.passed ? "REMEDIATED" : "PRACTICE NEEDED") 
+                    : (lastEvaluationResult?.masteryLevel || "COMPLETED")}
                 </span>
               </div>
               <div className="p-4 bg-white/5 rounded-xl border border-white/5">
                 <span className="text-[10px] text-secondary-theme block uppercase">Accuracy Rate</span>
-                <span className="text-lg font-bold text-cyan-theme">{((correctAnswers / (quizQuestions.length > 0 ? quizQuestions.length : maxQuestions)) * 100).toFixed(0)}%</span>
+                <span className="text-lg font-bold text-cyan-theme">
+                  {remediationResult?.percentage !== undefined 
+                    ? `${Math.round(remediationResult.percentage)}%` 
+                    : (lastEvaluationResult?.percentage !== undefined || lastEvaluationResult?.accuracy !== undefined
+                      ? `${Math.round(lastEvaluationResult.percentage ?? lastEvaluationResult.accuracy)}%`
+                      : `${Math.round(Math.min(100, Math.max(0, (correctAnswers / (quizQuestions.length > 0 ? quizQuestions.length : 25)) * 100)))}%`)}
+                </span>
               </div>
             </div>
 

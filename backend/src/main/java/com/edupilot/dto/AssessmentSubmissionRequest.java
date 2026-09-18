@@ -11,13 +11,19 @@ public class AssessmentSubmissionRequest {
     public static class AnswerItem {
         private String questionId;
         private int selectedOption; // -1 if skipped
+        private Double responseTimeSeconds;
 
         public AnswerItem() {
         }
 
         public AnswerItem(String questionId, int selectedOption) {
+            this(questionId, selectedOption, null);
+        }
+
+        public AnswerItem(String questionId, int selectedOption, Double responseTimeSeconds) {
             this.questionId = questionId;
             this.selectedOption = selectedOption;
+            this.responseTimeSeconds = responseTimeSeconds;
         }
 
         public String getQuestionId() {
@@ -34,6 +40,14 @@ public class AssessmentSubmissionRequest {
 
         public void setSelectedOption(int selectedOption) {
             this.selectedOption = selectedOption;
+        }
+
+        public Double getResponseTimeSeconds() {
+            return responseTimeSeconds;
+        }
+
+        public void setResponseTimeSeconds(Double responseTimeSeconds) {
+            this.responseTimeSeconds = responseTimeSeconds;
         }
     }
 

@@ -310,7 +310,7 @@ public class AssessmentService {
                 }
 
                 userAnswersList.add(new AssessmentResult.UserAnswer(q.getId(), topic, ansItem.getSelectedOption(),
-                        isCorrect, marksObtained));
+                        isCorrect, marksObtained, ansItem.getResponseTimeSeconds()));
             }
         }
 
@@ -1063,7 +1063,7 @@ public class AssessmentService {
 
             // Record UserAnswer in session history
             if (session.getUserAnswers() == null) session.setUserAnswers(new ArrayList<>());
-            session.getUserAnswers().add(new AssessmentResult.UserAnswer(question.getId(), question.getConcept(), req.getSelectedOption(), isCorrect, isCorrect ? 2 : 0));
+            session.getUserAnswers().add(new AssessmentResult.UserAnswer(question.getId(), question.getConcept(), req.getSelectedOption(), isCorrect, isCorrect ? 2 : 0, req.getResponseTimeSeconds()));
 
             int totalQuestions = session.getTotalQuestions() > 0 ? session.getTotalQuestions() : 25;
             boolean completed = session.getQuestionCount() >= totalQuestions;

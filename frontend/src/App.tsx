@@ -16,12 +16,16 @@ import OnboardingGuard from "./components/OnboardingGuard";
 
 import SubjectsPage from "./app/dashboard/subjects/page";
 
+import StudentProgressPage from "./app/progress/page";
+
 export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/dashboard" element={<OnboardingGuard><StudentDashboard /></OnboardingGuard>} />
+      <Route path="/progress" element={<OnboardingGuard><StudentProgressPage /></OnboardingGuard>} />
+      <Route path="/dashboard/progress" element={<OnboardingGuard><StudentProgressPage /></OnboardingGuard>} />
       <Route path="/dashboard/subjects" element={<OnboardingGuard><SubjectsPage /></OnboardingGuard>} />
       <Route path="/dashboard/subjects/:subjectCode" element={<OnboardingGuard><SubjectsPage /></OnboardingGuard>} />
       <Route path="/dashboard/profile" element={<OnboardingGuard><ProfilePage /></OnboardingGuard>} />
