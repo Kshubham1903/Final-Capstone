@@ -52,6 +52,9 @@ export default function StudentProgressPage() {
           hasDiagnostic={growthData?.hasDiagnostic || false}
           totalAssessments={growthData?.totalAssessmentsCount || 0}
           lastUpdated={growthData?.lastAssessmentTimestamp || null}
+          baselineKnowledge={growthData?.baselineKnowledge}
+          currentKnowledge={growthData?.currentKnowledge}
+          cumulativeGrowth={growthData?.cumulativeGrowth}
         />
 
         {/* Loading State */}
@@ -95,7 +98,7 @@ export default function StudentProgressPage() {
             </p>
             <div className="mt-6">
               <Link
-                to="/dashboard/quizzes"
+                to="/onboarding"
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all shadow-md hover:shadow-lg"
               >
                 Take Initial Diagnostic Quiz
@@ -111,7 +114,7 @@ export default function StudentProgressPage() {
             <GrowthSummaryCards growthData={growthData} />
 
             {/* Main Trajectory Chart */}
-            <LearningTrajectoryChart trajectory={growthData.trajectory} />
+            <LearningTrajectoryChart trajectory={growthData.trajectory} recentGain={growthData.recentGain ?? growthData.recentGainPp ?? undefined} />
 
             {/* Subject-Level Progress */}
             <SubjectProgressSection subjects={growthData.subjectProgress} />

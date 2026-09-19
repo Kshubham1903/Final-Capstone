@@ -1453,6 +1453,7 @@ export interface DashboardTestQuestionDTO {
   concept: string;
   questionText: string;
   options: string[];
+  conceptualExplanation?: string;
 }
 
 export interface DashboardTestSubmissionDTO {
@@ -1619,6 +1620,10 @@ export interface TrajectoryPoint {
   conceptsCovered: string[];
   cumulativeGrowthPp: number | null;
   recentGainPp: number | null;
+  eventId?: string;
+  subjectName?: string;
+  baselineKnowledge?: number | null;
+  description?: string;
 }
 
 export interface SubjectProgressData {
@@ -1735,15 +1740,17 @@ export async function fetchStudentGrowth(studentId: string): Promise<StudentGrow
       if (res.ok) {
         const data = await res.json();
         if (data) {
-          const trajectory: TrajectoryPoint[] = (data.trajectory || []).map((tp: any) => ({
-            eventId: tp.eventId || tp.id || String(Math.random()),
+          const trajectory: TrajectoryPoint[] = (data.trajectory || []).map((tp: any, idx: number) => ({
+            assessmentIndex: idx + 1,
+            sessionType: tp.assessmentType || tp.sessionType || "DIAGNOSTIC",
             timestamp: tp.timestamp,
-            assessmentType: tp.assessmentType || tp.type || "DIAGNOSTIC",
+            scorePercentage: tp.knowledgeScore ?? tp.scorePercentage ?? 0,
+            conceptsCovered: tp.conceptsCovered || (tp.subjectName ? [tp.subjectName] : []),
+            cumulativeGrowthPp: tp.cumulativeGrowth ?? tp.cumulativeGrowthPp ?? 0,
+            recentGainPp: tp.recentGain ?? tp.recentGainPp ?? 0,
+            eventId: tp.eventId || tp.id || String(idx + 1),
             subjectName: tp.subjectName || "General",
-            knowledgeScore: tp.knowledgeScore ?? tp.scorePercentage ?? 50,
-            baselineKnowledge: tp.baselineKnowledge ?? data.baselineKnowledge ?? 50,
-            cumulativeGrowth: tp.cumulativeGrowth ?? 0,
-            recentGain: tp.recentGain ?? 0,
+            baselineKnowledge: tp.baselineKnowledge ?? data.baselineKnowledge ?? null,
             description: tp.description || ""
           }));
 
@@ -1797,29 +1804,29 @@ export async function fetchStudentGrowth(studentId: string): Promise<StudentGrow
             };
           });
 
-          const timeline: TimelineEvent[] = trajectory.map((tp: any) => ({
-            id: tp.eventId,
+          const timeline: TimelineEvent[] = trajectory.map((tp: TrajectoryPoint) => ({
+            id: tp.eventId || String(tp.assessmentIndex),
             title: tp.subjectName ? `${tp.subjectName} Assessment` : "Assessment Event",
-            subtitle: tp.description || tp.assessmentType || "Observed Assessment Event",
+            subtitle: tp.description || (tp.sessionType ? tp.sessionType.replace("_", " ") : "Observed Assessment Event"),
             timestamp: tp.timestamp,
-            type: tp.assessmentType,
-            scorePercentage: tp.knowledgeScore,
+            type: tp.sessionType || "PROGRESS_ASSESSMENT",
+            scorePercentage: tp.scorePercentage ?? 0,
             details: `${tp.subjectName || "General"}: ${tp.description || "Assessment Event"}`
           }));
 
           return {
             userId: data.userId || studentId,
             hasDiagnostic: hasDiag,
-            baselineKnowledge: data.baselineKnowledge ?? null,
-            currentKnowledge: data.currentKnowledge ?? null,
-            cumulativeGrowth: data.cumulativeGrowth ?? null,
-            recentGain: data.recentGain ?? null,
+            baselineKnowledge: data.baselineKnowledge ?? data.baselineOverallAccuracy ?? (trajectory.length > 0 ? trajectory[0].baselineKnowledge ?? trajectory[0].scorePercentage : null),
+            currentKnowledge: data.currentKnowledge ?? data.currentOverallAccuracy ?? (trajectory.length > 0 ? trajectory[trajectory.length - 1].scorePercentage : null),
+            cumulativeGrowth: data.cumulativeGrowth ?? data.cumulativeGrowthPp ?? null,
+            recentGain: data.recentGain ?? data.recentGainPp ?? null,
             conceptsImproved: data.conceptsImproved ?? 0,
             weakConceptsRemaining: data.weakConceptsRemaining ?? 0,
-            baselineOverallAccuracy: data.baselineKnowledge ?? null,
-            currentOverallAccuracy: data.currentKnowledge ?? null,
-            cumulativeGrowthPp: data.cumulativeGrowth ?? null,
-            recentGainPp: data.recentGain ?? null,
+            baselineOverallAccuracy: data.baselineKnowledge ?? data.baselineOverallAccuracy ?? null,
+            currentOverallAccuracy: data.currentKnowledge ?? data.currentOverallAccuracy ?? null,
+            cumulativeGrowthPp: data.cumulativeGrowth ?? data.cumulativeGrowthPp ?? null,
+            recentGainPp: data.recentGain ?? data.recentGainPp ?? null,
             baselineTimestamp: trajectory.length > 0 ? trajectory[0].timestamp : null,
             lastAssessmentTimestamp: trajectory.length > 0 ? trajectory[trajectory.length - 1].timestamp : null,
             totalAssessmentsCount: trajectory.length,

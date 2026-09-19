@@ -42,6 +42,12 @@ public class ConceptRemediationService {
     @Autowired
     private StudentService studentService;
 
+    @Autowired
+    private RoadmapService roadmapService;
+
+    @Autowired
+    private SubjectRepository subjectRepository;
+
 
     public Map<String, Object> startRemediationTest(String studentId, String subject, String concept) {
         if (studentId == null || studentId.trim().isEmpty()) {
@@ -56,12 +62,29 @@ public class ConceptRemediationService {
 
         StudentProfile profile = studentService.findOrCreateProfile(studentId);
 
-        // 1. Generate 5 concept-targeted questions via QuizGenerationService (tagged as REMEDIATION)
+        // Fetch question IDs from completed previous sessions for this student, subject, and concept
+        Set<String> usedQuestionIds = new HashSet<>();
+        try {
+            List<RemediationSession> pastSessions = remediationSessionRepository
+                    .findByStudentIdAndSubjectAndConceptAndCompletedTrue(studentId, subject.trim(), concept.trim());
+            if (pastSessions != null) {
+                for (RemediationSession s : pastSessions) {
+                    if (s.getQuestionIds() != null) {
+                        usedQuestionIds.addAll(s.getQuestionIds());
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            System.err.println("[startRemediationTest] Error querying past completed sessions: " + ex.getMessage());
+        }
+
+        // 1. Generate 10 concept-targeted questions via QuizGenerationService (tagged as REMEDIATION)
         List<QuizQuestion> questions = quizGenerationService.generateForConcept(
                 subject.trim(), 
                 concept.trim(), 
                 QuizQuestion.Difficulty.MEDIUM, 
-                5
+                10,
+                usedQuestionIds
         );
 
         List<String> questionIds = new ArrayList<>();
@@ -76,7 +99,9 @@ public class ConceptRemediationService {
                     q.getSubject(),
                     q.getConcept(),
                     q.getQuestionText(),
-                    q.getOptions()
+                    q.getOptions(),
+                    q.getCorrectOptionIndex(),
+                    q.getConceptualExplanation()
             ));
         }
 
@@ -234,6 +259,14 @@ public class ConceptRemediationService {
         cm.setMasteryLevel(passed ? ConceptMastery.MasteryLevel.MASTER : ConceptMastery.MasteryLevel.INTERMEDIATE);
         cm.setAccuracy(newAccuracy);
         cm.setConfidenceScore(passed ? 100.0 : 70.0);
+        
+        // CONFIRMED ISSUE 1: Explicitly set ConceptStatus based on score >= 70 threshold
+        if (newAccuracy >= 70.0) {
+            cm.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        } else {
+            cm.setStatus(ConceptMastery.ConceptStatus.WEAK);
+        }
+
         cm.setLastAssessedAt(LocalDateTime.now());
         cm.setRecommendedAction(passed ? "Remediated successfully! Concept cleared." : "Observed progress recorded.");
         conceptMasteryRepository.save(cm);
@@ -243,6 +276,20 @@ public class ConceptRemediationService {
             studentService.syncConceptMasteryWithProfile(canonicalUserId, finalSubject);
         } catch (Exception e) {
             System.err.println("[ConceptRemediationService] Profile mastery sync error: " + e.getMessage());
+        }
+
+        // Recalculate active roadmap topic states using existing RoadmapService
+        try {
+            if (roadmapService != null) {
+                String resolvedSubjectCode = (subjectRepository != null) 
+                        ? subjectRepository.findBySubjectName(finalSubject)
+                                .map(Subject::getSubjectCode)
+                                .orElseGet(() -> resolveSubjectCodeFallback(finalSubject))
+                        : resolveSubjectCodeFallback(finalSubject);
+                roadmapService.getOrCreateRoadmap(canonicalUserId, resolvedSubjectCode, finalSubject);
+            }
+        } catch (Exception e) {
+            System.err.println("[ConceptRemediationService] Roadmap state update note: " + e.getMessage());
         }
 
         // Refresh adaptive planner
@@ -425,5 +472,15 @@ public class ConceptRemediationService {
             return Map.of("status", "SESSION_ABANDONED", "sessionId", sessionId);
         }
         return Map.of("status", "SESSION_NOT_FOUND", "sessionId", sessionId);
+    }
+
+    private String resolveSubjectCodeFallback(String rawSubject) {
+        if (rawSubject == null || rawSubject.isBlank()) return "CS301";
+        String s = rawSubject.trim().toLowerCase();
+        if (s.contains("database") || s.contains("dbms")) return "CS302";
+        if (s.contains("java") || s.contains("oop")) return "CS303";
+        if (s.contains("network") || s.contains("cn")) return "CS304";
+        if (s.contains("operating") || s.contains("os")) return "CS401";
+        return "CS301";
     }
 }

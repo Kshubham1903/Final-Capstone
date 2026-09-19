@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { 
   Sparkles, 
   CheckCircle2, 
@@ -29,6 +30,7 @@ export default function PersonalizedRoadmapView({
   subjectName,
   onBack
 }: PersonalizedRoadmapViewProps) {
+  const navigate = useNavigate();
   const [roadmap, setRoadmap] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -91,15 +93,37 @@ export default function PersonalizedRoadmapView({
 
   useEffect(() => {
     loadRoadmap();
+
+    const handleAssessmentCompleted = () => {
+      loadRoadmap();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("edupilot:assessment-completed", handleAssessmentCompleted);
+    }
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("edupilot:assessment-completed", handleAssessmentCompleted);
+      }
+    };
   }, [subjectCode]);
 
   const handleTopicClick = (topic: any) => {
+    if (!topic) return;
+    const isCompleted = topic.isCompleted || topic.status === "COMPLETED";
+    const isUnlocked = topic.status === "UNLOCKED" || isCompleted;
+
+    if (!isUnlocked) return;
+
     setSelectedTopic(topic);
     setIsModalOpen(true);
   };
 
   const handleLaunchAssessmentFromModal = (sCode: string, conceptName: string) => {
-    setShowAssessment(true);
+    setIsModalOpen(false);
+    const targetSubject = subjectName || sCode || subjectCode;
+    navigate(`/dashboard/quizzes?subject=${encodeURIComponent(targetSubject)}&targetConcept=${encodeURIComponent(conceptName)}&isVerification=true`);
   };
 
   const handleAssessmentClose = () => {
@@ -275,7 +299,9 @@ export default function PersonalizedRoadmapView({
                 {/* Node Content Card */}
                 <div
                   onClick={() => handleTopicClick(node)}
-                  className={`flex-1 glass-panel-interactive p-5 md:p-6 rounded-2xl border transition-all duration-300 space-y-3 cursor-pointer ${
+                  className={`flex-1 glass-panel-interactive p-5 md:p-6 rounded-2xl border transition-all duration-300 space-y-3 ${
+                    isUnlocked ? "cursor-pointer" : "cursor-not-allowed opacity-60"
+                  } ${
                     isCompleted
                       ? "border-emerald-500/20 bg-gradient-to-r from-emerald-900/10 via-transparent to-transparent"
                       : isUnlocked

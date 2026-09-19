@@ -343,7 +343,7 @@ export default function Quizzes() {
       setQuestionFeedback(null);
       setActiveQuestion(normalizedQ);
       setCurrentDiff((normalizedQ.difficulty as "EASY" | "MEDIUM" | "HARD") || "MEDIUM");
-      setQuestionCount(incomingQuestionNumber - 1);
+      setQuestionCount(prev => prev + 1);
       setMaxQuestions(res.totalQuestions || 10);
       setSelectedOption(null);
       setIsAnswered(false);
@@ -465,7 +465,7 @@ export default function Quizzes() {
       setQuestionFeedback(null);
       setActiveQuestion(res.question);
       setCurrentDiff((res.question.difficulty as "EASY" | "MEDIUM" | "HARD") || "MEDIUM");
-      setQuestionCount(incomingQuestionNumber - 1);
+      setQuestionCount(prev => prev + 1);
       setMaxQuestions(res.totalQuestions || 10);
       setSelectedOption(null);
       setIsAnswered(false);
@@ -821,9 +821,15 @@ export default function Quizzes() {
 
         if (isVerificationMode && remediationSessionId) {
           // Verification quiz answers are collected and graded on final submission via submitConceptRemediation
+          const targetIdx = questionFeedback?.correctOptionIndex ?? activeQuestion?.correctOptionIndex ?? 0;
+          const isCorrect = selectedOption === targetIdx;
+          if (isCorrect) setCorrectAnswers(prev => prev + 1);
+
+          const explanationText = activeQuestion?.conceptualExplanation || "No conceptual explanation is available for this question.";
           setQuestionFeedback({
-            isCorrect: true,
-            explanation: "Answer recorded for concept verification grading."
+            isCorrect: isCorrect,
+            correctOptionIndex: targetIdx,
+            explanation: explanationText
           });
           setIsAnswered(true);
         } else {
@@ -1271,11 +1277,9 @@ export default function Quizzes() {
               <div className="space-y-3">
                 {activeQuestion.options.map((option: string, idx: number) => {
                   const isSelected = selectedOption === idx;
-                  const targetCorrectIdx = questionFeedback?.correctOptionIndex !== undefined && questionFeedback?.correctOptionIndex !== null
-                    ? questionFeedback.correctOptionIndex
-                    : activeQuestion?.correctOptionIndex;
+                  const targetCorrectIdx = questionFeedback?.correctOptionIndex ?? activeQuestion?.correctOptionIndex ?? 0;
 
-                  const isOptionCorrect = targetCorrectIdx !== undefined && targetCorrectIdx !== null && idx === targetCorrectIdx;
+                  const isOptionCorrect = idx === targetCorrectIdx;
 
                   let cardStyle = "bg-white/5 border-white/5 text-main-theme hover:bg-white/10";
                   let badgeLabel = null;
@@ -1347,7 +1351,7 @@ export default function Quizzes() {
                   </div>
                   <div className="pt-1 text-secondary-theme leading-relaxed">
                     <strong className="text-main-theme block mb-0.5">Conceptual Explanation:</strong>
-                    <p>{questionFeedback?.explanation || activeQuestion?.conceptualExplanation}</p>
+                    <p>{activeQuestion?.conceptualExplanation || (questionFeedback?.explanation && questionFeedback.explanation !== "Answer recorded for concept verification grading." ? questionFeedback.explanation : null) || "No conceptual explanation is available for this question."}</p>
                   </div>
                 </div>
               )}

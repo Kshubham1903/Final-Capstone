@@ -161,8 +161,14 @@ export const PendingKnowledgeCheckCard: React.FC<PendingKnowledgeCheckCardProps>
 
       {/* Verification Check Modal */}
       {modalOpen && activeSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
-          <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-6 my-8">
+        <div
+          onClick={handleAbandon}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-6 my-8"
+          >
             <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div>
                 <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">

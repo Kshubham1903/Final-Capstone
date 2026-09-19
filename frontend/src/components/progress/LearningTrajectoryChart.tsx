@@ -9,14 +9,14 @@ export interface LearningTrajectoryChartProps {
 }
 
 export default function LearningTrajectoryChart({ trajectory, recentGain }: LearningTrajectoryChartProps) {
-  const chartData = (trajectory || []).map((point) => ({
-    eventLabel: `T${point.assessmentIndex}`,
+  const chartData = (trajectory || []).map((point, index) => ({
+    eventLabel: `T${point.assessmentIndex ?? (index + 1)}`,
     type: point.sessionType ? point.sessionType.replace("_", " ") : "Event",
     score: point.scorePercentage != null ? Math.round(point.scorePercentage * 10) / 10 : 0,
     cumulativeGrowthPp: point.cumulativeGrowthPp != null ? point.cumulativeGrowthPp : 0,
     recentGainPp: point.recentGainPp != null ? point.recentGainPp : 0,
     conceptsCount: point.conceptsCovered ? point.conceptsCovered.length : 0,
-    date: point.timestamp ? new Date(point.timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : `T${point.assessmentIndex}`
+    date: point.timestamp ? new Date(point.timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : `T${point.assessmentIndex ?? (index + 1)}`
   }));
 
   const latestGain = recentGain != null
