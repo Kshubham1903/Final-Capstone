@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface RemediationSessionRepository extends MongoRepository<RemediationSession, String> {
     List<RemediationSession> findByStudentIdOrderByCreatedAtDesc(String studentId);
+    List<RemediationSession> findByStudentIdAndSubjectAndConceptAndCompletedTrue(String studentId, String subject, String concept);
 }
+

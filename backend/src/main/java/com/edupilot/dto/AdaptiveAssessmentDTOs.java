@@ -172,11 +172,11 @@ public class AdaptiveAssessmentDTOs {
         private String adaptiveSessionId;
         private String questionId;
         private int selectedOption;
-        private double responseTimeSeconds;
+        private Double responseTimeSeconds;
 
         public AdaptiveSubmitRequest() {}
 
-        public AdaptiveSubmitRequest(String adaptiveSessionId, String questionId, int selectedOption, double responseTimeSeconds) {
+        public AdaptiveSubmitRequest(String adaptiveSessionId, String questionId, int selectedOption, Double responseTimeSeconds) {
             this.adaptiveSessionId = adaptiveSessionId;
             this.questionId = questionId;
             this.selectedOption = selectedOption;
@@ -189,8 +189,8 @@ public class AdaptiveAssessmentDTOs {
         public void setQuestionId(String questionId) { this.questionId = questionId; }
         public int getSelectedOption() { return selectedOption; }
         public void setSelectedOption(int selectedOption) { this.selectedOption = selectedOption; }
-        public double getResponseTimeSeconds() { return responseTimeSeconds; }
-        public void setResponseTimeSeconds(double responseTimeSeconds) { this.responseTimeSeconds = responseTimeSeconds; }
+        public Double getResponseTimeSeconds() { return responseTimeSeconds; }
+        public void setResponseTimeSeconds(Double responseTimeSeconds) { this.responseTimeSeconds = responseTimeSeconds; }
     }
 
     public static class AdaptiveSubmitResponse {

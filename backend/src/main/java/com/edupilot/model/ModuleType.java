@@ -8,6 +8,8 @@ public enum ModuleType {
     DIAGNOSTIC,   // Onboarding Form D — Diagnostic Assessment
     ADAPTIVE,     // Adaptive Quiz
     PRACTICE,     // Standard Practice Quiz
-    REMEDIATION,  // Concept Remediation / Verification Test
+    REMEDIATION,  // Concept Learning / Remediation Activity
+    VERIFICATION, // Knowledge Check / Verification Test
     BASELINE      // Subject Baseline Knowledge Test
 }
+

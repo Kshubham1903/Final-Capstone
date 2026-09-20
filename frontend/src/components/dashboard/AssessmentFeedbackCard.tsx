@@ -48,8 +48,8 @@ export default function AssessmentFeedbackCard({
   };
 
   const calculatedPct = percentage !== undefined && percentage !== null 
-    ? Math.round(percentage) 
-    : Math.round((score / (totalQuestions > 0 ? totalQuestions : 1)) * 100);
+    ? Math.round(Math.min(100, Math.max(0, percentage))) 
+    : Math.round(Math.min(100, Math.max(0, (score / (totalQuestions > 0 ? totalQuestions : 1)) * 100)));
 
   const incorrectCount = Math.max(0, totalQuestions - score);
 
@@ -88,15 +88,15 @@ export default function AssessmentFeedbackCard({
         }
 
         if (foundMastery !== null) {
-          const m = Math.round(foundMastery);
+          const m = Math.round(Math.min(100, Math.max(0, foundMastery)));
           setMasteryPct(m);
           if (m >= 80) setStatusLabel("STRONG");
-          else if (m >= 60) setStatusLabel("MODERATE");
+          else if (m >= 50) setStatusLabel("MODERATE");
           else setStatusLabel("NEED_PRACTICE");
         } else {
           setMasteryPct(calculatedPct);
           if (calculatedPct >= 80) setStatusLabel("STRONG");
-          else if (calculatedPct >= 60) setStatusLabel("MODERATE");
+          else if (calculatedPct >= 50) setStatusLabel("MODERATE");
           else setStatusLabel("NEED_PRACTICE");
         }
 

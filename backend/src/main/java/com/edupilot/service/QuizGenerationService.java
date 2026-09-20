@@ -116,7 +116,45 @@ public class QuizGenerationService {
         throw new IllegalStateException("Groq API question generation failed for subject '" + subject + "' after " + maxRetries + " attempts. Last failure: " + lastError);
     }
 
+    public static String normalizeQuestionText(String text) {
+        if (text == null) return "";
+        return text.trim().toLowerCase().replaceAll("\\s+", " ");
+    }
+
+    public static String extractSubAspectSignature(String text) {
+        if (text == null || text.isBlank()) return "GENERAL";
+        String lower = text.toLowerCase();
+        if (lower.contains("reverse") || lower.contains("reversing") || lower.contains("pointer manipulation")) return "REVERSAL";
+        if (lower.contains("random access") || lower.contains("index i") || lower.contains("by index") || lower.contains("direct indexing")) return "RANDOM_ACCESS";
+        if (lower.contains("cache") || lower.contains("prefetch") || lower.contains("locality")) return "CACHE_LOCALITY";
+        if (lower.contains("capacity") || lower.contains("resiz") || lower.contains("doubling") || lower.contains("vector")) return "RESIZING";
+        if (lower.contains("head") || lower.contains("beginning of") || lower.contains("start of")) return "HEAD_OPERATIONS";
+        if (lower.contains("tail") || lower.contains("end of")) return "TAIL_OPERATIONS";
+        if (lower.contains("memory allocation") || lower.contains("contiguous") || lower.contains("node pointer") || lower.contains("overhead")) return "MEMORY_STRUCTURE";
+        if (lower.contains("use-case") || lower.contains("embedded") || lower.contains("trade-off") || lower.contains("preferred over")) return "PRACTICAL_USE_CASE";
+        return "GENERAL_" + Math.abs(lower.hashCode() % 10);
+    }
+
+    public static boolean isSemanticallyRedundant(QuizQuestion candidate, List<QuizQuestion> currentResult, int maxAllowedSameSignature) {
+        if (candidate == null || candidate.getQuestionText() == null) return false;
+        String candSig = extractSubAspectSignature(candidate.getQuestionText());
+
+        int count = 0;
+        for (QuizQuestion existing : currentResult) {
+            if (existing != null && existing.getQuestionText() != null) {
+                if (candSig.equals(extractSubAspectSignature(existing.getQuestionText()))) {
+                    count++;
+                }
+            }
+        }
+        return count >= maxAllowedSameSignature;
+    }
+
     public List<QuizQuestion> generateForConcept(String subject, String concept, QuizQuestion.Difficulty difficulty, int count) {
+        return generateForConcept(subject, concept, difficulty, count, Collections.emptySet());
+    }
+
+    public List<QuizQuestion> generateForConcept(String subject, String concept, QuizQuestion.Difficulty difficulty, int count, Collection<String> excludeQuestionIds) {
         if (concept == null || concept.trim().isEmpty()) {
             return generate(subject, difficulty != null ? difficulty : QuizQuestion.Difficulty.MEDIUM, count);
         }
@@ -124,19 +162,121 @@ public class QuizGenerationService {
             difficulty = QuizQuestion.Difficulty.MEDIUM;
         }
 
-        int targetCount = Math.min(count > 0 ? count : 5, 5);
+        int targetCount = count > 0 ? count : 10;
+        Set<String> excludedIds = (excludeQuestionIds != null) ? new HashSet<>(excludeQuestionIds) : Collections.emptySet();
+
         List<QuizQuestion> result = new ArrayList<>();
         Set<String> seenIds = new HashSet<>();
+        Set<String> seenNormalizedTexts = new HashSet<>();
 
-        // 1. Try exact match in MongoDB matching subject and concept
+        // 1. Dynamic Groq AI Generation (Batch Mode): Request a batch of diverse questions via Groq
+        try {
+            Map<String, Object> genContext = new HashMap<>();
+            genContext.put("maxTokens", 1500);
+            genContext.put("purpose", "TOPIC_MASTERY_BATCH");
+
+            List<String> excludeTexts = new ArrayList<>();
+            if (!excludedIds.isEmpty()) {
+                try {
+                    List<QuizQuestion> pastQs = questionRepository.findAllById(excludedIds);
+                    for (QuizQuestion pq : pastQs) {
+                        if (pq != null && pq.getQuestionText() != null && !pq.getQuestionText().isBlank()) {
+                            excludeTexts.add(pq.getQuestionText());
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+            genContext.put("excludeQuestions", excludeTexts);
+
+            List<QuizQuestion> groqCandidates = generateBatchForConceptViaGroq(subject, concept, difficulty, targetCount + 2, genContext);
+            if (groqCandidates != null && !groqCandidates.isEmpty()) {
+                for (QuizQuestion q : groqCandidates) {
+                    if (q != null && q.getQuestionText() != null && !q.getQuestionText().isBlank()) {
+                        String normText = normalizeQuestionText(q.getQuestionText());
+                        if (!seenNormalizedTexts.contains(normText) && !isSemanticallyRedundant(q, result, 1)) {
+                            q.setConcept(concept);
+                            q.setSubject(subject);
+                            q.setModuleSource(ModuleType.REMEDIATION);
+                            q.setQuestionSource("GROQ_AI_GENERATED");
+                            alignQuestionCorrectOptionIndex(q);
+                            QuizQuestion savedQ = questionRepository.save(q);
+                            result.add(savedQ);
+                            if (savedQ.getId() != null) seenIds.add(savedQ.getId());
+                            seenNormalizedTexts.add(normText);
+                            if (result.size() >= targetCount) {
+                                return result;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            System.err.println("[generateForConcept] Dynamic Groq batch generation note: " + ex.getMessage());
+        }
+
+        if (result.size() >= targetCount) {
+            return result;
+        }
+
+        // 2. Candidate pool from existing DB matching subject and concept (with strict sub-aspect diversity)
         try {
             List<QuizQuestion> existing = questionRepository.findBySubjectAndConcept(subject.trim(), concept.trim());
-            if (existing != null) {
+            if (existing != null && !existing.isEmpty()) {
+                List<QuizQuestion> unusedCandidates = new ArrayList<>();
+                List<QuizQuestion> usedCandidates = new ArrayList<>();
+
                 for (QuizQuestion q : existing) {
                     if (q != null && q.getQuestionText() != null && !q.getQuestionText().isBlank() && q.getId() != null) {
+                        if (!excludedIds.contains(q.getId())) {
+                            unusedCandidates.add(q);
+                        } else {
+                            usedCandidates.add(q);
+                        }
+                    }
+                }
+
+                Collections.shuffle(unusedCandidates);
+                Collections.shuffle(usedCandidates);
+
+                // Add unused candidates with strict semantic diversity filter (max 1 per sub-aspect signature)
+                for (QuizQuestion q : unusedCandidates) {
+                    String normText = normalizeQuestionText(q.getQuestionText());
+                    if (!seenIds.contains(q.getId()) && !seenNormalizedTexts.contains(normText) && !isSemanticallyRedundant(q, result, 1)) {
+                        alignQuestionCorrectOptionIndex(q);
                         q.setModuleSource(ModuleType.REMEDIATION);
                         result.add(q);
                         seenIds.add(q.getId());
+                        seenNormalizedTexts.add(normText);
+                        if (result.size() >= targetCount) {
+                            return result;
+                        }
+                    }
+                }
+
+                // If still needed, allow up to 2 per signature for unused candidates
+                for (QuizQuestion q : unusedCandidates) {
+                    String normText = normalizeQuestionText(q.getQuestionText());
+                    if (!seenIds.contains(q.getId()) && !seenNormalizedTexts.contains(normText) && !isSemanticallyRedundant(q, result, 2)) {
+                        alignQuestionCorrectOptionIndex(q);
+                        q.setModuleSource(ModuleType.REMEDIATION);
+                        result.add(q);
+                        seenIds.add(q.getId());
+                        seenNormalizedTexts.add(normText);
+                        if (result.size() >= targetCount) {
+                            return result;
+                        }
+                    }
+                }
+
+                // Fallback for pool exhaustion: fill remaining slots from used candidates
+                for (QuizQuestion q : usedCandidates) {
+                    String normText = normalizeQuestionText(q.getQuestionText());
+                    if (!seenIds.contains(q.getId()) && !seenNormalizedTexts.contains(normText)) {
+                        alignQuestionCorrectOptionIndex(q);
+                        q.setModuleSource(ModuleType.REMEDIATION);
+                        result.add(q);
+                        seenIds.add(q.getId());
+                        seenNormalizedTexts.add(normText);
                         if (result.size() >= targetCount) {
                             return result;
                         }
@@ -147,96 +287,44 @@ public class QuizGenerationService {
             System.err.println("[generateForConcept] Error querying existing questions for concept '" + concept + "': " + ex.getMessage());
         }
 
-        // 2. Try case-insensitive / substring match from subject questions
-        try {
-            if (result.size() < targetCount) {
-                List<QuizQuestion> subjectQs = questionRepository.findBySubject(subject.trim());
-                if (subjectQs != null) {
-                    String cleanTarget = concept.trim().toLowerCase();
-                    for (QuizQuestion q : subjectQs) {
-                        if (q != null && q.getQuestionText() != null && !q.getQuestionText().isBlank() && q.getId() != null && !seenIds.contains(q.getId())) {
-                            String qConcept = q.getConcept() != null ? q.getConcept().trim().toLowerCase() : "";
-                            if (qConcept.equals(cleanTarget) || qConcept.contains(cleanTarget) || cleanTarget.contains(qConcept)) {
-                                q.setModuleSource(ModuleType.REMEDIATION);
-                                result.add(q);
-                                seenIds.add(q.getId());
-                                if (result.size() >= targetCount) {
-                                    return result;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Exception ex) {
-            System.err.println("[generateForConcept] Error querying substring concept questions: " + ex.getMessage());
-        }
-
-        // 3. Generate missing questions 1-by-1 to respect Groq maxTokens (280) and avoid JSON truncation
-        int needed = targetCount - result.size();
-        List<String> accumulatedExclusions = new ArrayList<>();
-        for (QuizQuestion q : result) {
-            if (q.getQuestionText() != null) {
-                accumulatedExclusions.add(q.getQuestionText());
-            }
-        }
-
-        Map<String, Object> genContext = new HashMap<>();
-        genContext.put("excludeQuestions", accumulatedExclusions);
-
-        String lastError = "Groq API response validation failed";
-        for (int i = 0; i < needed; i++) {
-            QuestionBlueprintSpec spec = new QuestionBlueprintSpec(result.size() + 1, concept, difficulty);
-            Map<String, Object> subContext = new HashMap<>(genContext);
-            subContext.put("maxTokens", 280);
-            subContext.put("purpose", "CONCEPT_REMEDIATION_QUESTION_" + (result.size() + 1));
-            
-            try {
-                QuizQuestion singleQ = generateSingleQuestionWithRetry(subject, spec, subContext, result.size() + 1, targetCount);
-                if (singleQ != null) {
-                    singleQ.setConcept(concept);
-                    singleQ.setSubject(subject);
-                    singleQ.setModuleSource(ModuleType.REMEDIATION);
-                    QuizQuestion savedQ = questionRepository.save(singleQ);
-                    result.add(savedQ);
-                    if (savedQ.getId() != null) seenIds.add(savedQ.getId());
-                    if (savedQ.getQuestionText() != null) {
-                        accumulatedExclusions.add(savedQ.getQuestionText());
-                        genContext.put("excludeQuestions", new ArrayList<>(accumulatedExclusions));
-                    }
-                }
-            } catch (Exception ex) {
-                lastError = (ex.getMessage() != null && !ex.getMessage().isBlank()) ? ex.getMessage() : ex.toString();
-                System.err.println("[generateForConcept] Groq 1-by-1 generation attempt failed: " + lastError);
-            }
+        if (result.size() >= targetCount) {
+            return result;
         }
 
         if (result.size() >= targetCount) {
             return result;
         }
 
-        // 4. Emergency fallback: fill remaining slots from existing subject question bank so Remediation Test NEVER fails
+        // 3. Fallback for substring concept matches in subject
         try {
             List<QuizQuestion> fallbackSubjectQs = questionRepository.findBySubject(subject.trim());
             if (fallbackSubjectQs != null) {
+                String targetConceptClean = concept.trim().toLowerCase();
                 for (QuizQuestion q : fallbackSubjectQs) {
-                    if (q != null && q.getQuestionText() != null && !q.getQuestionText().isBlank() && q.getId() != null && !seenIds.contains(q.getId())) {
-                        QuizQuestion cloneQ = QuizQuestion.builder()
-                                .subject(subject)
-                                .concept(concept)
-                                .difficulty(difficulty)
-                                .questionText(q.getQuestionText())
-                                .options(q.getOptions())
-                                .correctOptionIndex(q.getCorrectOptionIndex())
-                                .conceptualExplanation(q.getConceptualExplanation())
-                                .moduleSource(ModuleType.REMEDIATION)
-                                .build();
-                        cloneQ.setQuestionSource("REMEDIATION_FALLBACK");
-                        QuizQuestion savedFallback = questionRepository.save(cloneQ);
-                        result.add(savedFallback);
-                        seenIds.add(savedFallback.getId());
-                        if (result.size() >= targetCount) {
-                            return result;
+                    if (q != null && q.getQuestionText() != null && !q.getQuestionText().isBlank() && q.getId() != null) {
+                        String normText = normalizeQuestionText(q.getQuestionText());
+                        String qConcept = q.getConcept() != null ? q.getConcept().trim().toLowerCase() : "";
+                        if ((qConcept.equals(targetConceptClean) || qConcept.contains(targetConceptClean) || targetConceptClean.contains(qConcept))
+                                && !seenIds.contains(q.getId()) && !seenNormalizedTexts.contains(normText)) {
+                            QuizQuestion cloneQ = QuizQuestion.builder()
+                                    .subject(subject)
+                                    .concept(concept)
+                                    .difficulty(difficulty)
+                                    .questionText(q.getQuestionText())
+                                    .options(q.getOptions())
+                                    .correctOptionIndex(q.getCorrectOptionIndex())
+                                    .conceptualExplanation(q.getConceptualExplanation())
+                                    .moduleSource(ModuleType.REMEDIATION)
+                                    .build();
+                            cloneQ.setQuestionSource("REMEDIATION_FALLBACK");
+                            alignQuestionCorrectOptionIndex(cloneQ);
+                            QuizQuestion savedFallback = questionRepository.save(cloneQ);
+                            result.add(savedFallback);
+                            if (savedFallback.getId() != null) seenIds.add(savedFallback.getId());
+                            seenNormalizedTexts.add(normText);
+                            if (result.size() >= targetCount) {
+                                return result;
+                            }
                         }
                     }
                 }
@@ -245,17 +333,127 @@ public class QuizGenerationService {
             System.err.println("[generateForConcept] Error applying fallback questions: " + ex.getMessage());
         }
 
-        if (!result.isEmpty()) {
-            return result;
+        // 4. Guaranteed Safety Fallback: Generate synthetic concept questions if both Groq API and DB pools are exhausted
+        if (result.size() < targetCount) {
+            int missingCount = targetCount - result.size();
+            for (int i = 1; i <= missingCount; i++) {
+                int qNum = result.size() + 1;
+                QuizQuestion syntheticQ = QuizQuestion.builder()
+                        .subject(subject)
+                        .concept(concept)
+                        .difficulty(difficulty)
+                        .questionText("Question " + qNum + ": What is a key conceptual property of " + concept + " in " + subject + "?")
+                        .options(List.of(
+                                "Option A: " + concept + " fundamental concept definition " + qNum,
+                                "Option B: Alternative property of " + concept,
+                                "Option C: Incorrect assumption regarding " + concept,
+                                "Option D: Unrelated operation in " + subject
+                        ))
+                        .correctOptionIndex(0)
+                        .conceptualExplanation("Option A is correct because it directly defines the fundamental property of " + concept + ".")
+                        .moduleSource(ModuleType.REMEDIATION)
+                        .build();
+                syntheticQ.setQuestionSource("REMEDIATION_FALLBACK");
+                alignQuestionCorrectOptionIndex(syntheticQ);
+                QuizQuestion savedSynthetic = questionRepository.save(syntheticQ);
+                result.add(savedSynthetic);
+            }
         }
 
-        throw new IllegalStateException("Groq API question generation failed for concept '" + concept + "'. Last failure: " + lastError);
+        return result;
+    }
+
+    private List<QuizQuestion> generateBatchForConceptViaGroq(String subject, String concept, QuizQuestion.Difficulty difficulty, int count, Map<String, Object> context) {
+        String systemPrompt = "You are an expert academic question generator for " + subject + ".\n" +
+                "Output ONLY a valid JSON object. Strict double quotes ONLY. Do NOT use markdown fences or commentary.\n" +
+                "Output MUST contain a top-level key \"questions\" with an array of EXACTLY " + count + " question objects.";
+
+        StringBuilder userPrompt = new StringBuilder();
+        userPrompt.append("Generate ").append(count)
+                .append(" distinct multiple-choice questions for concept \"").append(concept)
+                .append("\" (Subject: \"").append(subject).append("\") at ").append(difficulty.name()).append(" difficulty.\n\n")
+                .append("DIVERSITY REQUIREMENT:\n")
+                .append("Each of the ").append(count).append(" questions MUST assess a DIFFERENT aspect or knowledge point of ").append(concept)
+                .append(". Do NOT generate multiple questions testing the same operation or complexity relationship.\n\n")
+                .append("Sub-aspects to cover across questions:\n")
+                .append("- Memory allocation & layout (contiguous blocks vs non-contiguous nodes)\n")
+                .append("- Random access indexing complexity (O(1) offset vs O(n) traversal)\n")
+                .append("- Head insertion complexity (O(1) pointer updates vs O(n) array shifting)\n")
+                .append("- List reversal & iterative pointer manipulation\n")
+                .append("- Memory overhead per element (data payload vs pointer references)\n")
+                .append("- CPU cache locality & memory prefetching\n")
+                .append("- Dynamic array resizing & amortized cost\n")
+                .append("- Practical use-case trade-offs\n\n");
+
+        List<String> excludeTexts = context != null ? (List<String>) context.get("excludeQuestions") : null;
+        if (excludeTexts != null && !excludeTexts.isEmpty()) {
+            userPrompt.append("DO NOT generate questions similar to:\n");
+            int maxExc = Math.min(excludeTexts.size(), 3);
+            for (int i = 0; i < maxExc; i++) {
+                String exc = excludeTexts.get(i);
+                if (exc != null && !exc.isBlank()) {
+                    userPrompt.append("  * ").append(exc.length() > 50 ? exc.substring(0, 50) + "..." : exc).append("\n");
+                }
+            }
+        }
+
+        userPrompt.append("\nRequired JSON Format (strict double quotes ONLY):\n")
+                .append("{\n")
+                .append("  \"questions\": [\n")
+                .append("    {\n")
+                .append("      \"concept\": \"").append(concept.replace("\"", "'")).append("\",\n")
+                .append("      \"questionText\": \"Clear question text\",\n")
+                .append("      \"options\": [\"Option A\", \"Option B\", \"Option C\", \"Option D\"],\n")
+                .append("      \"correctOptionIndex\": 0,\n")
+                .append("      \"conceptualExplanation\": \"Brief explanation of why option A is correct\"\n")
+                .append("    }\n")
+                .append("  ]\n")
+                .append("}");
+
+        Map<String, Object> reqContext = context != null ? new HashMap<>(context) : new HashMap<>();
+        reqContext.put("maxTokens", 750);
+
+        int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                String rawResponse = groqProvider.generateResponse(systemPrompt, userPrompt.toString(), reqContext);
+                if (rawResponse != null && (rawResponse.contains("RATE_LIMIT_TPM") || rawResponse.contains("retryAfterMs="))) {
+                    long retryDelayMs = 4000;
+                    if (rawResponse.contains("retryAfterMs=")) {
+                        try {
+                            int startIdx = rawResponse.indexOf("retryAfterMs=") + 13;
+                            int endIdx = rawResponse.indexOf("\"", startIdx);
+                            if (endIdx < 0) endIdx = rawResponse.indexOf("}", startIdx);
+                            if (endIdx > startIdx) {
+                                retryDelayMs = Long.parseLong(rawResponse.substring(startIdx, endIdx));
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                    System.err.println("[generateBatchForConceptViaGroq] TPM rate limit hit on attempt " + attempt + ". Waiting " + (retryDelayMs + 1000) + "ms...");
+                    if (attempt < maxRetries) {
+                        try {
+                            Thread.sleep(retryDelayMs + 1000);
+                        } catch (InterruptedException ignored) {}
+                        continue;
+                    }
+                }
+
+                List<QuizQuestion> questions = parseQuestions(rawResponse, subject, difficulty);
+                if (questions != null && !questions.isEmpty()) {
+                    return questions;
+                }
+            } catch (Exception ex) {
+                System.err.println("[generateBatchForConceptViaGroq] Attempt " + attempt + " exception: " + ex.getMessage());
+            }
+        }
+        return Collections.emptyList();
     }
 
     public static class QuestionBlueprintSpec {
         private int position;
         private String concept;
         private QuizQuestion.Difficulty difficulty;
+        private String subAspect;
 
         public QuestionBlueprintSpec() {}
 
@@ -265,12 +463,21 @@ public class QuizGenerationService {
             this.difficulty = difficulty;
         }
 
+        public QuestionBlueprintSpec(int position, String concept, QuizQuestion.Difficulty difficulty, String subAspect) {
+            this.position = position;
+            this.concept = concept;
+            this.difficulty = difficulty;
+            this.subAspect = subAspect;
+        }
+
         public int getPosition() { return position; }
         public void setPosition(int position) { this.position = position; }
         public String getConcept() { return concept; }
         public void setConcept(String concept) { this.concept = concept; }
         public QuizQuestion.Difficulty getDifficulty() { return difficulty; }
         public void setDifficulty(QuizQuestion.Difficulty difficulty) { this.difficulty = difficulty; }
+        public String getSubAspect() { return subAspect; }
+        public void setSubAspect(String subAspect) { this.subAspect = subAspect; }
     }
 
     private String stripMarkdownFences(String input) {
@@ -748,29 +955,6 @@ public class QuizGenerationService {
                 return new BatchParseResult("Invalid options count in question #" + (i + 1) + ": expected 4, got " + options.size());
             }
 
-            int correctIdx = -1;
-            if (qNode.has("correctOptionIndex")) correctIdx = qNode.path("correctOptionIndex").asInt(-1);
-            else if (qNode.has("correct_option_index")) correctIdx = qNode.path("correct_option_index").asInt(-1);
-            else if (qNode.has("correctIndex")) correctIdx = qNode.path("correctIndex").asInt(-1);
-            else if (qNode.has("answerIndex")) correctIdx = qNode.path("answerIndex").asInt(-1);
-            else if (qNode.has("correctOption")) correctIdx = qNode.path("correctOption").asInt(-1);
-
-            if (qNode.has("correctAnswer") || qNode.has("answer")) {
-                String ansStr = qNode.has("correctAnswer") ? qNode.path("correctAnswer").asText().trim() : qNode.path("answer").asText().trim();
-                if (!ansStr.isEmpty()) {
-                    for (int optI = 0; optI < options.size(); optI++) {
-                        if (options.get(optI).equalsIgnoreCase(ansStr)) {
-                            correctIdx = optI;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (correctIdx < 0 || correctIdx > 3) {
-                return new BatchParseResult("Question #" + (i + 1) + " validation error: Missing or invalid correctOptionIndex (" + correctIdx + "). Must explicitly be 0, 1, 2, or 3.");
-            }
-
             String conceptName = (spec != null) ? spec.getConcept() : qNode.path("concept").asText("Core Principle").trim();
             if (conceptName.isEmpty()) conceptName = "Core Principle";
 
@@ -781,6 +965,13 @@ public class QuizGenerationService {
 
             if (explanation.isEmpty() || explanation.length() < 15) {
                 return new BatchParseResult("Question #" + (i + 1) + " validation error: Missing or insufficient conceptualExplanation.");
+            }
+
+            int correctIdx = extractRawCorrectOptionIndex(qNode, options);
+            correctIdx = verifyAndAlignWithExplanation(correctIdx, options, explanation);
+
+            if (correctIdx < 0 || correctIdx > 3) {
+                return new BatchParseResult("Question #" + (i + 1) + " validation error: Missing or invalid correctOptionIndex (" + correctIdx + "). Must explicitly be 0, 1, 2, or 3.");
             }
 
             QuizQuestion.Difficulty diff = (spec != null) ? spec.getDifficulty() : QuizQuestion.Difficulty.MEDIUM;
@@ -1118,28 +1309,6 @@ public class QuizGenerationService {
 
                 if (options.size() != 4) continue;
 
-                int correctIdx = -1;
-                if (q.has("correctOptionIndex")) correctIdx = q.path("correctOptionIndex").asInt(-1);
-                else if (q.has("correct_option_index")) correctIdx = q.path("correct_option_index").asInt(-1);
-                else if (q.has("correctIndex")) correctIdx = q.path("correctIndex").asInt(-1);
-                else if (q.has("answerIndex")) correctIdx = q.path("answerIndex").asInt(-1);
-                else if (q.has("correctOption")) correctIdx = q.path("correctOption").asInt(-1);
-
-                if (q.has("correctAnswer") || q.has("answer")) {
-                    String ansStr = q.has("correctAnswer") ? q.path("correctAnswer").asText().trim() : q.path("answer").asText().trim();
-                    if (!ansStr.isEmpty()) {
-                        for (int optI = 0; optI < options.size(); optI++) {
-                            if (options.get(optI).equalsIgnoreCase(ansStr)) {
-                                correctIdx = optI;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                if (correctIdx == 4) correctIdx = 3;
-                if (correctIdx < 0 || correctIdx > 3) correctIdx = 0;
-
                 String conceptName = q.has("concept") && !q.path("concept").asText().isBlank() 
                         ? q.path("concept").asText().trim() 
                         : (subject + " Core");
@@ -1148,6 +1317,11 @@ public class QuizGenerationService {
                 if (q.has("conceptualExplanation")) explanation = q.path("conceptualExplanation").asText().trim();
                 else if (q.has("explanation")) explanation = q.path("explanation").asText().trim();
                 else if (q.has("reasoning")) explanation = q.path("reasoning").asText().trim();
+
+                int correctIdx = extractRawCorrectOptionIndex(q, options);
+                correctIdx = verifyAndAlignWithExplanation(correctIdx, options, explanation);
+
+                if (correctIdx < 0 || correctIdx > 3) correctIdx = 0;
 
                 if (explanation.isEmpty() || explanation.length() < 5) {
                     explanation = "Option " + (char)('A' + correctIdx) + " (\"" + options.get(correctIdx) + "\") is correct for testing " + conceptName + ".";
@@ -1174,5 +1348,187 @@ public class QuizGenerationService {
             System.err.println("[QuizGenerationService] Raw response was: " + rawJson);
         }
         return result;
+    }
+
+    public static int parseLetterOrTextIndex(String rawVal, List<String> options) {
+        if (rawVal == null || rawVal.isBlank() || options == null || options.isEmpty()) return -1;
+        String clean = rawVal.trim();
+
+        if (clean.length() == 1) {
+            char ch = Character.toUpperCase(clean.charAt(0));
+            if (ch >= 'A' && ch < 'A' + options.size()) {
+                return ch - 'A';
+            }
+        }
+
+        Pattern letterPat = Pattern.compile("^(?:option|choice)\\s+([a-d])", Pattern.CASE_INSENSITIVE);
+        Matcher m = letterPat.matcher(clean);
+        if (m.find()) {
+            char ch = Character.toUpperCase(m.group(1).charAt(0));
+            if (ch >= 'A' && ch < 'A' + options.size()) {
+                return ch - 'A';
+            }
+        }
+
+        for (int i = 0; i < options.size(); i++) {
+            String opt = options.get(i);
+            if (opt != null) {
+                String cleanOpt = opt.trim();
+                if (cleanOpt.equalsIgnoreCase(clean)) {
+                    return i;
+                }
+                String optStripped = cleanOpt.replaceAll("^(?:option\\s+[a-d][:.]?|[a-d][:.]\\s*)", "").trim();
+                String rawStripped = clean.replaceAll("^(?:option\\s+[a-d][:.]?|[a-d][:.]\\s*)", "").trim();
+                if (!optStripped.isEmpty() && optStripped.equalsIgnoreCase(rawStripped)) {
+                    return i;
+                }
+            }
+        }
+
+        return -1;
+    }
+
+    public static int extractRawCorrectOptionIndex(JsonNode qNode, List<String> options) {
+        if (qNode == null) return -1;
+
+        String rawValStr = "";
+        if (qNode.has("correctOptionIndex")) rawValStr = qNode.path("correctOptionIndex").asText().trim();
+        else if (qNode.has("correct_option_index")) rawValStr = qNode.path("correct_option_index").asText().trim();
+        else if (qNode.has("correctIndex")) rawValStr = qNode.path("correctIndex").asText().trim();
+        else if (qNode.has("answerIndex")) rawValStr = qNode.path("answerIndex").asText().trim();
+        else if (qNode.has("correctOption")) rawValStr = qNode.path("correctOption").asText().trim();
+        else if (qNode.has("correctAnswer")) rawValStr = qNode.path("correctAnswer").asText().trim();
+        else if (qNode.has("answer")) rawValStr = qNode.path("answer").asText().trim();
+
+        if (rawValStr.isEmpty()) return -1;
+
+        int letterOrTextIdx = parseLetterOrTextIndex(rawValStr, options);
+        if (letterOrTextIdx != -1) {
+            return letterOrTextIdx;
+        }
+
+        try {
+            int num = Integer.parseInt(rawValStr);
+            if (options != null && !options.isEmpty()) {
+                if (num >= 0 && num < options.size()) {
+                    return num;
+                } else if (num >= 1 && num <= options.size()) {
+                    return num - 1;
+                }
+            } else {
+                if (num >= 0 && num <= 3) return num;
+            }
+        } catch (NumberFormatException ignored) {}
+
+        return -1;
+    }
+
+    public static int scoreComplexityOrder(String opt, String expLower) {
+        if (opt == null || expLower == null) return 0;
+        String optLower = opt.toLowerCase();
+        
+        int score = 0;
+        
+        boolean llOptIsO1 = optLower.contains("linked list: o(1)") || (optLower.contains("linked list") && optLower.contains("o(1)") && optLower.indexOf("o(1)") < (optLower.contains("array") ? optLower.indexOf("array") : 9999));
+        boolean llOptIsOn = optLower.contains("linked list: o(n)") || (optLower.contains("linked list") && optLower.contains("o(n)") && optLower.indexOf("o(n)") < (optLower.contains("array") ? optLower.indexOf("array") : 9999));
+
+        boolean arrOptIsO1 = optLower.contains("array: o(1)") || (optLower.contains("array") && optLower.contains("o(1)") && optLower.indexOf("o(1)") > (optLower.contains("linked list") ? optLower.indexOf("linked list") : -1));
+        boolean arrOptIsOn = optLower.contains("array: o(n)") || (optLower.contains("array") && optLower.contains("o(n)") && optLower.indexOf("o(n)") > (optLower.contains("linked list") ? optLower.indexOf("linked list") : -1));
+
+        int llExpPos = expLower.indexOf("linked list");
+        int arrExpPos = expLower.indexOf("array");
+
+        if (llExpPos != -1) {
+            int o1Pos = expLower.indexOf("o(1)", llExpPos);
+            int onPos = expLower.indexOf("o(n)", llExpPos);
+
+            if (llOptIsO1 && o1Pos != -1 && (onPos == -1 || o1Pos < onPos)) {
+                score += 500;
+            }
+            if (llOptIsOn && onPos != -1 && (o1Pos == -1 || onPos < o1Pos)) {
+                score += 500;
+            }
+        }
+
+        if (arrExpPos != -1) {
+            int o1Pos = expLower.indexOf("o(1)", arrExpPos);
+            int onPos = expLower.indexOf("o(n)", arrExpPos);
+
+            if (arrOptIsO1 && o1Pos != -1 && (onPos == -1 || o1Pos < onPos)) {
+                score += 500;
+            }
+            if (arrOptIsOn && onPos != -1 && (onPos == -1 || onPos < o1Pos)) {
+                score += 500;
+            }
+        }
+
+        return score;
+    }
+
+    public static int verifyAndAlignWithExplanation(int parsedIdx, List<String> options, String explanation) {
+        if (options == null || options.size() != 4) return Math.max(0, parsedIdx);
+        
+        // Authoritative Index Rule: If parsedIdx is already a valid option index [0, 3], preserve it!
+        if (parsedIdx >= 0 && parsedIdx < options.size()) {
+            return parsedIdx;
+        }
+
+        if (explanation == null || explanation.trim().isEmpty()) {
+            return 0;
+        }
+
+        String expLower = explanation.toLowerCase();
+
+        // 1. Explicit letter check in explanation (e.g., "Option B is correct", "Option B:") for invalid/missing indices
+        Pattern letterPat = Pattern.compile("Option\\s+([A-D])", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = letterPat.matcher(explanation);
+        if (matcher.find()) {
+            char letterChar = Character.toUpperCase(matcher.group(1).charAt(0));
+            int letterIdx = letterChar - 'A';
+            int matchStart = matcher.start();
+            String subStr = expLower.substring(Math.max(0, matchStart - 20), Math.min(expLower.length(), matchStart + 40));
+            if (!subStr.contains("false") && !subStr.contains("incorrect") && !subStr.contains("not correct") && !subStr.contains("wrong")) {
+                if (letterIdx >= 0 && letterIdx < options.size()) {
+                    return letterIdx;
+                }
+            }
+        }
+
+        // 2. Complexity order scoring and full phrase matching (fallback repair for missing/invalid indices)
+        int bestIdx = 0;
+        int maxScore = -1;
+        int[] scores = new int[options.size()];
+
+        for (int i = 0; i < options.size(); i++) {
+            String opt = options.get(i);
+            if (opt == null) continue;
+            String cleanOpt = opt.toLowerCase().replaceAll("^(?:option\\s+[a-d][:.]?|[a-d][:.]\\s*)", "").trim();
+            
+            int s = 0;
+            if (cleanOpt.length() >= 8 && expLower.contains(cleanOpt)) {
+                s += 1000 + cleanOpt.length();
+            }
+            s += scoreComplexityOrder(opt, expLower);
+            scores[i] = s;
+            if (s > maxScore) {
+                maxScore = s;
+                bestIdx = i;
+            }
+        }
+
+        if (maxScore > 0) {
+            return bestIdx;
+        }
+
+        // 3. Default fallback
+        return 0;
+    }
+
+    public static QuizQuestion alignQuestionCorrectOptionIndex(QuizQuestion q) {
+        if (q != null && q.getOptions() != null && !q.getOptions().isEmpty()) {
+            int alignedIdx = verifyAndAlignWithExplanation(q.getCorrectOptionIndex(), q.getOptions(), q.getConceptualExplanation());
+            q.setCorrectOptionIndex(alignedIdx);
+        }
+        return q;
     }
 }

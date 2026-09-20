@@ -8,16 +8,36 @@ public class DashboardTestQuestionDTO {
     private String concept;
     private String questionText;
     private List<String> options;
+    private int correctOptionIndex;
+    private String conceptualExplanation;
 
     public DashboardTestQuestionDTO() {
     }
 
     public DashboardTestQuestionDTO(String questionId, String subject, String concept, String questionText, List<String> options) {
+        this(questionId, subject, concept, questionText, options, 0, null);
+    }
+
+    public DashboardTestQuestionDTO(String questionId, String subject, String concept, String questionText, List<String> options, String conceptualExplanation) {
+        this(questionId, subject, concept, questionText, options, 0, conceptualExplanation);
+    }
+
+    public DashboardTestQuestionDTO(String questionId, String subject, String concept, String questionText, List<String> options, int correctOptionIndex, String conceptualExplanation) {
         this.questionId = questionId;
         this.subject = subject;
         this.concept = concept;
         this.questionText = questionText;
         this.options = options;
+        this.correctOptionIndex = correctOptionIndex;
+        this.conceptualExplanation = conceptualExplanation;
+    }
+
+    public String getConceptualExplanation() {
+        return conceptualExplanation;
+    }
+
+    public void setConceptualExplanation(String conceptualExplanation) {
+        this.conceptualExplanation = conceptualExplanation;
     }
 
     public String getQuestionId() {
@@ -58,5 +78,13 @@ public class DashboardTestQuestionDTO {
 
     public void setOptions(List<String> options) {
         this.options = options;
+    }
+
+    public int getCorrectOptionIndex() {
+        return correctOptionIndex;
+    }
+
+    public void setCorrectOptionIndex(int correctOptionIndex) {
+        this.correctOptionIndex = correctOptionIndex;
     }
 }

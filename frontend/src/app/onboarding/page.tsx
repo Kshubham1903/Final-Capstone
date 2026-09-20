@@ -23,7 +23,8 @@ import {
   Plus,
   Trash2,
   PlusCircle,
-  Check
+  Check,
+  LogOut
 } from "lucide-react";
 import { saveOnboardingStep, onboardStudent, fetchOnboardingStatus, postQuestionnaire, fetchSubjectsByBranchAndSemester, fetchFullProfile, startDiagnosticAssessment, submitDiagnosticAssessment, fetchLatestDiagnosticResult, fetchNextInitialDiagnosticQuestion, submitInitialDiagnosticAnswer } from "../../services/api";
 
@@ -88,6 +89,16 @@ export default function Onboarding() {
   const [error, setError] = useState("");
 
   const userId = typeof window !== "undefined" ? (localStorage.getItem("edupilot_user_id") || "") : "";
+
+  const handleSignOut = () => {
+    localStorage.removeItem("edupilot_token");
+    localStorage.removeItem("edupilot_user_id");
+    localStorage.removeItem("edupilot_user_name");
+    localStorage.removeItem("edupilot_user_email");
+    localStorage.removeItem("edupilot_user");
+    localStorage.removeItem("edupilot_role");
+    navigate("/");
+  };
 
   // Step 1: Personal Information
   const [fullName, setFullName] = useState("");
@@ -712,6 +723,15 @@ export default function Onboarding() {
               <span className="text-[10px] uppercase font-bold">Auto-saving...</span>
             </div>
           )}
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-red-500/20 text-secondary-theme hover:text-red-400 border border-white/10 hover:border-red-500/30 transition-all cursor-pointer"
+            title="Sign Out"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            <span>Sign Out</span>
+          </button>
         </div>
       </div>
 
@@ -1211,13 +1231,13 @@ export default function Onboarding() {
                         {/* Progress Bar & Question Tracker */}
                         <div className="space-y-2">
                           <div className="flex justify-between text-xs font-bold text-secondary-theme">
-                            <span>Question {currentQuestionIndex + 1} of {totalQuestions}</span>
-                            <span>{Math.round(((currentQuestionIndex + 1) / totalQuestions) * 100)}% Complete</span>
+                            <span>Question {currentQuestionIndex + 1} of {totalQuestions || questions.length || 25}</span>
+                            <span>{Math.round(((currentQuestionIndex + 1) / (totalQuestions || questions.length || 25)) * 100)}% Complete</span>
                           </div>
                           <div className="w-full h-2 rounded-full bg-white/5 overflow-hidden">
                             <div
                               className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300"
-                              style={{ width: `${((currentQuestionIndex + 1) / totalQuestions) * 100}%` }}
+                              style={{ width: `${Math.min(100, Math.round(((currentQuestionIndex + 1) / (totalQuestions || questions.length || 25)) * 100))}%` }}
                             ></div>
                           </div>
                         </div>

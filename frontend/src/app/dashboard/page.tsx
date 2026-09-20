@@ -20,8 +20,11 @@ import LearningPreferencesCard from "../../components/dashboard/LearningPreferen
 import KnowledgeProgressCard from "../../components/dashboard/KnowledgeProgressCard";
 import LearningGainCard from "../../components/dashboard/LearningGainCard";
 import EvaluationMetricsCard from "../../components/dashboard/EvaluationMetricsCard";
+import StudentGrowthCard from "../../components/dashboard/StudentGrowthCard";
+import { PendingKnowledgeCheckCard } from "../../components/dashboard/PendingKnowledgeCheckCard";
 
 export default function StudentDashboard() {
+
   const [profile, setProfile] = useState<StudentProfile | null>(null);
   const [aiInsights, setAiInsights] = useState<string[]>([]);
   const [predPerformanceLevel, setPredPerformanceLevel] = useState("Medium");
@@ -162,6 +165,12 @@ export default function StudentDashboard() {
           {/* Left Column (2/3 width) - Focus areas & Mastery progress */}
           <div className="lg:col-span-2 space-y-6">
             
+            {/* Pending Knowledge Check Reassessment Card */}
+            <PendingKnowledgeCheckCard studentId={profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") || "" : "")} />
+
+            {/* Student Growth Pipeline Component */}
+            <StudentGrowthCard userId={profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") || "" : "")} />
+
             {/* Today's Learning Focus (Primary Highlight) */}
             <TodaysLearningCard profile={profile} />
 

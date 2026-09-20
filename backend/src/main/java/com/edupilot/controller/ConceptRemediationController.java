@@ -70,6 +70,33 @@ public class ConceptRemediationController {
         }
     }
 
+    @PostMapping("/start-verification")
+    public ResponseEntity<?> startVerification(@RequestBody StartRemediationRequest req) {
+        if (req == null || req.getStudentId() == null || req.getStudentId().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "studentId parameter is required and cannot be blank"));
+        }
+        if (req.getSubject() == null || req.getSubject().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "subject parameter is required and cannot be blank"));
+        }
+        if (req.getConcept() == null || req.getConcept().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "concept parameter is required and cannot be blank"));
+        }
+
+        try {
+            Map<String, Object> result = remediationService.startVerificationTest(
+                    req.getStudentId().trim(), 
+                    req.getSubject().trim(), 
+                    req.getConcept().trim()
+            );
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Failed to start verification test: " + e.getMessage()));
+        }
+    }
+
     @PostMapping("/submit")
     public ResponseEntity<?> submitRemediation(@RequestBody SubmitRemediationRequest req) {
         if (req == null || req.getSessionId() == null || req.getSessionId().trim().isEmpty()) {
@@ -88,6 +115,22 @@ public class ConceptRemediationController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Failed to submit concept remediation test: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/pending-check")
+    public ResponseEntity<?> getPendingCheck(
+            @RequestParam String studentId,
+            @RequestParam(required = false) String subject) {
+        if (studentId == null || studentId.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "studentId parameter is required and cannot be blank"));
+        }
+        try {
+            Map<String, Object> result = remediationService.getPendingReassessment(studentId.trim(), subject);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Failed to check pending reassessment: " + e.getMessage()));
         }
     }
 

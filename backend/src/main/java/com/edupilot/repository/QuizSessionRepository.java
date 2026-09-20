@@ -12,6 +12,8 @@ public interface QuizSessionRepository extends MongoRepository<QuizSession, Stri
     List<QuizSession> findByUserId(String userId);
     List<QuizSession> findByStudentProfileId(String studentProfileId);
     List<QuizSession> findByUserIdOrderByLastAnswerTimeDesc(String userId);
+    List<QuizSession> findByUserIdOrderByLastAnswerTimeAsc(String userId);
+    List<QuizSession> findByStudentProfileIdOrderByLastAnswerTimeAsc(String studentProfileId);
     Optional<QuizSession> findFirstByUserIdOrderByLastAnswerTimeDesc(String userId);
     Optional<QuizSession> findFirstByUserIdAndSubjectNameAndStatusOrderByLastAnswerTimeDesc(String userId, String subjectName, QuizSession.Status status);
 }

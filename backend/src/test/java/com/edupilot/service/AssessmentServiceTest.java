@@ -208,4 +208,37 @@ public class AssessmentServiceTest {
         verify(resultRepository).save(any());
         verify(knowledgeService).syncKnowledgeProfileSummary(eq("user_10th"), eq("Data Structures & Algorithms"));
     }
+
+    @Test
+    public void testResponseTimeSecondsPersistedInUserAnswerAndNullHandledSafely() {
+        AssessmentSession session = new AssessmentSession();
+        session.setId("session_time_test");
+        session.setUserId("user_time");
+        session.setStudentProfileId("user_time");
+        session.setSubjectCode("CS301");
+        session.setSubjectName("Data Structures & Algorithms");
+        session.setStatus(AssessmentSession.Status.IN_PROGRESS);
+        session.setCurrentQuestionId("q_array_1");
+        session.setActiveQuestionSubmitted(false);
+        session.setQuestionCount(0);
+        session.setTotalQuestions(10);
+        session.setUserAnswers(new java.util.ArrayList<>());
+
+        when(sessionRepository.findById("session_time_test")).thenReturn(Optional.of(session));
+        when(quizQuestionRepository.findById("q_array_1")).thenReturn(Optional.of(arrayQuestion));
+
+        // Submit answer with explicit response time of 14.5 seconds
+        AdaptiveAssessmentDTOs.AdaptiveSubmitRequest req = new AdaptiveAssessmentDTOs.AdaptiveSubmitRequest("session_time_test", "q_array_1", 1, 14.5);
+        AdaptiveAssessmentDTOs.AdaptiveSubmitResponse resp = assessmentService.submitInitialAnswer(req, "user_time");
+
+        assertNotNull(resp);
+        assertEquals(1, session.getUserAnswers().size());
+        com.edupilot.model.AssessmentResult.UserAnswer savedAnswer = session.getUserAnswers().get(0);
+        assertNotNull(savedAnswer.getResponseTimeSeconds(), "responseTimeSeconds must not be null when provided");
+        assertEquals(14.5, savedAnswer.getResponseTimeSeconds(), 0.001, "responseTimeSeconds must equal 14.5");
+
+        // Verify null responseTimeSeconds handled safely for backward compatibility
+        com.edupilot.model.AssessmentResult.UserAnswer legacyAnswer = new com.edupilot.model.AssessmentResult.UserAnswer("q_old", "Topic", 0, false, 0);
+        assertNull(legacyAnswer.getResponseTimeSeconds(), "Legacy UserAnswer should have null responseTimeSeconds without throwing exception");
+    }
 }

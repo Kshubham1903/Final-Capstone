@@ -380,7 +380,7 @@ export default function AssessmentRunner({
 
         setNextQuestionError(null);
         setAdaptiveQuestion(normalizedNextQ);
-        setAdaptiveQuestionNumber(incomingQNum);
+        setAdaptiveQuestionNumber(prev => prev + 1);
         setAdaptiveMaxQuestions(nextRes.totalQuestions || 10);
         setAdaptiveSelectedOption(null);
         setAdaptiveFeedback(null);
@@ -518,7 +518,7 @@ export default function AssessmentRunner({
         if (qFp) displayedAdaptiveFingerprintsRef.current.add(qFp);
 
         setAdaptiveQuestion(nextRes.question);
-        setAdaptiveQuestionNumber(incomingQNum);
+        setAdaptiveQuestionNumber(prev => prev + 1);
         setAdaptiveMaxQuestions(nextRes.totalQuestions || 10);
         setAdaptiveSelectedOption(null);
         setAdaptiveFeedback(null);
