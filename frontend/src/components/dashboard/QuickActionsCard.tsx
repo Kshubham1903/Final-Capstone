@@ -13,13 +13,6 @@ export default function QuickActionsCard({ className = "" }: QuickActionsCardPro
       color: "from-purple-600/20 to-purple-800/10 border-purple-500/30 text-purple-theme"
     },
     {
-      title: "Pomodoro Focus",
-      desc: "Deep work timer",
-      icon: Timer,
-      href: "/dashboard/pomodoro",
-      color: "from-pink-600/20 to-pink-800/10 border-pink-500/30 text-pink-theme"
-    },
-    {
       title: "Practice Concepts",
       desc: "Targeted revision",
       icon: Zap,
@@ -44,7 +37,7 @@ export default function QuickActionsCard({ className = "" }: QuickActionsCardPro
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {actions.map((act) => {
           const Icon = act.icon;
           return (

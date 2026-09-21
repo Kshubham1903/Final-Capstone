@@ -2,9 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { 
   LayoutDashboard, 
-  Timer, 
   GraduationCap, 
-  Briefcase, 
   Users, 
   Settings, 
   Bell, 
@@ -104,11 +102,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { name: "Growth & Progress", href: "/progress", icon: TrendingUp },
       { name: "Subjects Roadmap", href: "/dashboard/subjects", icon: BookOpen },
-      { name: "My Profile", href: "/dashboard/profile", icon: User },
-      { name: "Pomodoro Focus", href: "/dashboard/pomodoro", icon: Timer },
       { name: "Adaptive Quizzes", href: "/dashboard/quizzes", icon: GraduationCap },
-      { name: "Career Guidance", href: "/dashboard/career", icon: Briefcase },
       { name: "AI Tutor", href: "/dashboard/ai-tutor", icon: Bot },
+      { name: "My Profile", href: "/dashboard/profile", icon: User },
     ],
     FACULTY: [
       { name: "Class Performance", href: "/faculty", icon: Users },

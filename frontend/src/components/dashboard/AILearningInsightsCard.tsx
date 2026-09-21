@@ -164,7 +164,7 @@ export default function AILearningInsightsCard({
       icon: Zap,
       status: prodStatus,
       statusLabel: prodScore >= 75 ? "HIGH FOCUS" : prodScore >= 50 ? "BALANCED" : "NEEDS FOCUS",
-      explanation: "Focus time ratio, interval rating & Pomodoro sessions"
+      explanation: "Focus time ratio & study interval rating"
     },
     {
       id: "lifestyle",

@@ -373,9 +373,9 @@ export async function getRecommendations(profileId: string): Promise<any> {
     recs.push("Sleep Guide: Keep screens off 45m before sleep. Target 7.5 hrs tonight.");
   }
   if (latestLog && latestLog.stressLevel > 6) {
-    recs.push("Focus Interval: Activate Pomodoro focus timer with Lofi background beats.");
+    recs.push("Focus Interval: Schedule 25-minute focus study sessions with regular breaks.");
   }
-  recs.push("Career Guidance: Check out target ML Engineering internships recommended for you.");
+  recs.push("Skill Development: Build algorithm problem-solving projects to enhance your portfolio.");
 
   return {
     predicted_performance_level: profile.studentGrowthIndex >= 7.5 ? "High" : "Medium",

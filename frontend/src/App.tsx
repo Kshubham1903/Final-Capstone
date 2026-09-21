@@ -5,8 +5,6 @@ import Home from "./app/page";
 import Onboarding from "./app/onboarding/page";
 import StudentDashboard from "./app/dashboard/page";
 import ProfilePage from "./app/dashboard/profile/page";
-import CareerCenter from "./app/dashboard/career/page";
-import Pomodoro from "./app/dashboard/pomodoro/page";
 import Quizzes from "./app/dashboard/quizzes/page";
 import FacultyDashboard from "./app/faculty/page";
 import QuizManagerDashboard from "./app/faculty/quiz-manager/page";
@@ -29,8 +27,6 @@ export default function App() {
       <Route path="/dashboard/subjects" element={<OnboardingGuard><SubjectsPage /></OnboardingGuard>} />
       <Route path="/dashboard/subjects/:subjectCode" element={<OnboardingGuard><SubjectsPage /></OnboardingGuard>} />
       <Route path="/dashboard/profile" element={<OnboardingGuard><ProfilePage /></OnboardingGuard>} />
-      <Route path="/dashboard/career" element={<OnboardingGuard><CareerCenter /></OnboardingGuard>} />
-      <Route path="/dashboard/pomodoro" element={<OnboardingGuard><Pomodoro /></OnboardingGuard>} />
       <Route path="/dashboard/quizzes" element={<OnboardingGuard><Quizzes /></OnboardingGuard>} />
       <Route path="/dashboard/ai-tutor" element={<OnboardingGuard><AITutorPage /></OnboardingGuard>} />
       <Route path="/faculty" element={<FacultyDashboard />} />
