@@ -20,6 +20,8 @@ frontend/dist/
 # =========================
 .env
 .env.*
+.edupilot_master_key
+.edupilot_dev_master_key
 
 # =========================
 # Logs

@@ -148,19 +148,26 @@ public class StudentGroqKeyIntegrationTest {
     }
 
     @Test
-    public void testMissingEncryptionSecretThrowsControlledException() {
-        CryptoUtils isolatedCryptoUtils = new CryptoUtils();
-        ReflectionTestUtils.setField(isolatedCryptoUtils, "secretKeySource", "");
+    public void testAutomaticMasterKeyCreationAndPersistenceStability() throws Exception {
+        CryptoUtils instance1 = new CryptoUtils();
+        ReflectionTestUtils.setField(instance1, "secretKeySource", "");
+        
+        String key1 = instance1.resolveMasterKeySource();
+        assertNotNull(key1);
+        assertFalse(key1.isBlank());
 
-        IllegalStateException encryptEx = assertThrows(IllegalStateException.class, () -> {
-            isolatedCryptoUtils.encrypt("gsk_test_key_xyz");
-        });
-        assertTrue(encryptEx.getMessage().contains("EDUPILOT_CREDENTIAL_ENCRYPTION_KEY configuration is missing"));
+        String originalKey = "gsk_student_personal_groq_key_999";
+        String encrypted = instance1.encrypt(originalKey);
+        assertNotNull(encrypted);
+        assertEquals(originalKey, instance1.decrypt(encrypted));
 
-        IllegalStateException decryptEx = assertThrows(IllegalStateException.class, () -> {
-            isolatedCryptoUtils.decrypt("QUFBQUFBQUFBQUFBQUFBQQ==");
-        });
-        assertTrue(decryptEx.getMessage().contains("EDUPILOT_CREDENTIAL_ENCRYPTION_KEY configuration is missing"));
+        // Re-instantiate a second CryptoUtils instance to verify key stability across restarts
+        CryptoUtils instance2 = new CryptoUtils();
+        ReflectionTestUtils.setField(instance2, "secretKeySource", "");
+
+        String key2 = instance2.resolveMasterKeySource();
+        assertEquals(key1, key2, "Auto-generated master key MUST remain identical across backend re-initialization!");
+        assertEquals(originalKey, instance2.decrypt(encrypted), "Second instance MUST successfully decrypt credentials encrypted by first instance!");
     }
 
     @Autowired
@@ -171,9 +178,14 @@ public class StudentGroqKeyIntegrationTest {
         CryptoUtils isolatedCryptoUtils = new CryptoUtils();
         ReflectionTestUtils.setField(isolatedCryptoUtils, "secretKeySource", null);
 
-        assertThrows(IllegalStateException.class, () -> {
-            isolatedCryptoUtils.encrypt("gsk_test_key_xyz");
-        });
+        String masterKey = isolatedCryptoUtils.resolveMasterKeySource();
+        assertNotNull(masterKey, "Master key must be automatically generated/resolved when secretKeySource is null");
+        assertFalse(masterKey.isBlank());
+        assertFalse(masterKey.startsWith("gsk_"), "Master key must NOT be a Groq API key!");
+
+        String encrypted = isolatedCryptoUtils.encrypt("gsk_test_key_xyz");
+        assertNotNull(encrypted);
+        assertEquals("gsk_test_key_xyz", isolatedCryptoUtils.decrypt(encrypted));
     }
 
     @Test
