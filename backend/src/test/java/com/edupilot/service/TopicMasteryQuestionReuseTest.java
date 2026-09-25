@@ -43,20 +43,35 @@ public class TopicMasteryQuestionReuseTest {
         remediationSessionRepository.deleteAll();
         questionRepository.deleteAll();
 
-        // Seed 30 distinct questions for subject & concept to support 10-question batches
+        // Seed 40 distinct questions across 8 sub-aspect categories (5 per category) to support 10-question batches
         List<QuizQuestion> testQuestions = new ArrayList<>();
-        for (int i = 1; i <= 30; i++) {
-            QuizQuestion q = QuizQuestion.builder()
-                    .subject(testSubject)
-                    .concept(testConcept)
-                    .difficulty(QuizQuestion.Difficulty.MEDIUM)
-                    .questionText("Test Question " + i + " for " + testConcept)
-                    .options(List.of("Option A", "Option B", "Option C", "Option D"))
-                    .correctOptionIndex(0)
-                    .conceptualExplanation("Explanation for question " + i)
-                    .moduleSource(ModuleType.REMEDIATION)
-                    .build();
-            testQuestions.add(q);
+        String[] subAspectPrefixes = new String[] {
+                "How to reverse a singly linked list",
+                "What is random access time complexity",
+                "How does cache locality affect performance",
+                "What happens during dynamic array resizing",
+                "How does head insertion work in linked list",
+                "What is tail deletion complexity",
+                "Explain node memory allocation overhead",
+                "What is the embedded use-case trade-off"
+        };
+        int qId = 1;
+        for (int cat = 0; cat < subAspectPrefixes.length; cat++) {
+            String prefix = subAspectPrefixes[cat];
+            for (int v = 1; v <= 5; v++) {
+                QuizQuestion q = QuizQuestion.builder()
+                        .subject(testSubject)
+                        .concept(testConcept)
+                        .difficulty(QuizQuestion.Difficulty.MEDIUM)
+                        .questionText(prefix + " variant " + v + " for " + testConcept)
+                        .options(List.of("Option A", "Option B", "Option C", "Option D"))
+                        .correctOptionIndex(0)
+                        .conceptualExplanation("Explanation for question " + qId)
+                        .moduleSource(ModuleType.REMEDIATION)
+                        .build();
+                testQuestions.add(q);
+                qId++;
+            }
         }
         questionRepository.saveAll(testQuestions);
     }
@@ -253,7 +268,7 @@ public class TopicMasteryQuestionReuseTest {
                     .subject(testSubject)
                     .concept(testConcept)
                     .difficulty(QuizQuestion.Difficulty.MEDIUM)
-                    .questionText("Test Question 1 for " + testConcept) // Same text as Q1 seeded in setUp
+                    .questionText("How to reverse a singly linked list variant 1 for " + testConcept) // Same text as Q1 seeded in setUp
                     .options(List.of("Option A", "Option B", "Option C", "Option D"))
                     .correctOptionIndex(0)
                     .conceptualExplanation("Duplicate text explanation for question 1 clone " + i)

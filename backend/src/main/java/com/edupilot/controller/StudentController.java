@@ -132,11 +132,15 @@ public class StudentController {
         try {
             String authUserId = getAuthenticatedUserId();
             String targetUserId = studentService.resolveUserId(userId);
-            if (authUserId != null && !authUserId.isBlank() && !"anonymous_student".equals(authUserId)) {
-                if (!authUserId.equalsIgnoreCase(targetUserId)) {
-                    return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
-                            .body(Map.of("message", "Access denied: Cannot modify another student's profile or credentials."));
-                }
+            if (authUserId == null
+                    || authUserId.isBlank()
+                    || "anonymous_student".equals(authUserId)
+                    || !authUserId.equalsIgnoreCase(targetUserId)) {
+                return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
+                        .body(Map.of(
+                            "message",
+                            "Access denied: Cannot modify another student's profile or credentials."
+                        ));
             }
             StudentProfile updated = studentService.updateProfileAndRecalculate(targetUserId, payload);
             return ResponseEntity.ok(updated);

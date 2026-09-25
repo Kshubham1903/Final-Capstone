@@ -19,6 +19,9 @@ ai:
   service:
     url: ${AI_SERVICE_URL:http://localhost:8000}
 
+edupilot:
+  credential-encryption-key: ${EDUPILOT_CREDENTIAL_ENCRYPTION_KEY:}
+
 # LLM Provider Configuration
 llm:
   provider: ${LLM_PROVIDER:gemini} # gemini, openai, or mock

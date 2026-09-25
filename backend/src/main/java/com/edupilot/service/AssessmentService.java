@@ -182,6 +182,7 @@ public class AssessmentService {
         Map<String, Object> genContext = new HashMap<>();
         genContext.put("adaptiveSummary", "Baseline " + totalQuestions + "-question initial assessment");
         genContext.put("purpose", "DIAGNOSTIC_QUESTION_1");
+        genContext.put("userId", userId);
 
         QuizQuestion q1;
         try {
@@ -850,6 +851,7 @@ public class AssessmentService {
             genContext.put("adaptiveSummary", "Baseline " + totalSessionQuestions + "-question initial assessment");
             genContext.put("excludeQuestions", fingerprintsCopy);
             genContext.put("purpose", "DIAGNOSTIC_QUESTION_" + (targetIndex + 1));
+            genContext.put("userId", userId);
 
             QuizQuestion generatedQ = quizGenerationService.generateSingleDiagnosticQuestion(subjectName, spec, genContext, targetIndex + 1, totalSessionQuestions);
             if (generatedQ == null) {

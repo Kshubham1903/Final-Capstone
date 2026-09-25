@@ -55,7 +55,7 @@ public class QuizGenerationService {
                 .orElseThrow(() -> new IllegalArgumentException("Student profile not found: " + studentId));
 
         QuizQuestion.Difficulty difficulty = resolveDifficulty(profile, subject);
-        return generate(subject, difficulty, count);
+        return generate(subject, difficulty, count, Map.of("userId", studentId));
     }
 
     public List<QuizQuestion> generate(String subject, QuizQuestion.Difficulty difficulty, int count) {
@@ -68,6 +68,9 @@ public class QuizGenerationService {
         String userPrompt = buildUserPrompt(subject, difficulty, targetCount, callerContext);
         Map<String, Object> context = new HashMap<>();
         if (callerContext != null) context.putAll(callerContext);
+        if (context.containsKey("studentId") && !context.containsKey("userId") && context.get("studentId") != null) {
+            context.put("userId", context.get("studentId"));
+        }
         if (!context.containsKey("maxTokens")) context.put("maxTokens", 280);
         if (!context.containsKey("purpose")) context.put("purpose", "DASHBOARD_BATCH");
 

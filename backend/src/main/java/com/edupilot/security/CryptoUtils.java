@@ -19,15 +19,19 @@ public class CryptoUtils {
     private static final int GCM_TAG_LENGTH_BITS = 128;
     private static final int IV_LENGTH_BYTES = 12;
 
-    @Value("${EDUPILOT_CREDENTIAL_ENCRYPTION_KEY:${llm.groq.api-key:mock-key}}")
+    @Value("${EDUPILOT_CREDENTIAL_ENCRYPTION_KEY:${edupilot.credential-encryption-key:}}")
     private String secretKeySource;
 
     private SecretKey getSecretKey() {
+        if (secretKeySource == null || secretKeySource.isBlank()) {
+            throw new IllegalStateException("EDUPILOT_CREDENTIAL_ENCRYPTION_KEY configuration is missing or empty.");
+        }
         try {
-            String keySource = (secretKeySource != null && !secretKeySource.isBlank()) ? secretKeySource : "EduPilotGroqSecretFallbackKey";
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] keyBytes = digest.digest(keySource.getBytes(StandardCharsets.UTF_8));
+            byte[] keyBytes = digest.digest(secretKeySource.getBytes(StandardCharsets.UTF_8));
             return new SecretKeySpec(keyBytes, "AES");
+        } catch (IllegalStateException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new IllegalStateException("Failed to initialize credential encryption key", ex);
         }
@@ -51,6 +55,8 @@ public class CryptoUtils {
             System.arraycopy(cipherTextBytes, 0, combined, iv.length, cipherTextBytes.length);
 
             return Base64.getEncoder().encodeToString(combined);
+        } catch (IllegalStateException ex) {
+            throw ex;
         } catch (Exception ex) {
             throw new RuntimeException("Failed to encrypt API key", ex);
         }
@@ -77,6 +83,8 @@ public class CryptoUtils {
 
             byte[] plainTextBytes = cipher.doFinal(cipherTextBytes);
             return new String(plainTextBytes, StandardCharsets.UTF_8);
+        } catch (IllegalStateException ex) {
+            throw ex;
         } catch (Exception ex) {
             System.err.println("[CryptoUtils] Decryption failed or invalid ciphertext: " + ex.getMessage());
             return null;

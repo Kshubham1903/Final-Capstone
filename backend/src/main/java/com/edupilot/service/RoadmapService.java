@@ -107,6 +107,7 @@ public class RoadmapService {
 
             Map<String, Object> context = new HashMap<>();
             context.put("purpose", "ROADMAP_GENERATION");
+            context.put("userId", userId);
 
             String rawAiResponse = roadmapGroqProvider.generateResponse(systemPrompt, userPrompt, context);
 

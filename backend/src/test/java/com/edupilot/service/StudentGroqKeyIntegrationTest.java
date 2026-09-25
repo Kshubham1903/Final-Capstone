@@ -146,4 +146,65 @@ public class StudentGroqKeyIntegrationTest {
         assertTrue(response.contains("UNAUTHENTICATED"));
         assertTrue(response.contains("Personal Groq API key is required"));
     }
+
+    @Test
+    public void testMissingEncryptionSecretThrowsControlledException() {
+        CryptoUtils isolatedCryptoUtils = new CryptoUtils();
+        ReflectionTestUtils.setField(isolatedCryptoUtils, "secretKeySource", "");
+
+        IllegalStateException encryptEx = assertThrows(IllegalStateException.class, () -> {
+            isolatedCryptoUtils.encrypt("gsk_test_key_xyz");
+        });
+        assertTrue(encryptEx.getMessage().contains("EDUPILOT_CREDENTIAL_ENCRYPTION_KEY configuration is missing"));
+
+        IllegalStateException decryptEx = assertThrows(IllegalStateException.class, () -> {
+            isolatedCryptoUtils.decrypt("QUFBQUFBQUFBQUFBQUFBQQ==");
+        });
+        assertTrue(decryptEx.getMessage().contains("EDUPILOT_CREDENTIAL_ENCRYPTION_KEY configuration is missing"));
+    }
+
+    @Autowired
+    private com.edupilot.controller.StudentController studentController;
+
+    @Test
+    public void testGroqApiKeyCannotActAsEncryptionFallback() {
+        CryptoUtils isolatedCryptoUtils = new CryptoUtils();
+        ReflectionTestUtils.setField(isolatedCryptoUtils, "secretKeySource", null);
+
+        assertThrows(IllegalStateException.class, () -> {
+            isolatedCryptoUtils.encrypt("gsk_test_key_xyz");
+        });
+    }
+
+    @Test
+    public void testProfileUpdateSecurityOwnershipEnforcement() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+
+        // Case C: Unauthenticated (null auth) -> 403
+        org.springframework.http.ResponseEntity<?> respC = studentController.updateProfileAndRecalculate(studentAId, Map.of("fullName", "Attacker Payload"));
+        assertEquals(org.springframework.http.HttpStatus.FORBIDDEN, respC.getStatusCode(), "Unauthenticated request MUST return 403 FORBIDDEN");
+
+        // Case D: Anonymous student -> 403
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("anonymous_student", null, java.util.List.of())
+        );
+        org.springframework.http.ResponseEntity<?> respD = studentController.updateProfileAndRecalculate(studentAId, Map.of("fullName", "Attacker Payload"));
+        assertEquals(org.springframework.http.HttpStatus.FORBIDDEN, respD.getStatusCode(), "Anonymous request MUST return 403 FORBIDDEN");
+
+        // Case B: Different authenticated user (Student B attempting to update Student A) -> 403
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(studentBId, null, java.util.List.of())
+        );
+        org.springframework.http.ResponseEntity<?> respB = studentController.updateProfileAndRecalculate(studentAId, Map.of("fullName", "Attacker Payload"));
+        assertEquals(org.springframework.http.HttpStatus.FORBIDDEN, respB.getStatusCode(), "Cross-user update request MUST return 403 FORBIDDEN");
+
+        // Case A: Own authenticated profile update (Student A updating Student A) -> 200 OK
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(studentAId, null, java.util.List.of())
+        );
+        org.springframework.http.ResponseEntity<?> respA = studentController.updateProfileAndRecalculate(studentAId, Map.of("fullName", "Updated Student A"));
+        assertEquals(org.springframework.http.HttpStatus.OK, respA.getStatusCode(), "Own authenticated profile update MUST return 200 OK");
+
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
 }
