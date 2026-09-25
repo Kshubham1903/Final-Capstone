@@ -14,7 +14,10 @@ import {
   BookOpen,
   Plus,
   Trash2,
-  Check
+  Check,
+  Key,
+  ShieldCheck,
+  Lock
 } from "lucide-react";
 import { fetchFullProfile, updateFullProfile, fetchSubjectsByBranchAndSemester } from "../../../services/api";
 
@@ -48,6 +51,11 @@ export default function ProfilePage() {
   const [riskLevel, setRiskLevel] = useState("LOW");
   const [streakCount, setStreakCount] = useState(0);
 
+  // Personal Groq API Key State
+  const [groqApiKeyInput, setGroqApiKeyInput] = useState("");
+  const [groqApiKeyConfigured, setGroqApiKeyConfigured] = useState(false);
+  const [removeKeyRequested, setRemoveKeyRequested] = useState(false);
+
   useEffect(() => {
     async function loadData() {
       if (!userId) {
@@ -74,6 +82,7 @@ export default function ProfilePage() {
         setPredictedCgpa(p.predictedCgpa || 0.0);
         setRiskLevel(p.academicRiskLevel || "LOW");
         setStreakCount(p.currentStreakCount || 0);
+        setGroqApiKeyConfigured(Boolean(p.groqApiKeyConfigured));
       }
       setLoading(false);
     }
@@ -139,7 +148,7 @@ export default function ProfilePage() {
 
     setSaving(true);
 
-    const updatePayload = {
+    const updatePayload: any = {
       fullName,
       institution,
       degree,
@@ -154,12 +163,21 @@ export default function ProfilePage() {
       subjects: subjects
     };
 
+    if (removeKeyRequested) {
+      updatePayload.groqApiKey = "";
+    } else if (groqApiKeyInput.trim()) {
+      updatePayload.groqApiKey = groqApiKeyInput.trim();
+    }
+
     try {
       const updated = await updateFullProfile(userId, updatePayload);
       if (updated) {
         setSgi(updated.studentGrowthIndex || sgi);
         setPredictedCgpa(updated.predictedCgpa || predictedCgpa);
         setRiskLevel(updated.academicRiskLevel || riskLevel);
+        setGroqApiKeyConfigured(Boolean(updated.groqApiKeyConfigured));
+        setGroqApiKeyInput("");
+        setRemoveKeyRequested(false);
         setSuccessMsg("Academic profile updated successfully! Python AI recalculated your Student Growth Index.");
       }
     } catch (err: any) {
@@ -488,6 +506,76 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Personal Groq API Key Configuration Card */}
+              <div className="md:col-span-2 space-y-4 p-5 rounded-2xl bg-purple-900/10 border border-purple-500/20 mt-2">
+                <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                  <div>
+                    <h4 className="font-extrabold text-main-theme text-sm flex items-center gap-2">
+                      <Key className="h-4 w-4 text-purple-theme" />
+                      <span>AI & Groq Integration Settings</span>
+                    </h4>
+                    <p className="text-[11px] text-secondary-theme mt-0.5">
+                      Configure your personal Groq API Key (<code className="text-purple-300 font-mono">gsk_...</code>) for isolated rate limits and quota.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {groqApiKeyConfigured && !removeKeyRequested ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        <span>Personal Key Active</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-300 bg-purple-500/10 px-3 py-1 rounded-full border border-purple-500/20">
+                        <Lock className="h-3.5 w-3.5" />
+                        <span>{removeKeyRequested ? "Will Revert to Global Key" : "Using System Default Key"}</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      value={groqApiKeyInput}
+                      onChange={e => {
+                        setGroqApiKeyInput(e.target.value);
+                        setRemoveKeyRequested(false);
+                      }}
+                      placeholder={groqApiKeyConfigured && !removeKeyRequested ? "•••••••••••••••••••••••••••• (Leave blank to keep current key)" : "Enter your personal Groq API Key (gsk_...)"}
+                      className="flex-1 p-3 rounded-xl glass-input text-xs font-mono"
+                    />
+                    {groqApiKeyConfigured && !removeKeyRequested && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRemoveKeyRequested(true);
+                          setGroqApiKeyInput("");
+                        }}
+                        className="px-4 py-2 rounded-xl bg-pink-500/10 hover:bg-pink-500/20 text-pink-300 border border-pink-500/20 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                        title="Remove personal key and revert to system default key"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        <span>Remove Key</span>
+                      </button>
+                    )}
+                    {removeKeyRequested && (
+                      <button
+                        type="button"
+                        onClick={() => setRemoveKeyRequested(false)}
+                        className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-all cursor-pointer"
+                      >
+                        Undo Remove
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-secondary-theme leading-relaxed">
+                    🔒 Your API key is encrypted using AES-GCM before storage. It is never returned in REST responses or saved in browser local storage.
+                  </p>
+                </div>
               </div>
             </div>
 

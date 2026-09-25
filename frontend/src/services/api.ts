@@ -196,25 +196,31 @@ export async function fetchFullProfile(userId: string): Promise<any> {
 export async function updateFullProfile(userId: string, data: any): Promise<StudentProfile> {
   const online = await checkBackendConnection();
   if (online) {
-    try {
-      const res = await fetch(`${getBackendUrl()}/api/students/profile/${userId}`, {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(data)
-      });
-      if (res.ok) {
-        const updated = await res.json();
-        saveStudentProfile(updated);
-        return updated;
+    const res = await fetch(`${getBackendUrl()}/api/students/profile/${userId}`, {
+      method: "PUT",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(data)
+    });
+    if (res.ok) {
+      const updated = await res.json();
+      saveStudentProfile(updated);
+      return updated;
+    } else {
+      handleAuthError(res);
+      let errorMsg = `Profile update failed (HTTP ${res.status})`;
+      try {
+        const errJson = await res.json();
+        if (errJson && errJson.message) {
+          errorMsg = errJson.message;
+        }
+      } catch (_) {}
+      if (res.status === 401 || res.status === 403) {
+        errorMsg = "Your session is no longer valid. Please sign in again and try again.";
       }
-    } catch (err) {
-      console.warn("Error updating profile on backend:", err);
+      throw new Error(errorMsg);
     }
   }
-  const current = getStoredStudentProfile();
-  const updated = { ...current, ...data };
-  saveStudentProfile(updated);
-  return updated;
+  throw new Error("Backend server is offline. Cannot save profile configuration.");
 }
 
 export async function fetchProfile(userId: string): Promise<StudentProfile> {

@@ -112,10 +112,33 @@ public class StudentController {
         }
     }
 
+    private String getAuthenticatedUserId() {
+        try {
+            org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
+                if (auth.getPrincipal() instanceof org.springframework.security.core.userdetails.UserDetails) {
+                    String username = ((org.springframework.security.core.userdetails.UserDetails) auth.getPrincipal()).getUsername();
+                    return studentService.resolveUserId(username);
+                } else if (auth.getPrincipal() instanceof String) {
+                    return studentService.resolveUserId((String) auth.getPrincipal());
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
     @PutMapping("/profile/{userId}")
     public ResponseEntity<?> updateProfileAndRecalculate(@PathVariable String userId, @RequestBody Map<String, Object> payload) {
         try {
-            StudentProfile updated = studentService.updateProfileAndRecalculate(userId, payload);
+            String authUserId = getAuthenticatedUserId();
+            String targetUserId = studentService.resolveUserId(userId);
+            if (authUserId != null && !authUserId.isBlank() && !"anonymous_student".equals(authUserId)) {
+                if (!authUserId.equalsIgnoreCase(targetUserId)) {
+                    return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
+                            .body(Map.of("message", "Access denied: Cannot modify another student's profile or credentials."));
+                }
+            }
+            StudentProfile updated = studentService.updateProfileAndRecalculate(targetUserId, payload);
             return ResponseEntity.ok(updated);
         } catch (Exception ex) {
             return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));

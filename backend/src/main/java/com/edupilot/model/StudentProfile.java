@@ -1,5 +1,6 @@
 package com.edupilot.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -67,6 +68,9 @@ public class StudentProfile {
 
     // Historical Lifestyle Logs attached for Dashboard visualization
     private List<Map<String, Object>> lifestyleHistory;
+
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    private String groqApiKey;
 
     public StudentProfile() {
     }
@@ -470,6 +474,18 @@ public class StudentProfile {
 
     public void setLifestyleHistory(List<Map<String, Object>> lifestyleHistory) {
         this.lifestyleHistory = lifestyleHistory;
+    }
+
+    public String getGroqApiKey() {
+        return groqApiKey;
+    }
+
+    public void setGroqApiKey(String groqApiKey) {
+        this.groqApiKey = groqApiKey;
+    }
+
+    public boolean isGroqApiKeyConfigured() {
+        return groqApiKey != null && !groqApiKey.isBlank();
     }
 
     public static StudentProfileBuilder builder() {

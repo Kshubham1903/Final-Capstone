@@ -18,6 +18,9 @@ public class StudentService {
     private StudentProfileRepository profileRepository;
 
     @Autowired
+    private com.edupilot.security.CryptoUtils cryptoUtils;
+
+    @Autowired
     private LifestyleDataRepository lifestyleRepository;
 
     @Autowired
@@ -753,6 +756,16 @@ public class StudentService {
         if (payload.containsKey("subjects")) profile.setSubjects(parseList(payload.get("subjects")));
         if (payload.containsKey("careerGoals")) profile.setCareerGoals(parseList(payload.get("careerGoals")));
 
+        if (payload.containsKey("groqApiKey")) {
+            Object rawKeyObj = payload.get("groqApiKey");
+            String rawKey = rawKeyObj != null ? rawKeyObj.toString().trim() : "";
+            if (!rawKey.isEmpty()) {
+                profile.setGroqApiKey(cryptoUtils.encrypt(rawKey));
+            } else {
+                profile.setGroqApiKey(null);
+            }
+        }
+
         // Sync with AcademicProfile collection
         Optional<AcademicProfile> academicOpt = academicRepository.findByUserId(userId);
         AcademicProfile academic = academicOpt.orElseGet(() -> {
@@ -773,6 +786,21 @@ public class StudentService {
         StudentProfile saved = profileRepository.save(profile);
         runSilentBackgroundPrediction(saved);
         return profileRepository.save(saved);
+    }
+
+    public String getDecryptedGroqApiKey(String userId) {
+        if (userId == null || userId.isBlank() || "anonymous_student".equals(userId)) {
+            return null;
+        }
+        String canonicalUserId = resolveUserId(userId);
+        Optional<StudentProfile> opt = profileRepository.findByUserId(canonicalUserId);
+        if (opt.isEmpty()) {
+            opt = profileRepository.findById(canonicalUserId);
+        }
+        if (opt.isPresent() && opt.get().getGroqApiKey() != null && !opt.get().getGroqApiKey().isBlank()) {
+            return cryptoUtils.decrypt(opt.get().getGroqApiKey());
+        }
+        return null;
     }
 
     public void runSilentBackgroundPrediction(StudentProfile profile) {
