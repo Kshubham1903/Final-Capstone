@@ -148,6 +148,17 @@ public class StudentGroqKeyIntegrationTest {
     }
 
     @Test
+    public void testGroqModelIsMigratedToQwenAndNoCompound() {
+        assertEquals("qwen/qwen3.8-27b", groqProvider.getModelName());
+        assertFalse(groqProvider.getModelName().contains("compound-mini"));
+        assertFalse(groqProvider.getModelName().contains("groq/compound"));
+
+        assertTrue(roadmapGroqProvider.getProviderName().contains("qwen/qwen3.8-27b"));
+        assertFalse(roadmapGroqProvider.getProviderName().contains("compound-mini"));
+        assertFalse(roadmapGroqProvider.getProviderName().contains("groq/compound"));
+    }
+
+    @Test
     public void testAutomaticMasterKeyCreationAndPersistenceStability() throws Exception {
         CryptoUtils instance1 = new CryptoUtils();
         ReflectionTestUtils.setField(instance1, "secretKeySource", "");

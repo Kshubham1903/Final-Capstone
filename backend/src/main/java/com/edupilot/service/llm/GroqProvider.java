@@ -21,7 +21,7 @@ public class GroqProvider implements LLMProvider {
     @org.springframework.context.annotation.Lazy
     private com.edupilot.service.StudentService studentService;
 
-    @Value("${llm.groq.model:groq/compound-mini}")
+    @Value("${llm.groq.model:qwen/qwen3.8-27b}")
     private String modelName;
 
     @Value("${llm.temperature:0.7}")
@@ -35,7 +35,7 @@ public class GroqProvider implements LLMProvider {
     private static final Object coordinatorLock = new Object();
     private static long lastScheduledTime = 0;
     private static int waitingDiagnosticCount = 0;
-    private static final long MIN_GROQ_SPACING_MS = 2500;
+    private static final long MIN_GROQ_SPACING_MS = 6000;
 
     private void acquireGroqSlot(String purpose) {
         boolean isDiagnostic = purpose != null && purpose.toUpperCase().contains("DIAGNOSTIC");
@@ -206,9 +206,9 @@ public class GroqProvider implements LLMProvider {
             String rawBody = hsce.getResponseBodyAsString();
             System.err.println("[GroqProvider] HTTP " + status + ": " + rawBody);
 
-            if (status == 404 && rawBody != null && rawBody.contains("model_not_found") && !"groq/compound-mini".equalsIgnoreCase(modelName)) {
-                System.out.println("[GroqProvider] Primary model " + modelName + " returned 404. Retrying with fallback model groq/compound-mini...");
-                requestBody.put("model", "groq/compound-mini");
+            if (status == 404 && rawBody != null && rawBody.contains("model_not_found") && !"qwen/qwen3.8-27b".equalsIgnoreCase(modelName)) {
+                System.out.println("[GroqProvider] Primary model " + modelName + " returned 404. Retrying with fallback model qwen/qwen3.8-27b...");
+                requestBody.put("model", "qwen/qwen3.8-27b");
                 HttpEntity<Map<String, Object>> fallbackEntity = new HttpEntity<>(requestBody, headers);
                 try {
                     ResponseEntity<Map> fallbackResp = restTemplate.postForEntity(GROQ_ENDPOINT, fallbackEntity, Map.class);
@@ -223,7 +223,7 @@ public class GroqProvider implements LLMProvider {
                         }
                     }
                 } catch (Exception fallbackEx) {
-                    System.err.println("[GroqProvider] Fallback model groq/compound-mini also failed: " + fallbackEx.getMessage());
+                    System.err.println("[GroqProvider] Fallback model qwen/qwen3.8-27b also failed: " + fallbackEx.getMessage());
                 }
             }
 

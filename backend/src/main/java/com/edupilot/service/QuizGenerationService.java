@@ -71,7 +71,7 @@ public class QuizGenerationService {
         if (context.containsKey("studentId") && !context.containsKey("userId") && context.get("studentId") != null) {
             context.put("userId", context.get("studentId"));
         }
-        if (!context.containsKey("maxTokens")) context.put("maxTokens", 280);
+        if (!context.containsKey("maxTokens")) context.put("maxTokens", 400);
         if (!context.containsKey("purpose")) context.put("purpose", "DASHBOARD_BATCH");
 
         int maxRetries = 2;
@@ -568,7 +568,7 @@ public class QuizGenerationService {
         System.out.println("[GroqDiagnostic] Question position: " + position + "/" + totalQuestions +
                 " | Concept: " + spec.getConcept() +
                 " | Difficulty: " + spec.getDifficulty().name() +
-                " | maxTokens: 280" +
+                " | maxTokens: 400" +
                 " | Prompt tokens: " + promptTok +
                 " | Completion tokens: " + compTok +
                 " | Total tokens: " + totalTok);
@@ -645,7 +645,7 @@ public class QuizGenerationService {
                 .append("- Exactly 4 distinct answer options, with only one correct option.\n")
                 .append("- Include correctOptionIndex (0, 1, 2, or 3).\n")
                 .append("- Include a brief conceptual explanation of why the correct answer is correct.\n")
-                .append("- Keep question text concise and conceptual explanation brief (1-2 sentences max).\n")
+                .append("- Keep question text concise and conceptual explanation brief (1-2 sentences, under 25 words).\n")
                 .append("- Do NOT duplicate existing questions.\n");
 
         List<String> excludeTexts = (List<String>) subContext.get("excludeQuestions");
@@ -688,7 +688,7 @@ public class QuizGenerationService {
             System.out.println("Concept: " + spec.getConcept());
             System.out.println("Difficulty: " + spec.getDifficulty().name());
             System.out.println("Attempt: " + attempt + " of " + maxRetries);
-            System.out.println("maxTokens: 280");
+            System.out.println("maxTokens: 400");
             System.out.println("=============================================================");
 
             StringBuilder currentPrompt = new StringBuilder(baseUserPrompt);
@@ -1057,7 +1057,7 @@ public class QuizGenerationService {
         if (concept == null || concept.isBlank()) concept = "General Principles";
 
         Map<String, Object> genContext = context != null ? new HashMap<>(context) : new HashMap<>();
-        if (!genContext.containsKey("maxTokens")) genContext.put("maxTokens", 280);
+        if (!genContext.containsKey("maxTokens")) genContext.put("maxTokens", 400);
         if (!genContext.containsKey("purpose")) genContext.put("purpose", "DIAGNOSTIC_ONE_BY_ONE");
 
         List<String> excludeTexts = genContext.containsKey("excludeQuestions") 
@@ -1086,7 +1086,7 @@ public class QuizGenerationService {
                 .append("- Test genuine conceptual understanding of ").append(concept).append(".\n")
                 .append("- Exactly 4 distinct answer options, with only one correct option.\n")
                 .append("- Include a brief conceptual explanation.\n")
-                .append("- Keep question text concise and conceptual explanation brief (1-2 sentences max).\n");
+                .append("- Keep question text concise and conceptual explanation concise (1-2 sentences, under 30 words).\n");
 
         if (genContext.containsKey("mastery")) {
             baseUserPrompt.append("- Student current mastery: ").append(genContext.get("mastery")).append("%.\n");
