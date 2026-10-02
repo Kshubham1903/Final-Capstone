@@ -21,6 +21,10 @@ public class RoadmapGroqProvider implements LLMProvider {
     @Value("${llm.groq.roadmap.api-key:${llm.groq.api-key:mock-key}}")
     private String apiKey;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @org.springframework.context.annotation.Lazy
+    private com.edupilot.service.StudentService studentService;
+
     @Value("${llm.groq.roadmap.model:${llm.groq.model:qwen/qwen3.8-27b}}")
     private String modelName;
 
@@ -56,13 +60,52 @@ public class RoadmapGroqProvider implements LLMProvider {
         }
     }
 
+    private String resolveEffectiveApiKey(Map<String, Object> context) {
+        String resolvedUserId = null;
+        if (context != null) {
+            if (context.get("userId") != null) {
+                resolvedUserId = context.get("userId").toString();
+            } else if (context.get("studentId") != null) {
+                resolvedUserId = context.get("studentId").toString();
+            }
+        }
+
+        if ((resolvedUserId == null || resolvedUserId.isBlank()) && studentService != null) {
+            try {
+                org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
+                    if (auth.getPrincipal() instanceof org.springframework.security.core.userdetails.UserDetails) {
+                        resolvedUserId = ((org.springframework.security.core.userdetails.UserDetails) auth.getPrincipal()).getUsername();
+                    } else if (auth.getPrincipal() instanceof String) {
+                        resolvedUserId = (String) auth.getPrincipal();
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (resolvedUserId != null && !resolvedUserId.isBlank() && studentService != null) {
+            try {
+                String personalKey = studentService.getDecryptedGroqApiKey(resolvedUserId);
+                if (personalKey != null && !personalKey.isBlank()) {
+                    System.out.println("[RoadmapGroqProvider] Using student-specific Groq API key for userId: " + resolvedUserId);
+                    return personalKey;
+                }
+            } catch (Exception ex) {
+                System.err.println("[RoadmapGroqProvider] Failed to resolve personal key for user " + resolvedUserId + ": " + ex.getMessage());
+            }
+        }
+
+        return null;
+    }
+
     @Override
     public String generateResponse(String systemPrompt, String userMessage, Map<String, Object> context) {
-        if (apiKey == null || apiKey.isBlank() || "mock-key".equalsIgnoreCase(apiKey)) {
+        String effectiveApiKey = resolveEffectiveApiKey(context);
+        if (effectiveApiKey == null || effectiveApiKey.isBlank() || "mock-key".equalsIgnoreCase(effectiveApiKey)) {
             return buildStructuredError(
                     "UNAUTHENTICATED",
-                    "ROADMAP_GROQ_API_KEY is not configured or set to default 'mock-key'.",
-                    "Set ROADMAP_GROQ_API_KEY or GROQ_API_KEY in your environment."
+                    "Personal Groq API key is required. Please configure your key in your profile before using AI features.",
+                    "Please add your personal Groq API key in your Profile."
             );
         }
 
@@ -91,7 +134,7 @@ public class RoadmapGroqProvider implements LLMProvider {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
+        headers.setBearerAuth(effectiveApiKey);
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
         try {

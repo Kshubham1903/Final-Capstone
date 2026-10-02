@@ -2,3 +2,7 @@ spring:
   data:
     mongodb:
       uri: mongodb://localhost:27017/edupilot_test
+
+edupilot:
+  credential-encryption-key: TestSecretEncryptionKeyForJUnitTesting32B!
+

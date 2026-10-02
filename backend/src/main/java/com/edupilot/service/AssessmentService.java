@@ -53,6 +53,7 @@ public class AssessmentService {
     private final Map<String, Object> sessionLocks = new java.util.concurrent.ConcurrentHashMap<>();
     private final Set<String> activePrefetchSessions = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final Map<String, java.util.concurrent.CompletableFuture<QuizQuestion>> inFlightGenerations = new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicBoolean stage2GenerationActive = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     @PostConstruct
     public void initDefaultQuestionBank() {
@@ -182,6 +183,7 @@ public class AssessmentService {
         Map<String, Object> genContext = new HashMap<>();
         genContext.put("adaptiveSummary", "Baseline " + totalQuestions + "-question initial assessment");
         genContext.put("purpose", "DIAGNOSTIC_QUESTION_1");
+        genContext.put("userId", userId);
 
         QuizQuestion q1;
         try {
@@ -563,12 +565,18 @@ public class AssessmentService {
 
         // Build Stage 2 10-question adaptive blueprint
         List<QuizGenerationService.QuestionBlueprintSpec> blueprint = buildAdaptiveBlueprint(subjectName,
-                effectiveUserId);
+                effectiveUserId, 10);
 
         Map<String, Object> genContext = new HashMap<>();
         genContext.put("adaptiveSummary", "Stage 2 10-question adaptive assessment batch");
-        List<QuizQuestion> generatedBatch = quizGenerationService.generateBatchDiagnosticQuestionsViaGroq(subjectName,
-                blueprint, genContext);
+        List<QuizQuestion> generatedBatch;
+        stage2GenerationActive.set(true);
+        try {
+            generatedBatch = quizGenerationService.generateBatchDiagnosticQuestionsViaGroq(subjectName,
+                    blueprint, genContext);
+        } finally {
+            stage2GenerationActive.set(false);
+        }
 
         targetConcepts.clear();
         List<String> questionIds = new ArrayList<>();
@@ -850,6 +858,7 @@ public class AssessmentService {
             genContext.put("adaptiveSummary", "Baseline " + totalSessionQuestions + "-question initial assessment");
             genContext.put("excludeQuestions", fingerprintsCopy);
             genContext.put("purpose", "DIAGNOSTIC_QUESTION_" + (targetIndex + 1));
+            genContext.put("userId", userId);
 
             QuizQuestion generatedQ = quizGenerationService.generateSingleDiagnosticQuestion(subjectName, spec, genContext, targetIndex + 1, totalSessionQuestions);
             if (generatedQ == null) {
@@ -926,6 +935,10 @@ public class AssessmentService {
     }
 
     private void prefetchNextQuestionAsync(String sessionId, int targetIndex) {
+        if (stage2GenerationActive.get()) {
+            System.out.println("[PREFETCH SUPPRESSED] Background Stage 1 Groq prefetch suppressed while Stage 2 diagnostic batch generation is active.");
+            return;
+        }
         AssessmentSession sessionCheck = sessionRepository.findById(sessionId).orElse(null);
         int totalSessionQuestions = sessionCheck != null && sessionCheck.getTotalQuestions() > 0 ? sessionCheck.getTotalQuestions() : 25;
         if (targetIndex < 0 || targetIndex >= totalSessionQuestions) return;

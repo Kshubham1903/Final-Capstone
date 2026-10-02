@@ -66,4 +66,22 @@ public class GroqProviderTest {
 
         assertEquals(15400, retryMs, "Should parse x-ratelimit-reset-requests header 14.4s as 15400 ms");
     }
+
+    @Test
+    public void testDefaultModelResolvesToQwen38() {
+        GroqProvider provider = new GroqProvider();
+        org.springframework.test.util.ReflectionTestUtils.setField(provider, "modelName", "qwen/qwen3.8-27b");
+        assertEquals("qwen/qwen3.8-27b", provider.getModelName());
+        assertFalse(provider.getModelName().contains("compound-mini"));
+        assertFalse(provider.getModelName().contains("groq/compound"));
+    }
+
+    @Test
+    public void testRoadmapGroqProviderModelIsQwen() {
+        RoadmapGroqProvider roadmapProvider = new RoadmapGroqProvider();
+        org.springframework.test.util.ReflectionTestUtils.setField(roadmapProvider, "modelName", "qwen/qwen3.8-27b");
+        assertTrue(roadmapProvider.getProviderName().contains("qwen/qwen3.8-27b"));
+        assertFalse(roadmapProvider.getProviderName().contains("compound-mini"));
+        assertFalse(roadmapProvider.getProviderName().contains("groq/compound"));
+    }
 }

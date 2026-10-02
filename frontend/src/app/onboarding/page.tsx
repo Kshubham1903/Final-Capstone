@@ -24,9 +24,12 @@ import {
   Trash2,
   PlusCircle,
   Check,
-  LogOut
+  LogOut,
+  Key,
+  Lock,
+  ShieldCheck
 } from "lucide-react";
-import { saveOnboardingStep, onboardStudent, fetchOnboardingStatus, postQuestionnaire, fetchSubjectsByBranchAndSemester, fetchFullProfile, startDiagnosticAssessment, submitDiagnosticAssessment, fetchLatestDiagnosticResult, fetchNextInitialDiagnosticQuestion, submitInitialDiagnosticAnswer } from "../../services/api";
+import { saveOnboardingStep, onboardStudent, fetchOnboardingStatus, postQuestionnaire, fetchSubjectsByBranchAndSemester, fetchFullProfile, updateFullProfile, startDiagnosticAssessment, submitDiagnosticAssessment, fetchLatestDiagnosticResult, fetchNextInitialDiagnosticQuestion, submitInitialDiagnosticAnswer } from "../../services/api";
 
 const FORM_B_SECTIONS = [
   {
@@ -222,6 +225,11 @@ export default function Onboarding() {
   const [loadingNextQuestion, setLoadingNextQuestion] = useState<boolean>(false);
   const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now());
 
+  // Groq API Key Configuration State (Required before Step 5 Diagnostic)
+  const [groqApiKeyInput, setGroqApiKeyInput] = useState<string>("");
+  const [isKeyConfigured, setIsKeyConfigured] = useState<boolean>(false);
+  const [savingKey, setSavingKey] = useState<boolean>(false);
+
   // Assessment Results state (summary page)
   const [diagnosticResult, setDiagnosticResult] = useState<any>(null);
   const [diagnosticCompleted, setDiagnosticCompleted] = useState<boolean>(false);
@@ -235,7 +243,7 @@ export default function Onboarding() {
         const statusRes = await fetchOnboardingStatus(userId);
         if (statusRes && statusRes.onboardingStatus) {
           const s = statusRes.onboardingStatus;
-          if (s.currentStep > 1 && s.currentStep <= 4) {
+          if (s.currentStep > 1 && s.currentStep <= 5) {
             setStep(s.currentStep);
           }
         }
@@ -245,6 +253,9 @@ export default function Onboarding() {
 
       try {
         const fullProfileRes = await fetchFullProfile(userId);
+        if (fullProfileRes && (fullProfileRes.groqApiKeyConfigured || fullProfileRes.profile?.groqApiKeyConfigured)) {
+          setIsKeyConfigured(true);
+        }
         if (fullProfileRes && fullProfileRes.personalInfo) {
           const p = fullProfileRes.personalInfo;
           if (p.fullName) setFullName(p.fullName);
@@ -322,10 +333,15 @@ export default function Onboarding() {
     loadStatus();
   }, [userId]);
 
-  // Load Diagnostic Assessment Questions for Step 4
+  // Load Diagnostic Assessment Questions for Step 5 (once Groq key is configured)
   useEffect(() => {
     async function initAssessment() {
-      if (step === 4 && questions.length === 0 && !diagnosticCompleted && userId) {
+      if (step === 5 && questions.length === 0 && !diagnosticCompleted && userId) {
+        if (!isKeyConfigured) {
+          setError("Personal Groq API key is required. Please configure your key before starting the Initial Diagnostic.");
+          setStep(4);
+          return;
+        }
         setLoadingQuestions(true);
         try {
           const session = await startDiagnosticAssessment({
@@ -343,16 +359,47 @@ export default function Onboarding() {
             }
             setQuestionStartTime(Date.now());
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error("Failed to start assessment session:", err);
-          setError("Failed to load assessment questions. Please try refreshing.");
+          setError(err.message || "Failed to load assessment questions. Personal Groq API key is required.");
         } finally {
           setLoadingQuestions(false);
         }
       }
     }
     initAssessment();
-  }, [step, questions.length, diagnosticCompleted, userId, engineeringBranch, currentSemester]);
+  }, [step, questions.length, diagnosticCompleted, userId, engineeringBranch, currentSemester, isKeyConfigured]);
+
+  const handleSaveGroqKey = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    const cleanKey = groqApiKeyInput.trim();
+    if (!cleanKey) {
+      setError("Please enter a valid Groq API key.");
+      return;
+    }
+    if (!cleanKey.startsWith("gsk_")) {
+      setError("Groq API keys typically start with 'gsk_'. Please verify your key.");
+      return;
+    }
+
+    setSavingKey(true);
+    try {
+      const updated = await updateFullProfile(userId, { groqApiKey: cleanKey });
+      if (updated && updated.groqApiKeyConfigured) {
+        setIsKeyConfigured(true);
+        setGroqApiKeyInput("");
+        await autoSaveStep(5);
+        setStep(5);
+      } else {
+        setError("Groq API key storage could not be confirmed by backend.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to save Groq API key. Please check your key and try again.");
+    } finally {
+      setSavingKey(false);
+    }
+  };
 
   // Auto-save on step progress
   const autoSaveStep = async (nextStep: number) => {
@@ -650,8 +697,14 @@ export default function Onboarding() {
         }
       }
     }
+    if (step === 4) {
+      if (!isKeyConfigured) {
+        setError("Please configure and save your personal Groq API key before proceeding to the Initial Diagnostic.");
+        return;
+      }
+    }
     await autoSaveStep(step + 1);
-    setStep(prev => Math.min(prev + 1, 4));
+    setStep(prev => Math.min(prev + 1, 5));
   };
 
   const handleBack = () => {
@@ -688,8 +741,8 @@ export default function Onboarding() {
     }
   };
 
-  const completionPercentage = Math.round((step / 4) * 100);
-  const timeRemaining = Math.max(1, 5 - step);
+  const completionPercentage = Math.round((step / 5) * 100);
+  const timeRemaining = Math.max(1, 6 - step);
 
   return (
     <div className="min-h-screen bg-[#05060b] text-main-theme flex flex-col justify-between p-4 md:p-8 relative overflow-hidden">
@@ -738,7 +791,7 @@ export default function Onboarding() {
       {/* Progress Bar Container */}
       <div className="max-w-4xl mx-auto w-full space-y-2 z-10 my-4">
         <div className="flex justify-between text-xs font-bold text-secondary-theme uppercase tracking-wider">
-          <span>Step {step} of 4: {getStepTitle(step)}</span>
+          <span>Step {step} of 5: {getStepTitle(step)}</span>
           <span className="text-purple-theme">{completionPercentage}% Completed</span>
         </div>
         <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
@@ -1207,8 +1260,97 @@ export default function Onboarding() {
                 </div>
               )}
 
-              {/* STEP 4: Form D — Diagnostic Knowledge Assessment */}
+              {/* STEP 4: Groq API Key Configuration */}
               {step === 4 && (
+                <div className="space-y-6">
+                  <div className="border-b border-white/10 pb-4">
+                    <h2 className="text-xl font-bold text-main-theme flex items-center gap-2">
+                      <Key className="h-6 w-6 text-purple-theme" />
+                      <span>Groq API Key Configuration</span>
+                    </h2>
+                    <p className="text-xs text-secondary-theme mt-1">
+                      EduPilot requires your personal Groq API key to power dynamic diagnostic questions and personalized AI features without global key sharing.
+                    </p>
+                  </div>
+
+                  <div className="p-5 rounded-2xl bg-purple-500/10 border border-purple-500/20 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-xl bg-purple-500/20 text-purple-300">
+                        <Lock className="h-5 w-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-bold text-main-theme">Secure & Isolated Execution</h3>
+                        <p className="text-xs text-secondary-theme leading-relaxed">
+                          Your Groq API key (<code className="text-purple-300 font-mono">gsk_...</code>) will be encrypted using <strong>AES-256-GCM</strong> on the backend. Raw keys are never stored in localStorage or exposed in API responses.
+                        </p>
+                      </div>
+                    </div>
+
+                    {isKeyConfigured ? (
+                      <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-emerald-400" />
+                          <span className="font-bold">Groq API Key Configured & Encrypted</span>
+                        </div>
+                        <span className="text-[10px] uppercase tracking-wider font-semibold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded">Ready for Diagnostic</span>
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
+                        <ShieldAlert className="h-4 w-4 text-amber-400" />
+                        <span>A personal Groq API key is required before starting the diagnostic assessment.</span>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleSaveGroqKey} className="space-y-4 pt-2">
+                      <div>
+                        <label className="font-bold text-xs text-secondary-theme block mb-1">
+                          Personal Groq API Key <span className="text-pink-400">*</span>
+                        </label>
+                        <input
+                          type="password"
+                          value={groqApiKeyInput}
+                          onChange={(e) => setGroqApiKeyInput(e.target.value)}
+                          placeholder={isKeyConfigured ? "•••••••••••••••••••••••••••• (Key configured. Enter new key to update)" : "gsk_..."}
+                          className="w-full p-3 rounded-xl glass-input bg-black/40 border border-white/10 text-xs tracking-widest font-mono text-purple-200 focus:border-purple-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2">
+                        <a
+                          href="https://console.groq.com/keys"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs text-purple-400 hover:text-purple-300 underline font-semibold"
+                        >
+                          Get a free Groq API key at console.groq.com →
+                        </a>
+
+                        <button
+                          type="submit"
+                          disabled={savingKey || !groqApiKeyInput.trim()}
+                          className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-xs shadow-lg transition-all cursor-pointer ${
+                            savingKey || !groqApiKeyInput.trim()
+                              ? "opacity-40 cursor-not-allowed bg-white/10 text-secondary-theme"
+                              : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-purple-500/20"
+                          }`}
+                        >
+                          {savingKey ? (
+                            <span>Saving & Encrypting Key...</span>
+                          ) : (
+                            <>
+                              <ShieldCheck className="h-4 w-4" />
+                              <span>{isKeyConfigured ? "Update Key & Proceed" : "Save Key & Proceed to Diagnostic"}</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 5: Form D — Diagnostic Knowledge Assessment */}
+              {step === 5 && (
                 <div className="space-y-6">
                   <div className="border-b border-white/10 pb-4">
                     <h2 className="text-xl font-bold text-main-theme flex items-center gap-2">
@@ -1414,7 +1556,7 @@ export default function Onboarding() {
               <span>Back</span>
             </button>
 
-            {step < 4 ? (
+            {step < 5 ? (
               <button
                 type="button"
                 onClick={handleNext}
@@ -1457,7 +1599,8 @@ function getStepTitle(step: number): string {
     case 1: return "Form A — Student Profile & Academic Background";
     case 2: return "Form B — Learning Preference Questionnaire";
     case 3: return "Form C — Well-being & Learning Context";
-    case 4: return "Form D — Diagnostic Knowledge Assessment";
+    case 4: return "Groq API Key Configuration (Required)";
+    case 5: return "Form D — Diagnostic Knowledge Assessment";
     default: return "";
   }
 }

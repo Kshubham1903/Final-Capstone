@@ -35,6 +35,9 @@ public class AITutorService {
     @Autowired
     private AiConversationRepository conversationRepository;
 
+    @Autowired
+    private StudentService studentService;
+
     public ChatResponse processChatMessage(ChatRequest req) {
         if (req == null || req.getStudentId() == null || req.getMessage() == null) {
             throw new IllegalArgumentException("Invalid chat request parameters.");
@@ -89,12 +92,14 @@ public class AITutorService {
         }
 
         String systemPrompt = promptBuilderService.buildStructuredSystemPrompt(contextDTO, activeMode, req.getMessage());
-        Map<String, Object> contextMap = Map.of(
-            "studentName", contextDTO.getStudentName(),
-            "referencedConcept", concept != null ? concept : (contextDTO.getTodayFocusTask() != null ? contextDTO.getTodayFocusTask() : "General Studies"),
-            "conversationId", conversation.getConversationId(),
-            "learningMode", activeMode.name()
-        );
+        Map<String, Object> contextMap = new java.util.HashMap<>();
+        contextMap.put("studentName", contextDTO.getStudentName());
+        contextMap.put("referencedConcept", concept != null ? concept : (contextDTO.getTodayFocusTask() != null ? contextDTO.getTodayFocusTask() : "General Studies"));
+        contextMap.put("conversationId", conversation.getConversationId());
+        contextMap.put("learningMode", activeMode.name());
+        if (req.getStudentId() != null && !req.getStudentId().isBlank()) {
+            contextMap.put("userId", studentService != null ? studentService.resolveUserId(req.getStudentId()) : req.getStudentId());
+        }
 
         System.out.println("======== AI TUTOR REQUEST ========");
         System.out.println("Conversation ID: " + conversation.getConversationId());

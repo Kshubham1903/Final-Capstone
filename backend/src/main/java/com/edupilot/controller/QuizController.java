@@ -419,7 +419,7 @@ public class QuizController {
             List<QuizQuestion> questions = quizGenerationService.generateForStudent(studentId, subject, count);
             if (questions.isEmpty()) {
                 return ResponseEntity.status(502).body(Map.of(
-                    "message", "AI generation returned no valid questions. Check GROQ_API_KEY and try again."
+                    "message", "AI generation returned no valid questions. Check your personal Groq API key in your profile and try again."
                 ));
             }
             return ResponseEntity.ok(Map.of(

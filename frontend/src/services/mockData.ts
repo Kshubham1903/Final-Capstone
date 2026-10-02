@@ -53,6 +53,7 @@ export interface StudentProfile {
   lifestyleHistory: LifestyleLog[];
   badges: { name: string; icon: string; description: string }[];
   completedQuizzesCount: number;
+  groqApiKeyConfigured?: boolean;
   weeklyGoalCompletion: number; // %
 }
 
