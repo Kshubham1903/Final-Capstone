@@ -2123,4 +2123,35 @@ export async function abandonConceptRemediationSession(sessionId: string): Promi
   }
   return null;
 }
+
+export interface AdminAnalyticsOverview {
+  totalStudents: number;
+  activeStudentsLast7Days: number;
+  totalAssessmentsCompleted: number;
+  totalQuizzesCompleted: number;
+  cohortAverageBaselineKnowledge: number;
+  cohortAverageCurrentKnowledge: number;
+  cohortAverageLearningGain: number;
+  averageSatisfactionRating: number;
+  atRiskStudentCount: number;
+}
+
+export async function fetchAdminAnalyticsOverview(): Promise<AdminAnalyticsOverview | null> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/overview`, {
+        method: "GET",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      handleAuthError(res);
+    } catch (err) {
+      console.warn("Failed to fetch admin analytics overview:", err);
+    }
+  }
+  return null;
+}
 

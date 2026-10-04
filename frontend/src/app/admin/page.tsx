@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Layout from "../../components/Layout";
 import { 
   Settings, 
@@ -11,11 +11,24 @@ import {
   Check, 
   RefreshCw, 
   ShieldAlert, 
-  Terminal 
+  Terminal,
+  GraduationCap,
+  TrendingUp,
+  Star,
+  AlertTriangle,
+  BookOpen,
+  BarChart2,
+  CheckCircle2
 } from "lucide-react";
+import { fetchAdminAnalyticsOverview, AdminAnalyticsOverview } from "../../services/api";
 
 export default function AdminDashboard() {
   
+  // Real Backend Overview Telemetry State
+  const [analytics, setAnalytics] = useState<AdminAnalyticsOverview | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+
   // System Configurations
   const [cacheTtl, setCacheTtl] = useState(3600);
   const [maxDbConns, setMaxDbConns] = useState(50);
@@ -32,6 +45,27 @@ export default function AdminDashboard() {
     "Security Filter: Filtered request headers and initialized JWT validators."
   ]);
 
+  const loadOverview = async () => {
+    setLoadingAnalytics(true);
+    setAnalyticsError(null);
+    try {
+      const data = await fetchAdminAnalyticsOverview();
+      if (data) {
+        setAnalytics(data);
+      } else {
+        setAnalyticsError("Unable to retrieve authenticated overview metrics. Please ensure you are logged in as an ADMIN.");
+      }
+    } catch (err) {
+      setAnalyticsError("Network error while connecting to Admin Analytics overview endpoint.");
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  };
+
+  useEffect(() => {
+    loadOverview();
+  }, []);
+
   const handleRoleChange = (userId: string, newRole: string) => {
     setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
     setLogs(prev => [`User Management: Modified role of user ID: ${userId} to ${newRole}.`, ...prev.slice(0, 5)]);
@@ -45,7 +79,7 @@ export default function AdminDashboard() {
   };
 
   const handleBroadcast = () => {
-    alert("ðŸ“¢ System Broadcast: Dispatched notifications to all active students!");
+    alert("📢 System Broadcast: Dispatched notifications to all active students!");
     setLogs(prev => ["Alert Broadcast: Dispatched global streak reminder notifications.", ...prev.slice(0, 5)]);
   };
 
@@ -58,20 +92,38 @@ export default function AdminDashboard() {
     <Layout>
       <div className="space-y-8">
         
-        {/* Title */}
-        <div>
-          <h1 className="text-3xl font-extrabold text-main-theme flex items-center gap-2">
-            <Settings className="h-8 w-8 text-purple-theme animate-spin-slow" />
-            <span>Admin Control Panel</span>
-          </h1>
-          <p className="text-secondary-theme text-sm mt-1">
-            Oversee user databases, calibrate caching parameters, inspect live microservice connection logs, and dispatch global notifications.
-          </p>
+        {/* Title & Refresh */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-extrabold text-main-theme flex items-center gap-2">
+              <Settings className="h-8 w-8 text-purple-theme animate-spin-slow" />
+              <span>Admin Control Panel</span>
+            </h1>
+            <p className="text-secondary-theme text-sm mt-1">
+              Live learning telemetry, cohort growth analytics, system tuning, and user directory management.
+            </p>
+          </div>
+          <button
+            onClick={loadOverview}
+            disabled={loadingAnalytics}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-main-theme transition-all cursor-pointer w-fit"
+          >
+            <RefreshCw className={`h-4 w-4 text-purple-theme ${loadingAnalytics ? "animate-spin" : ""}`} />
+            <span>{loadingAnalytics ? "Refreshing Live Data..." : "Refresh Telemetry"}</span>
+          </button>
         </div>
 
         {styleBlock}
 
-        {/* Global Cluster Stats */}
+        {/* Analytics Error Notification */}
+        {analyticsError && (
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-theme text-xs flex items-center gap-3">
+            <ShieldAlert className="h-5 w-5 shrink-0" />
+            <span>{analyticsError}</span>
+          </div>
+        )}
+
+        {/* Global Cluster & Real Enrollment Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
             <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Database Status</span>
@@ -79,7 +131,7 @@ export default function AdminDashboard() {
               <Database className="h-5 w-5" />
               <span>MongoDB Online</span>
             </div>
-            <p className="text-[10px] text-secondary-theme">5 active collections persisting profiles.</p>
+            <p className="text-[10px] text-secondary-theme">18 active collections persisting records.</p>
           </div>
 
           <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
@@ -101,9 +153,119 @@ export default function AdminDashboard() {
           </div>
 
           <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
-            <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Total User Count</span>
-            <div className="text-2xl font-black text-purple-theme">{users.length} Users</div>
-            <p className="text-[10px] text-secondary-theme">Students & Faculty registers.</p>
+            <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Total Enrolled Students</span>
+            <div className="text-2xl font-black text-purple-theme">
+              {loadingAnalytics ? "..." : (analytics?.totalStudents ?? 0)} Students
+            </div>
+            <p className="text-[10px] text-secondary-theme">
+              {analytics ? `${analytics.activeStudentsLast7Days} active in last 7 days` : "Authenticated student accounts."}
+            </p>
+          </div>
+        </div>
+
+        {/* Real Academic & Cohort Overview Section */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Activity className="h-4 w-4 text-purple-theme" />
+            <h2 className="text-xs uppercase font-extrabold tracking-wider text-secondary-theme">Live Academic & Cohort Telemetry</h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Total Assessments Completed */}
+            <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Assessments Completed</span>
+                <BookOpen className="h-4 w-4 text-purple-400" />
+              </div>
+              <div className="text-2xl font-black text-purple-theme">
+                {loadingAnalytics ? "..." : (analytics?.totalAssessmentsCompleted ?? 0)}
+              </div>
+              <p className="text-[10px] text-secondary-theme">Baseline diagnostic submissions.</p>
+            </div>
+
+            {/* Total Quizzes Completed */}
+            <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Quizzes Completed</span>
+                <GraduationCap className="h-4 w-4 text-cyan-400" />
+              </div>
+              <div className="text-2xl font-black text-cyan-theme">
+                {loadingAnalytics ? "..." : (analytics?.totalQuizzesCompleted ?? 0)}
+              </div>
+              <p className="text-[10px] text-secondary-theme">Adaptive & verification quizzes.</p>
+            </div>
+
+            {/* Cohort Baseline Knowledge K0 */}
+            <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Cohort Baseline (K₀)</span>
+                <BarChart2 className="h-4 w-4 text-indigo-400" />
+              </div>
+              <div className="text-2xl font-black text-indigo-400">
+                {loadingAnalytics ? "..." : (analytics ? `${analytics.cohortAverageBaselineKnowledge.toFixed(1)}%` : "0.0%")}
+              </div>
+              <p className="text-[10px] text-secondary-theme">Mean initial diagnostic mastery.</p>
+            </div>
+
+            {/* Cohort Current Knowledge Kt */}
+            <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Current Knowledge (Kₜ)</span>
+                <TrendingUp className="h-4 w-4 text-emerald-400" />
+              </div>
+              <div className="text-2xl font-black text-emerald-theme">
+                {loadingAnalytics ? "..." : (analytics ? `${analytics.cohortAverageCurrentKnowledge.toFixed(1)}%` : "0.0%")}
+              </div>
+              <p className="text-[10px] text-secondary-theme">Live concept mastery average.</p>
+            </div>
+
+            {/* Normalized Learning Gain */}
+            <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Cohort Learning Gain (g)</span>
+                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              </div>
+              <div className="text-2xl font-black text-emerald-400">
+                {loadingAnalytics ? "..." : (analytics ? analytics.cohortAverageLearningGain.toFixed(2) : "0.00")}
+              </div>
+              <p className="text-[10px] text-secondary-theme">Hake normalized gain (Post-Pre)/(1-Pre).</p>
+            </div>
+
+            {/* Average Satisfaction */}
+            <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Average Satisfaction</span>
+                <Star className="h-4 w-4 text-amber-400" />
+              </div>
+              <div className="text-2xl font-black text-amber-theme">
+                {loadingAnalytics ? "..." : (analytics ? `${analytics.averageSatisfactionRating.toFixed(1)} / 5.0` : "0.0 / 5.0")}
+              </div>
+              <p className="text-[10px] text-secondary-theme">Aggregated survey ratings.</p>
+            </div>
+
+            {/* At-Risk Students */}
+            <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">At-Risk Students</span>
+                <AlertTriangle className="h-4 w-4 text-pink-500" />
+              </div>
+              <div className="text-2xl font-black text-pink-500">
+                {loadingAnalytics ? "..." : (analytics?.atRiskStudentCount ?? 0)}
+              </div>
+              <p className="text-[10px] text-secondary-theme">Inactive &gt; 7 days / risk flagged.</p>
+            </div>
+
+            {/* Active Students */}
+            <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Active Cohort (7 Days)</span>
+                <Activity className="h-4 w-4 text-cyan-400" />
+              </div>
+              <div className="text-2xl font-black text-cyan-theme">
+                {loadingAnalytics ? "..." : (analytics?.activeStudentsLast7Days ?? 0)}
+              </div>
+              <p className="text-[10px] text-secondary-theme">Active learning participation.</p>
+            </div>
           </div>
         </div>
 

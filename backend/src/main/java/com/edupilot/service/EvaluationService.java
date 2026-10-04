@@ -288,7 +288,7 @@ public class EvaluationService {
         );
     }
 
-    private LocalDateTime findLatestActivityTime(String userId, String profileId) {
+    public LocalDateTime findLatestActivityTime(String userId, String profileId) {
         LocalDateTime maxTime = null;
 
         try {
