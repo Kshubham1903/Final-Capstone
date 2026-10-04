@@ -5,7 +5,9 @@ import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Document(collection = "remediation_sessions")
 public class RemediationSession {
@@ -15,6 +17,7 @@ public class RemediationSession {
     private String subject;
     private String concept;
     private List<String> questionIds = new ArrayList<>();
+    private Map<String, List<Integer>> optionMappings = new HashMap<>();
     private LocalDateTime createdAt = LocalDateTime.now();
     private boolean completed = false;
     private ModuleType moduleType = ModuleType.REMEDIATION;
@@ -28,6 +31,7 @@ public class RemediationSession {
         this.subject = subject;
         this.concept = concept;
         this.questionIds = questionIds != null ? questionIds : new ArrayList<>();
+        this.optionMappings = new HashMap<>();
         this.createdAt = createdAt != null ? createdAt : LocalDateTime.now();
         this.completed = completed;
     }
@@ -86,6 +90,17 @@ public class RemediationSession {
 
     public void setCompleted(boolean completed) {
         this.completed = completed;
+    }
+
+    public Map<String, List<Integer>> getOptionMappings() {
+        if (optionMappings == null) {
+            optionMappings = new HashMap<>();
+        }
+        return optionMappings;
+    }
+
+    public void setOptionMappings(Map<String, List<Integer>> optionMappings) {
+        this.optionMappings = optionMappings != null ? optionMappings : new HashMap<>();
     }
 
     public ModuleType getModuleType() {

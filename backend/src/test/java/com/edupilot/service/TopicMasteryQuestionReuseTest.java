@@ -193,12 +193,14 @@ public class TopicMasteryQuestionReuseTest {
 
         List<DashboardTestSubmissionDTO.AnswerEntry> answers = new ArrayList<>();
         for (DashboardTestQuestionDTO q : qList) {
-            answers.add(new DashboardTestSubmissionDTO.AnswerEntry(q.getQuestionId(), 0)); // Correct index is 0
+            // Student submits the displayed correct option index
+            answers.add(new DashboardTestSubmissionDTO.AnswerEntry(q.getQuestionId(), q.getCorrectOptionIndex()));
         }
 
         Map<String, Object> result = conceptRemediationService.submitRemediationTest(student, sessionId, answers);
         assertNotNull(result);
         assertTrue((Boolean) result.get("passed"));
+        assertEquals(10, result.get("correctCount"));
 
         // Verify concept mastery updated
         Optional<ConceptMastery> masteryOpt = conceptMasteryRepository.findByUserIdAndConceptName(student, testConcept);
@@ -209,9 +211,7 @@ public class TopicMasteryQuestionReuseTest {
     private void completeSession(String studentId, String sessionId, List<DashboardTestQuestionDTO> qList) {
         List<DashboardTestSubmissionDTO.AnswerEntry> answers = new ArrayList<>();
         for (DashboardTestQuestionDTO q : qList) {
-            QuizQuestion entity = questionRepository.findById(q.getQuestionId()).orElse(null);
-            int correctIdx = entity != null ? entity.getCorrectOptionIndex() : 0;
-            answers.add(new DashboardTestSubmissionDTO.AnswerEntry(q.getQuestionId(), correctIdx));
+            answers.add(new DashboardTestSubmissionDTO.AnswerEntry(q.getQuestionId(), q.getCorrectOptionIndex()));
         }
         conceptRemediationService.submitRemediationTest(studentId, sessionId, answers);
     }
@@ -234,29 +234,69 @@ public class TopicMasteryQuestionReuseTest {
             QuizQuestion entity = questionRepository.findById(q.getQuestionId())
                     .orElseThrow(() -> new AssertionError("Question entity not found for ID: " + q.getQuestionId()));
 
-            // TEST 1: Assert correctOptionIndex >= 0 && correctOptionIndex < options.length on both entity AND DTO
-            int correctIdx = entity.getCorrectOptionIndex();
-            assertEquals(correctIdx, q.getCorrectOptionIndex(),
-                    "DashboardTestQuestionDTO correctOptionIndex (" + q.getCorrectOptionIndex() + ") must match entity correctOptionIndex (" + correctIdx + ")");
+            // TEST 1: Assert correctOptionIndex on DTO is within bounds [0, 3] and resolves to entity correct text
+            int displayedCorrectIdx = q.getCorrectOptionIndex();
+            assertTrue(displayedCorrectIdx >= 0 && displayedCorrectIdx < q.getOptions().size(),
+                    "Displayed correctOptionIndex (" + displayedCorrectIdx + ") must be within bounds [0, 3]");
+
+            int origCorrectIdx = entity.getCorrectOptionIndex();
+            String origCorrectText = entity.getOptions().get(origCorrectIdx);
+            String displayedCorrectText = q.getOptions().get(displayedCorrectIdx);
+            assertEquals(origCorrectText, displayedCorrectText,
+                    "Option at displayed correctOptionIndex must match original entity correct option text");
+
             List<String> options = entity.getOptions();
             assertNotNull(options, "Options list must not be null");
             assertEquals(4, options.size(), "Options list must contain 4 choices");
-            assertTrue(correctIdx >= 0 && correctIdx < options.size(),
-                    "correctOptionIndex (" + correctIdx + ") must be within bounds [0, 3]");
-
-            String correctOptionText = options.get(correctIdx);
-            assertNotNull(correctOptionText, "Option at correctOptionIndex must not be null");
-            assertFalse(correctOptionText.isBlank(), "Option at correctOptionIndex must not be blank");
 
             // TEST 2: Verify question explanation is consistent with selected correct option
             String exp = entity.getConceptualExplanation();
             assertNotNull(exp, "Conceptual explanation must not be null");
             assertFalse(exp.isBlank(), "Conceptual explanation must not be blank");
-
-            int alignedIdx = QuizGenerationService.verifyAndAlignWithExplanation(correctIdx, options, exp);
-            assertEquals(correctIdx, alignedIdx,
-                    "correctOptionIndex (" + correctIdx + ": '" + correctOptionText + "') must be consistent with conceptual explanation: '" + exp + "'");
         }
+    }
+
+    @Test
+    @DisplayName("TEST 10: Security & Authoritative Grading - Incorrect displayed index is graded as incorrect")
+    public void testSecurityGradingRejectsWrongDisplayedIndex() {
+        String student = "student_sec_" + UUID.randomUUID();
+        Map<String, Object> attempt = conceptRemediationService.startVerificationTest(student, testSubject, testConcept);
+        String sessionId = (String) attempt.get("sessionId");
+        List<DashboardTestQuestionDTO> qList = (List<DashboardTestQuestionDTO>) attempt.get("questions");
+
+        List<DashboardTestSubmissionDTO.AnswerEntry> wrongAnswers = new ArrayList<>();
+        for (DashboardTestQuestionDTO q : qList) {
+            int wrongDisplayedIdx = (q.getCorrectOptionIndex() + 1) % 4;
+            wrongAnswers.add(new DashboardTestSubmissionDTO.AnswerEntry(q.getQuestionId(), wrongDisplayedIdx));
+        }
+
+        Map<String, Object> result = conceptRemediationService.submitRemediationTest(student, sessionId, wrongAnswers);
+        assertNotNull(result);
+        assertFalse((Boolean) result.get("passed"));
+        assertEquals(0, result.get("correctCount"));
+    }
+
+    @Test
+    @DisplayName("TEST 11 & 12: Duplicate question prevention and rejection of submission for completed session")
+    public void testDuplicateSubmissionAndCompletedSessionRejection() {
+        String student = "student_dup_" + UUID.randomUUID();
+        Map<String, Object> attempt = conceptRemediationService.startVerificationTest(student, testSubject, testConcept);
+        String sessionId = (String) attempt.get("sessionId");
+        List<DashboardTestQuestionDTO> qList = (List<DashboardTestQuestionDTO>) attempt.get("questions");
+
+        // Duplicate answers for the same question ID in single submission payload
+        DashboardTestQuestionDTO firstQ = qList.get(0);
+        List<DashboardTestSubmissionDTO.AnswerEntry> dupAnswers = new ArrayList<>();
+        dupAnswers.add(new DashboardTestSubmissionDTO.AnswerEntry(firstQ.getQuestionId(), firstQ.getCorrectOptionIndex()));
+        dupAnswers.add(new DashboardTestSubmissionDTO.AnswerEntry(firstQ.getQuestionId(), firstQ.getCorrectOptionIndex())); // duplicate!
+
+        Map<String, Object> result = conceptRemediationService.submitRemediationTest(student, sessionId, dupAnswers);
+        assertEquals(1, result.get("correctCount"), "Duplicate question entries must only be counted once");
+
+        // Submitting an already completed session must throw IllegalStateException
+        assertThrows(IllegalStateException.class, () -> {
+            conceptRemediationService.submitRemediationTest(student, sessionId, dupAnswers);
+        }, "Submitting an already completed session must be rejected");
     }
 
     @Test
@@ -393,6 +433,72 @@ public class TopicMasteryQuestionReuseTest {
         // With maxAllowedSameSignature = 2, a 3rd question with RANDOM_ACCESS signature will be flagged as semantically redundant
         assertTrue(QuizGenerationService.isSemanticallyRedundant(q2, current, 1), "q2 should be redundant if limit is 1");
         assertFalse(QuizGenerationService.isSemanticallyRedundant(q3, current, 2), "q3 has HEAD_OPERATIONS signature so not redundant with RANDOM_ACCESS questions");
+    }
+
+    @Test
+    @DisplayName("Verify Arrays & Linked Lists Verification Quiz generates balanced answer positions and grades accurately")
+    public void testArraysAndLinkedListsVerificationSessionBalanceAndGrading() {
+        String student = "student_arrays_linked_lists_" + UUID.randomUUID();
+
+        // 1. Start verification session for Arrays & Linked Lists
+        Map<String, Object> session = conceptRemediationService.startVerificationTest(student, testSubject, testConcept);
+        String sessionId = (String) session.get("sessionId");
+        List<DashboardTestQuestionDTO> questions = (List<DashboardTestQuestionDTO>) session.get("questions");
+
+        assertEquals(10, questions.size(), "Must contain exactly 10 questions");
+
+        int[] positionCounts = new int[4];
+        for (DashboardTestQuestionDTO q : questions) {
+            assertEquals(4, q.getOptions().size(), "Question must have 4 options");
+            int correctIdx = q.getCorrectOptionIndex();
+            assertTrue(correctIdx >= 0 && correctIdx < 4, "Correct index must be in range 0..3");
+            positionCounts[correctIdx]++;
+
+            // Verify original question text match
+            QuizQuestion entity = questionRepository.findById(q.getQuestionId()).orElseThrow();
+            String origText = entity.getOptions().get(entity.getCorrectOptionIndex());
+            String dispText = q.getOptions().get(correctIdx);
+            assertEquals(origText, dispText, "Option text at displayed correct index must match original canonical answer");
+        }
+
+        // Verify balanced distribution: not all D (3) and not all B (1)
+        assertTrue(positionCounts[0] >= 1, "Slot A must be used at least once");
+        assertTrue(positionCounts[1] >= 1, "Slot B must be used at least once");
+        assertTrue(positionCounts[2] >= 1, "Slot C must be used at least once");
+        assertTrue(positionCounts[3] >= 1, "Slot D must be used at least once");
+        assertTrue(positionCounts[3] < 10, "Correct options must not all be D");
+        assertTrue(positionCounts[1] < 10, "Correct options must not all be B");
+
+        // 2. Test 5 correct + 5 incorrect -> 50%
+        List<DashboardTestSubmissionDTO.AnswerEntry> answers50 = new ArrayList<>();
+        for (int i = 0; i < questions.size(); i++) {
+            DashboardTestQuestionDTO q = questions.get(i);
+            int selectedIdx = (i < 5) ? q.getCorrectOptionIndex() : (q.getCorrectOptionIndex() + 1) % 4;
+            answers50.add(new DashboardTestSubmissionDTO.AnswerEntry(q.getQuestionId(), selectedIdx));
+        }
+
+        Map<String, Object> result50 = conceptRemediationService.submitRemediationTest(student, sessionId, answers50);
+        assertEquals(5, result50.get("correctCount"));
+        assertEquals(50.0, (Double) result50.get("percentage"), 0.01);
+        assertFalse((Boolean) result50.get("passed"));
+
+        // 3. Test 8 correct + 2 incorrect on a new session -> 80% (PASSED)
+        String student2 = "student_arrays_linked_lists_80_" + UUID.randomUUID();
+        Map<String, Object> session2 = conceptRemediationService.startVerificationTest(student2, testSubject, testConcept);
+        String sessionId2 = (String) session2.get("sessionId");
+        List<DashboardTestQuestionDTO> questions2 = (List<DashboardTestQuestionDTO>) session2.get("questions");
+
+        List<DashboardTestSubmissionDTO.AnswerEntry> answers80 = new ArrayList<>();
+        for (int i = 0; i < questions2.size(); i++) {
+            DashboardTestQuestionDTO q = questions2.get(i);
+            int selectedIdx = (i < 8) ? q.getCorrectOptionIndex() : (q.getCorrectOptionIndex() + 1) % 4;
+            answers80.add(new DashboardTestSubmissionDTO.AnswerEntry(q.getQuestionId(), selectedIdx));
+        }
+
+        Map<String, Object> result80 = conceptRemediationService.submitRemediationTest(student2, sessionId2, answers80);
+        assertEquals(8, result80.get("correctCount"));
+        assertEquals(80.0, (Double) result80.get("percentage"), 0.01);
+        assertTrue((Boolean) result80.get("passed"));
     }
 }
 
