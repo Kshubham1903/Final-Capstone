@@ -1509,8 +1509,8 @@ export default function Quizzes() {
               <div className="p-4 bg-white/5 rounded-xl border border-white/5 text-center">
                 <span className="text-[10px] text-secondary-theme block uppercase font-bold tracking-wider">Concept Status</span>
                 <span className={`text-sm font-bold block mt-1 ${isVerificationMode ? (remediationResult?.passed ? "text-emerald-400" : "text-amber-400") : "text-purple-theme"}`}>
-                  {isVerificationMode 
-                    ? (remediationResult?.passed ? "MASTERED" : "NEEDS PRACTICE"))
+                  {isVerificationMode
+                    ? (remediationResult?.passed ? "MASTERED" : "NEEDS PRACTICE")
                     : (lastEvaluationResult?.masteryLevel || "COMPLETED")}
                 </span>
               </div>
