@@ -1,5 +1,6 @@
 package com.edupilot.service;
 
+import com.edupilot.dto.AdminAnalyticsFilterCriteria;
 import com.edupilot.dto.AdminAnalyticsOverviewDTO;
 import com.edupilot.dto.AdminCohortAnalyticsDTO;
 import com.edupilot.dto.AdminCohortSubjectAnalyticsDTO;
@@ -72,31 +73,206 @@ public class AdminAnalyticsService {
     @Autowired
     private EvaluationService evaluationService;
 
-    public AdminAnalyticsOverviewDTO getAnalyticsOverview() {
-        // 1. Authoritative Student Population from User collection
+    // ==========================================
+    // SHARED FILTERING CORE & POPULATION CONTEXT
+    // ==========================================
+
+    public static class FilteredStudentContext {
+        public final Set<String> validStudentIds = new LinkedHashSet<>();
+        public final Map<String, User> userMap = new LinkedHashMap<>();
+        public final Map<String, StudentProfile> profileMap = new HashMap<>();
+        public final Map<String, String> profileToUserMap = new HashMap<>();
+        public final Map<String, String> activityStatusMap = new HashMap<>();
+        public final Map<String, Boolean> baselineMap = new HashMap<>();
+    }
+
+    public FilteredStudentContext resolveFilteredPopulation(AdminAnalyticsFilterCriteria criteria) {
+        if (criteria != null) {
+            criteria.validate();
+        }
+
+        FilteredStudentContext ctx = new FilteredStudentContext();
+
         List<User> studentUsers = userRepository.findByRole(User.Role.STUDENT);
-        Set<String> studentUserIds = new LinkedHashSet<>();
-        for (User u : studentUsers) {
-            if (u.getId() != null && !u.getId().isBlank()) {
-                studentUserIds.add(u.getId());
+        if (studentUsers == null || studentUsers.isEmpty()) {
+            return ctx;
+        }
+
+        List<StudentProfile> allProfiles = studentProfileRepository.findAll();
+        Map<String, StudentProfile> profilesByUserId = new HashMap<>();
+        Map<String, StudentProfile> profilesByEmail = new HashMap<>();
+
+        for (StudentProfile p : allProfiles) {
+            if (p.getUserId() != null && !p.getUserId().isBlank()) {
+                profilesByUserId.put(p.getUserId(), p);
+            }
+            if (p.getEmail() != null && !p.getEmail().isBlank()) {
+                profilesByEmail.put(p.getEmail(), p);
             }
         }
 
+        for (User u : studentUsers) {
+            String userId = u.getId();
+            if (userId == null || userId.isBlank()) {
+                continue;
+            }
+
+            ctx.userMap.put(userId, u);
+            StudentProfile profile = profilesByUserId.get(userId);
+            if (profile == null && u.getEmail() != null) {
+                profile = profilesByEmail.get(u.getEmail());
+            }
+
+            String profileId = null;
+            String branch = null;
+            Integer semester = null;
+            if (profile != null) {
+                ctx.profileMap.put(userId, profile);
+                profileId = profile.getId();
+                if (profileId != null) {
+                    ctx.profileToUserMap.put(profileId, userId);
+                }
+                branch = profile.getBranch();
+                semester = profile.getSemester();
+            }
+
+            // Determine Activity Status
+            String activityStatus = "NO_ACTIVITY";
+            try {
+                LocalDateTime maxActivityTime = evaluationService.findLatestActivityTime(userId, profileId);
+                if (maxActivityTime != null) {
+                    long days = Duration.between(maxActivityTime, LocalDateTime.now()).toDays();
+                    days = Math.max(0L, days);
+
+                    if (days <= 7) {
+                        activityStatus = "ACTIVE";
+                    } else if (days <= 14) {
+                        activityStatus = "AT_RISK";
+                    } else {
+                        activityStatus = "INACTIVE";
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to check activity status for student {}: {}", userId, ex.getMessage());
+            }
+            ctx.activityStatusMap.put(userId, activityStatus);
+
+            // Determine Authentic Baseline
+            boolean hasAuthenticBaseline = false;
+            try {
+                Map<String, Double> bMap = studentGrowthService.extractBaselineConceptAccuracies(userId, profileId);
+                hasAuthenticBaseline = (bMap != null && !bMap.isEmpty());
+            } catch (Exception ex) {
+                log.warn("Failed to check baseline for student {}: {}", userId, ex.getMessage());
+            }
+            ctx.baselineMap.put(userId, hasAuthenticBaseline);
+
+            // Apply Population Filters
+            if (criteria != null) {
+                // Branch filter
+                if (criteria.getBranch() != null && !criteria.getBranch().trim().isEmpty()) {
+                    if (branch == null || !branch.trim().equalsIgnoreCase(criteria.getBranch().trim())) {
+                        continue;
+                    }
+                }
+
+                // Semester filter
+                if (criteria.getSemester() != null) {
+                    if (semester == null || !semester.equals(criteria.getSemester())) {
+                        continue;
+                    }
+                }
+
+                // Activity status filter
+                if (criteria.getActivityStatus() != null && !criteria.getActivityStatus().trim().isEmpty()) {
+                    if (!activityStatus.equalsIgnoreCase(criteria.getActivityStatus().trim())) {
+                        continue;
+                    }
+                }
+
+                // Baseline filter
+                if (criteria.getHasAuthenticBaseline() != null) {
+                    if (hasAuthenticBaseline != criteria.getHasAuthenticBaseline()) {
+                        continue;
+                    }
+                }
+            }
+
+            ctx.validStudentIds.add(userId);
+        }
+
+        return ctx;
+    }
+
+    // ==========================================
+    // 1. OVERVIEW ANALYTICS
+    // ==========================================
+
+    public AdminAnalyticsOverviewDTO getAnalyticsOverview() {
+        return getAnalyticsOverview(null);
+    }
+
+    public AdminAnalyticsOverviewDTO getAnalyticsOverview(AdminAnalyticsFilterCriteria criteria) {
+        FilteredStudentContext ctx = resolveFilteredPopulation(criteria);
+        Set<String> studentUserIds = ctx.validStudentIds;
         int totalStudents = studentUserIds.size();
 
-        // 2. Global Assessment & Quiz Counts
-        int totalAssessmentsCompleted = (int) assessmentResultRepository.count();
-        int totalQuizzesCompleted = (int) quizSessionRepository.countByStatus(QuizSession.Status.COMPLETED);
+        if (totalStudents == 0) {
+            return new AdminAnalyticsOverviewDTO(0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0);
+        }
+
+        // 2. Filtered Assessment & Quiz Counts
+        int totalAssessmentsCompleted = 0;
+        int totalQuizzesCompleted = 0;
+
+        List<AssessmentResult> allAssessments = assessmentResultRepository.findAll();
+        for (AssessmentResult ar : allAssessments) {
+            String studentId = resolveStudentId(ar.getUserId(), ar.getStudentProfileId(), studentUserIds, ctx.profileToUserMap);
+            if (studentId != null) {
+                if (criteria != null && !criteria.isDateTimeInRange(ar.getCreatedAt())) {
+                    continue;
+                }
+                if (criteria != null && criteria.hasSubjectFilter() && !matchesSubject(ar.getSubjectCode(), ar.getSubjectName(), criteria.getSubjectCode())) {
+                    continue;
+                }
+                totalAssessmentsCompleted++;
+            }
+        }
+
+        List<QuizSession> allQuizzes = quizSessionRepository.findAll();
+        for (QuizSession qs : allQuizzes) {
+            String studentId = resolveStudentId(qs.getUserId(), qs.getStudentProfileId(), studentUserIds, ctx.profileToUserMap);
+            if (studentId != null && qs.getStatus() == QuizSession.Status.COMPLETED) {
+                LocalDateTime qTime = qs.getLastAnswerTime() != null ? qs.getLastAnswerTime() : qs.getStartTime();
+                if (criteria != null && !criteria.isDateTimeInRange(qTime)) {
+                    continue;
+                }
+                if (criteria != null && criteria.hasSubjectFilter() && !matchesSubject(qs.getSubjectCode(), qs.getSubjectName(), criteria.getSubjectCode())) {
+                    continue;
+                }
+                totalQuizzesCompleted++;
+            }
+        }
 
         // 3. Satisfaction Ratings
         List<StudentSatisfaction> allRatings = satisfactionRepository.findAll();
         double averageSatisfactionRating = 0.0;
-        if (!allRatings.isEmpty()) {
-            double sumRating = 0.0;
-            for (StudentSatisfaction sat : allRatings) {
+        int validRatingsCount = 0;
+        double sumRating = 0.0;
+
+        for (StudentSatisfaction sat : allRatings) {
+            String studentId = resolveStudentId(sat.getStudentId(), null, studentUserIds, ctx.profileToUserMap);
+            if (studentId != null) {
+                if (criteria != null && !criteria.isDateTimeInRange(sat.getTimestamp())) {
+                    continue;
+                }
                 sumRating += sat.getRating();
+                validRatingsCount++;
             }
-            averageSatisfactionRating = round2(sumRating / allRatings.size());
+        }
+
+        if (validRatingsCount > 0) {
+            averageSatisfactionRating = round2(sumRating / validRatingsCount);
         }
 
         // 4. Student-level aggregated metrics
@@ -109,24 +285,14 @@ public class AdminAnalyticsService {
         int validGainCount = 0;
 
         for (String studentId : studentUserIds) {
-            // Activity & Risk (Direct latest activity scan without O(N) cohort loop)
-            try {
-                LocalDateTime maxActivityTime = evaluationService.findLatestActivityTime(studentId, null);
-                if (maxActivityTime != null) {
-                    long days = Duration.between(maxActivityTime, LocalDateTime.now()).toDays();
-                    days = Math.max(0L, days);
-
-                    if (days <= 7) {
-                        activeStudentsLast7Days++;
-                    } else if (days <= 14) {
-                        atRiskStudentCount++;
-                    }
-                }
-            } catch (Exception ex) {
-                log.warn("Failed to check activity time for student {}: {}", studentId, ex.getMessage());
+            String actStatus = ctx.activityStatusMap.getOrDefault(studentId, "NO_ACTIVITY");
+            if ("ACTIVE".equalsIgnoreCase(actStatus)) {
+                activeStudentsLast7Days++;
+            } else if ("AT_RISK".equalsIgnoreCase(actStatus)) {
+                atRiskStudentCount++;
             }
 
-            // Growth ($K_0$ and $K_t$)
+            // Growth ($K_0$ and $K_t$) - K0 lookup is global & immutable
             try {
                 StudentGrowthResponseDTO growth = studentGrowthService.calculateStudentGrowth(studentId);
                 if (growth != null) {
@@ -167,19 +333,35 @@ public class AdminAnalyticsService {
         );
     }
 
-    public AdminCohortAnalyticsDTO getCohortAnalytics() {
-        // 1. Authoritative Student Population from User collection
-        List<User> studentUsers = userRepository.findByRole(User.Role.STUDENT);
-        Set<String> studentUserIds = new LinkedHashSet<>();
-        for (User u : studentUsers) {
-            if (u.getId() != null && !u.getId().isBlank()) {
-                studentUserIds.add(u.getId());
-            }
-        }
+    // ==========================================
+    // 2. COHORT ANALYTICS
+    // ==========================================
 
+    public AdminCohortAnalyticsDTO getCohortAnalytics() {
+        return getCohortAnalytics(null);
+    }
+
+    public AdminCohortAnalyticsDTO getCohortAnalytics(AdminAnalyticsFilterCriteria criteria) {
+        FilteredStudentContext ctx = resolveFilteredPopulation(criteria);
+        Set<String> studentUserIds = ctx.validStudentIds;
         int totalEnrolled = studentUserIds.size();
 
-        // 2. Activity Stratification (Account for all totalEnrolled students)
+        if (totalEnrolled == 0) {
+            Map<String, Double> emptyCategoryMap = new LinkedHashMap<>();
+            emptyCategoryMap.put("AI_TUTOR", null);
+            emptyCategoryMap.put("RECOMMENDATION", null);
+            emptyCategoryMap.put("LEARNING_ACTIVITY", null);
+
+            return new AdminCohortAnalyticsDTO(
+                    0, 0, 0, 0, 0,
+                    0.0, 0.0, 0.0,
+                    new AdminCohortAnalyticsDTO.GrowthDistributionDTO(0, 0.0, 0, 0.0, 0, 0.0),
+                    new AdminCohortAnalyticsDTO.SatisfactionDTO(0.0, 0, emptyCategoryMap),
+                    "Insufficient diagnostic data: No enrolled students have completed a baseline assessment."
+            );
+        }
+
+        // 2. Activity Stratification
         int activeLast7Days = 0;
         int atRiskStudents = 0;
         int inactiveStudents = 0;
@@ -196,31 +378,18 @@ public class AdminAnalyticsService {
         int declinedCount = 0;
 
         for (String studentId : studentUserIds) {
-            // A. Activity Classification
-            try {
-                LocalDateTime maxActivityTime = evaluationService.findLatestActivityTime(studentId, null);
-                if (maxActivityTime != null) {
-                    long days = Duration.between(maxActivityTime, LocalDateTime.now()).toDays();
-                    days = Math.max(0L, days);
-
-                    if (days <= 7) {
-                        activeLast7Days++;
-                    } else if (days <= 14) {
-                        atRiskStudents++;
-                    } else {
-                        inactiveStudents++;
-                    }
-                } else {
-                    inactiveStudents++;
-                }
-            } catch (Exception ex) {
-                log.warn("Failed to check activity time for student {}: {}", studentId, ex.getMessage());
+            String actStatus = ctx.activityStatusMap.getOrDefault(studentId, "NO_ACTIVITY");
+            if ("ACTIVE".equalsIgnoreCase(actStatus)) {
+                activeLast7Days++;
+            } else if ("AT_RISK".equalsIgnoreCase(actStatus)) {
+                atRiskStudents++;
+            } else {
                 inactiveStudents++;
             }
 
-            // B. Authentic Baseline Verification (Only evaluate students with genuine T0 diagnostics)
-            Map<String, Double> baselineMap = studentGrowthService.extractBaselineConceptAccuracies(studentId, null);
-            if (baselineMap != null && !baselineMap.isEmpty()) {
+            // Authentic Baseline Verification - K0 is globally immutable
+            boolean hasBaseline = Boolean.TRUE.equals(ctx.baselineMap.get(studentId));
+            if (hasBaseline) {
                 try {
                     StudentGrowthResponseDTO growth = studentGrowthService.calculateStudentGrowth(studentId);
                     if (growth != null) {
@@ -275,21 +444,30 @@ public class AdminAnalyticsService {
         // 5. Satisfaction Aggregation & Category Breakdown
         List<StudentSatisfaction> allRatings = satisfactionRepository.findAll();
         double averageRating = 0.0;
-        int totalReviews = allRatings.size();
+        int totalReviews = 0;
         Map<String, Double> byCategory = new LinkedHashMap<>();
         byCategory.put("AI_TUTOR", null);
         byCategory.put("RECOMMENDATION", null);
         byCategory.put("LEARNING_ACTIVITY", null);
 
-        if (!allRatings.isEmpty()) {
-            double sumRating = 0.0;
-            Map<String, List<Double>> categoryMap = new HashMap<>();
-            for (StudentSatisfaction sat : allRatings) {
+        double sumRating = 0.0;
+        Map<String, List<Double>> categoryMap = new HashMap<>();
+
+        for (StudentSatisfaction sat : allRatings) {
+            String studentId = resolveStudentId(sat.getStudentId(), null, studentUserIds, ctx.profileToUserMap);
+            if (studentId != null) {
+                if (criteria != null && !criteria.isDateTimeInRange(sat.getTimestamp())) {
+                    continue;
+                }
                 sumRating += sat.getRating();
+                totalReviews++;
                 String cat = sat.getFeedbackType() != null ? sat.getFeedbackType().name() : "LEARNING_ACTIVITY";
                 categoryMap.computeIfAbsent(cat, k -> new ArrayList<>()).add((double) sat.getRating());
             }
-            averageRating = round2(sumRating / allRatings.size());
+        }
+
+        if (totalReviews > 0) {
+            averageRating = round2(sumRating / totalReviews);
 
             for (String cat : List.of("AI_TUTOR", "RECOMMENDATION", "LEARNING_ACTIVITY")) {
                 List<Double> scores = categoryMap.get(cat);
@@ -327,35 +505,37 @@ public class AdminAnalyticsService {
         );
     }
 
+    // ==========================================
+    // 3. STUDENT DIRECTORY
+    // ==========================================
+
     public List<AdminStudentDirectoryDTO> getStudentDirectory() {
-        List<User> studentUsers = userRepository.findByRole(User.Role.STUDENT);
-        if (studentUsers == null || studentUsers.isEmpty()) {
+        return getStudentDirectory(null);
+    }
+
+    public List<AdminStudentDirectoryDTO> getStudentDirectory(AdminAnalyticsFilterCriteria criteria) {
+        FilteredStudentContext ctx = resolveFilteredPopulation(criteria);
+        if (ctx.validStudentIds.isEmpty()) {
             return Collections.emptyList();
         }
 
         List<AdminStudentDirectoryDTO> directory = new ArrayList<>();
 
-        for (User user : studentUsers) {
-            String userId = user.getId();
-            if (userId == null || userId.isBlank()) {
+        for (String userId : ctx.validStudentIds) {
+            User user = ctx.userMap.get(userId);
+            if (user == null) {
                 continue;
             }
 
             String email = user.getEmail();
             String fullName = user.getFullName();
 
-            // Profile information lookup
-            Optional<StudentProfile> profileOpt = studentProfileRepository.findByUserId(userId);
-            if (profileOpt.isEmpty() && email != null) {
-                profileOpt = studentProfileRepository.findByEmail(email);
-            }
-
+            StudentProfile profile = ctx.profileMap.get(userId);
             String branch = null;
             Integer semester = null;
             String profileId = null;
 
-            if (profileOpt.isPresent()) {
-                StudentProfile profile = profileOpt.get();
+            if (profile != null) {
                 profileId = profile.getId();
                 branch = profile.getBranch();
                 semester = profile.getSemester();
@@ -364,35 +544,38 @@ public class AdminAnalyticsService {
                 }
             }
 
-            // Activity status determination
-            String activityStatus = "NO_ACTIVITY";
-            try {
-                LocalDateTime maxActivityTime = evaluationService.findLatestActivityTime(userId, profileId);
-                if (maxActivityTime != null) {
-                    long days = Duration.between(maxActivityTime, LocalDateTime.now()).toDays();
-                    days = Math.max(0L, days);
-
-                    if (days <= 7) {
-                        activityStatus = "ACTIVE";
-                    } else if (days <= 14) {
-                        activityStatus = "AT_RISK";
-                    } else {
-                        activityStatus = "INACTIVE";
+            // If subjectCode filter is specified, verify student is associated with this subject
+            if (criteria != null && criteria.hasSubjectFilter()) {
+                boolean hasSubjectAssociation = false;
+                if (profile != null && profile.getSubjects() != null) {
+                    for (String subj : profile.getSubjects()) {
+                        if (matchesSubject(null, subj, criteria.getSubjectCode())) {
+                            hasSubjectAssociation = true;
+                            break;
+                        }
                     }
                 }
-            } catch (Exception ex) {
-                log.warn("Failed to check activity status for student {}: {}", userId, ex.getMessage());
+                if (!hasSubjectAssociation) {
+                    List<ConceptMastery> cms = conceptMasteryRepository.findByUserId(userId);
+                    for (ConceptMastery cm : cms) {
+                        if (matchesSubject(cm.getSubjectCode(), cm.getSubjectName(), criteria.getSubjectCode())) {
+                            hasSubjectAssociation = true;
+                            break;
+                        }
+                    }
+                }
+                if (!hasSubjectAssociation) {
+                    continue;
+                }
             }
 
-            // Authentic baseline check
-            boolean hasAuthenticBaseline = false;
+            String activityStatus = ctx.activityStatusMap.getOrDefault(userId, "NO_ACTIVITY");
+            boolean hasAuthenticBaseline = Boolean.TRUE.equals(ctx.baselineMap.get(userId));
             Double baselineKnowledge = null;
             Double currentKnowledge = null;
             Double growthPp = null;
 
-            Map<String, Double> baselineMap = studentGrowthService.extractBaselineConceptAccuracies(userId, profileId);
-            if (baselineMap != null && !baselineMap.isEmpty()) {
-                hasAuthenticBaseline = true;
+            if (hasAuthenticBaseline) {
                 try {
                     StudentGrowthResponseDTO growth = studentGrowthService.calculateStudentGrowth(userId);
                     if (growth != null) {
@@ -404,7 +587,6 @@ public class AdminAnalyticsService {
                     log.warn("Failed to calculate student growth for student {}: {}", userId, ex.getMessage());
                 }
             } else {
-                // When baseline is missing, attempt to compute current knowledge from authentic concept mastery records if present
                 try {
                     List<ConceptMastery> cmList = conceptMasteryRepository.findByUserId(userId);
                     if (cmList.isEmpty() && profileId != null) {
@@ -443,6 +625,10 @@ public class AdminAnalyticsService {
 
         return directory;
     }
+
+    // ==========================================
+    // 4. INDIVIDUAL STUDENT ANALYTICS
+    // ==========================================
 
     public AdminStudentAnalyticsDTO getIndividualStudentAnalytics(String rawUserId) {
         if (rawUserId == null || rawUserId.trim().isEmpty()) {
@@ -521,7 +707,6 @@ public class AdminAnalyticsService {
                 log.warn("Failed to calculate learning gain for {}: {}", canonicalUserId, ex.getMessage());
             }
         } else {
-            // When baseline is missing, estimate current knowledge from ConceptMastery if available
             try {
                 List<ConceptMastery> cms = conceptMasteryRepository.findByUserId(canonicalUserId);
                 if (cms.isEmpty() && profileId != null) {
@@ -815,6 +1000,8 @@ public class AdminAnalyticsService {
                 if (scores != null && !scores.isEmpty()) {
                     double avg = scores.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
                     byCategory.put(cat, round2(avg));
+                } else {
+                    byCategory.put(cat, null);
                 }
             }
         }
@@ -881,59 +1068,30 @@ public class AdminAnalyticsService {
         );
     }
 
-    private Double findSubjectBaseline(String subjectName, List<AssessmentResult> arList, Map<String, Double> baselineMap) {
-        if (baselineMap != null && !baselineMap.isEmpty() && arList != null && !arList.isEmpty()) {
-            for (int i = arList.size() - 1; i >= 0; i--) {
-                AssessmentResult ar = arList.get(i);
-                if (ar.getSubjectName() != null && isSubjectMatch(ar.getSubjectName(), subjectName)) {
-                    double sc = ar.getPercentage() > 0 ? ar.getPercentage() : (ar.getScore() > 0 ? ar.getScore() : 0.0);
-                    if (sc <= 1.0) sc *= 100.0;
-                    return round2(sc);
-                }
-            }
-        }
-        return null;
-    }
-
-    private boolean isSubjectMatch(String s1, String s2) {
-        if (s1 == null || s2 == null) return false;
-        String clean1 = s1.trim().toLowerCase();
-        String clean2 = s2.trim().toLowerCase();
-        return clean1.equals(clean2) || clean1.contains(clean2) || clean2.contains(clean1);
-    }
+    // ==========================================
+    // 5. HISTORICAL RESEARCH TRENDS
+    // ==========================================
 
     public AdminResearchTrendsDTO getResearchTrends() {
-        // 1. Authoritative Student Population from User collection
-        List<User> studentUsers = userRepository.findByRole(User.Role.STUDENT);
-        if (studentUsers == null || studentUsers.isEmpty()) {
+        return getResearchTrends(null);
+    }
+
+    public AdminResearchTrendsDTO getResearchTrends(AdminAnalyticsFilterCriteria criteria) {
+        FilteredStudentContext ctx = resolveFilteredPopulation(criteria);
+        Set<String> validStudentIds = ctx.validStudentIds;
+
+        if (validStudentIds.isEmpty()) {
             return new AdminResearchTrendsDTO(
                     0, 0, 0, 0, 0, 0, null, null,
-                    "No enrolled students found in directory.",
+                    "No enrolled students match the filter criteria.",
                     Collections.emptyList()
             );
-        }
-
-        Set<String> validStudentIds = new HashSet<>();
-        for (User u : studentUsers) {
-            if (u.getId() != null && !u.getId().isBlank()) {
-                validStudentIds.add(u.getId());
-            }
-        }
-
-        // Map profile IDs to canonical user IDs for accurate matching
-        List<StudentProfile> profiles = studentProfileRepository.findAll();
-        Map<String, String> profileToUserMap = new HashMap<>();
-        for (StudentProfile p : profiles) {
-            if (p.getId() != null && p.getUserId() != null && validStudentIds.contains(p.getUserId())) {
-                profileToUserMap.put(p.getId(), p.getUserId());
-            }
         }
 
         // Count students with authentic diagnostic baselines
         int evaluatedStudentsWithBaseline = 0;
         for (String studentId : validStudentIds) {
-            Map<String, Double> baselineMap = studentGrowthService.extractBaselineConceptAccuracies(studentId, null);
-            if (baselineMap != null && !baselineMap.isEmpty()) {
+            if (Boolean.TRUE.equals(ctx.baselineMap.get(studentId))) {
                 evaluatedStudentsWithBaseline++;
             }
         }
@@ -946,7 +1104,6 @@ public class AdminAnalyticsService {
                 .filter(q -> q.getStatus() == QuizSession.Status.COMPLETED)
                 .collect(Collectors.toList());
 
-        // Distinct evaluation observation types
         class AssessmentObservation {
             final LocalDateTime timestamp;
             final String dateStr;
@@ -1001,12 +1158,10 @@ public class AdminAnalyticsService {
         // A. Ingest AssessmentResult records (PRIMARY GROUND TRUTH FOR KNOWLEDGE PERFORMANCE)
         for (AssessmentResult ar : assessments) {
             if (ar.getCreatedAt() == null) continue;
-            String canonicalId = null;
-            if (ar.getUserId() != null && validStudentIds.contains(ar.getUserId())) {
-                canonicalId = ar.getUserId();
-            } else if (ar.getStudentProfileId() != null && profileToUserMap.containsKey(ar.getStudentProfileId())) {
-                canonicalId = profileToUserMap.get(ar.getStudentProfileId());
-            }
+            if (criteria != null && !criteria.isDateTimeInRange(ar.getCreatedAt())) continue;
+            if (criteria != null && criteria.hasSubjectFilter() && !matchesSubject(ar.getSubjectCode(), ar.getSubjectName(), criteria.getSubjectCode())) continue;
+
+            String canonicalId = resolveStudentId(ar.getUserId(), ar.getStudentProfileId(), validStudentIds, ctx.profileToUserMap);
             if (canonicalId != null) {
                 double pct = ar.getPercentage() > 0 ? ar.getPercentage() : (ar.getScore() > 0 && ar.getTotalMarks() > 0 ? (ar.getScore() * 100.0 / ar.getTotalMarks()) : 0.0);
                 if (pct <= 1.0 && pct > 0) pct *= 100.0;
@@ -1021,12 +1176,10 @@ public class AdminAnalyticsService {
         for (QuizSession q : quizzes) {
             LocalDateTime qTime = q.getLastAnswerTime() != null ? q.getLastAnswerTime() : q.getStartTime();
             if (qTime == null) continue;
-            String canonicalId = null;
-            if (q.getUserId() != null && validStudentIds.contains(q.getUserId())) {
-                canonicalId = q.getUserId();
-            } else if (q.getStudentProfileId() != null && profileToUserMap.containsKey(q.getStudentProfileId())) {
-                canonicalId = profileToUserMap.get(q.getStudentProfileId());
-            }
+            if (criteria != null && !criteria.isDateTimeInRange(qTime)) continue;
+            if (criteria != null && criteria.hasSubjectFilter() && !matchesSubject(q.getSubjectCode(), q.getSubjectName(), criteria.getSubjectCode())) continue;
+
+            String canonicalId = resolveStudentId(q.getUserId(), q.getStudentProfileId(), validStudentIds, ctx.profileToUserMap);
             if (canonicalId != null) {
                 double acc = q.getTotalQuestions() > 0 ? (q.getCorrectCount() * 100.0 / q.getTotalQuestions()) : 0.0;
                 quizObs.add(new QuizObservation(qTime, round2(acc), canonicalId));
@@ -1039,12 +1192,9 @@ public class AdminAnalyticsService {
         // C. Ingest StudentStateSnapshot records (SEPARATE BAYESIAN STATE & ENGAGEMENT METRICS)
         for (StudentStateSnapshot snap : snapshots) {
             if (snap.getTimestamp() == null) continue;
-            String canonicalId = null;
-            if (snap.getStudentId() != null && validStudentIds.contains(snap.getStudentId())) {
-                canonicalId = snap.getStudentId();
-            } else if (snap.getStudentId() != null && profileToUserMap.containsKey(snap.getStudentId())) {
-                canonicalId = profileToUserMap.get(snap.getStudentId());
-            }
+            if (criteria != null && !criteria.isDateTimeInRange(snap.getTimestamp())) continue;
+
+            String canonicalId = resolveStudentId(snap.getStudentId(), null, validStudentIds, ctx.profileToUserMap);
             if (canonicalId != null) {
                 double k = snap.getOverallKnowledgeScore();
                 if (k <= 1.0) k *= 100.0;
@@ -1171,33 +1321,24 @@ public class AdminAnalyticsService {
         );
     }
 
+    // ==========================================
+    // 6. COHORT SUBJECT ANALYTICS
+    // ==========================================
+
     public AdminCohortSubjectAnalyticsDTO getCohortSubjectAnalytics() {
-        // 1. Authoritative Student Population from User collection
-        List<User> studentUsers = userRepository.findByRole(User.Role.STUDENT);
-        if (studentUsers == null || studentUsers.isEmpty()) {
+        return getCohortSubjectAnalytics(null);
+    }
+
+    public AdminCohortSubjectAnalyticsDTO getCohortSubjectAnalytics(AdminAnalyticsFilterCriteria criteria) {
+        FilteredStudentContext ctx = resolveFilteredPopulation(criteria);
+        Set<String> validStudentIds = ctx.validStudentIds;
+
+        if (validStudentIds.isEmpty()) {
             return new AdminCohortSubjectAnalyticsDTO(
                     0, 0, 0,
-                    "No enrolled students found in directory.",
+                    "No enrolled students match the filter criteria.",
                     Collections.emptyList()
             );
-        }
-
-        Set<String> validStudentIds = new HashSet<>();
-        for (User u : studentUsers) {
-            if (u.getId() != null && !u.getId().isBlank()) {
-                validStudentIds.add(u.getId());
-            }
-        }
-
-        // Map profile IDs to canonical user IDs for accurate matching
-        List<StudentProfile> profiles = studentProfileRepository.findAll();
-        Map<String, String> profileToUserMap = new HashMap<>();
-        Map<String, StudentProfile> studentToProfileMap = new HashMap<>();
-        for (StudentProfile p : profiles) {
-            if (p.getId() != null && p.getUserId() != null && validStudentIds.contains(p.getUserId())) {
-                profileToUserMap.put(p.getId(), p.getUserId());
-                studentToProfileMap.put(p.getUserId(), p);
-            }
         }
 
         // 2. Batch retrieve collections
@@ -1209,7 +1350,7 @@ public class AdminAnalyticsService {
         // 3. Group by canonical student ID
         Map<String, List<AssessmentResult>> assessmentsByStudent = new HashMap<>();
         for (AssessmentResult ar : allAssessments) {
-            String studentId = resolveStudentId(ar.getUserId(), ar.getStudentProfileId(), validStudentIds, profileToUserMap);
+            String studentId = resolveStudentId(ar.getUserId(), ar.getStudentProfileId(), validStudentIds, ctx.profileToUserMap);
             if (studentId != null) {
                 assessmentsByStudent.computeIfAbsent(studentId, k -> new ArrayList<>()).add(ar);
             }
@@ -1217,24 +1358,35 @@ public class AdminAnalyticsService {
 
         Map<String, List<ConceptMastery>> masteryByStudent = new HashMap<>();
         for (ConceptMastery cm : allConceptMastery) {
-            String studentId = resolveStudentId(cm.getUserId(), cm.getStudentProfileId(), validStudentIds, profileToUserMap);
+            String studentId = resolveStudentId(cm.getUserId(), cm.getStudentProfileId(), validStudentIds, ctx.profileToUserMap);
             if (studentId != null) {
+                if (criteria != null && !criteria.isDateTimeInRange(cm.getLastAssessedAt())) {
+                    continue;
+                }
                 masteryByStudent.computeIfAbsent(studentId, k -> new ArrayList<>()).add(cm);
             }
         }
 
         Map<String, List<QuizSession>> quizzesByStudent = new HashMap<>();
         for (QuizSession qs : allQuizzes) {
-            String studentId = resolveStudentId(qs.getUserId(), qs.getStudentProfileId(), validStudentIds, profileToUserMap);
+            String studentId = resolveStudentId(qs.getUserId(), qs.getStudentProfileId(), validStudentIds, ctx.profileToUserMap);
             if (studentId != null && qs.getStatus() == QuizSession.Status.COMPLETED) {
+                LocalDateTime qTime = qs.getLastAnswerTime() != null ? qs.getLastAnswerTime() : qs.getStartTime();
+                if (criteria != null && !criteria.isDateTimeInRange(qTime)) {
+                    continue;
+                }
                 quizzesByStudent.computeIfAbsent(studentId, k -> new ArrayList<>()).add(qs);
             }
         }
 
         Map<String, List<SubjectRoadmap>> roadmapsByStudent = new HashMap<>();
         for (SubjectRoadmap sr : allRoadmaps) {
-            String studentId = resolveStudentId(sr.getUserId(), null, validStudentIds, profileToUserMap);
+            String studentId = resolveStudentId(sr.getUserId(), null, validStudentIds, ctx.profileToUserMap);
             if (studentId != null) {
+                LocalDateTime rTime = sr.getUpdatedAt() != null ? sr.getUpdatedAt() : sr.getCreatedAt();
+                if (criteria != null && !criteria.isDateTimeInRange(rTime)) {
+                    continue;
+                }
                 roadmapsByStudent.computeIfAbsent(studentId, k -> new ArrayList<>()).add(sr);
             }
         }
@@ -1244,6 +1396,11 @@ public class AdminAnalyticsService {
 
         java.util.function.Consumer<SubjectCatalogInfo> registerSubject = (info) -> {
             if (info != null && info.subjectName != null && !info.subjectName.isBlank()) {
+                if (criteria != null && criteria.hasSubjectFilter()) {
+                    if (!matchesSubject(info.subjectCode, info.subjectName, criteria.getSubjectCode())) {
+                        return;
+                    }
+                }
                 String key = normalizeSubjectName(info.subjectName);
                 canonicalSubjects.compute(key, (k, existing) -> {
                     if (existing == null) return info;
@@ -1255,58 +1412,68 @@ public class AdminAnalyticsService {
             }
         };
 
-        // Scan profiles
-        for (StudentProfile p : profiles) {
-            if (p.getSubjects() != null) {
+        // Scan profiles of valid cohort
+        for (String studentId : validStudentIds) {
+            StudentProfile p = ctx.profileMap.get(studentId);
+            if (p != null && p.getSubjects() != null) {
                 for (String subj : p.getSubjects()) {
                     registerSubject.accept(new SubjectCatalogInfo(null, subj.trim()));
                 }
             }
         }
 
-        // Scan assessments
-        for (AssessmentResult ar : allAssessments) {
-            if (ar.getSubjectName() != null && !ar.getSubjectName().isBlank()) {
-                registerSubject.accept(new SubjectCatalogInfo(ar.getSubjectCode(), ar.getSubjectName().trim()));
+        // Scan assessments of valid cohort
+        for (Map.Entry<String, List<AssessmentResult>> entry : assessmentsByStudent.entrySet()) {
+            for (AssessmentResult ar : entry.getValue()) {
+                if (ar.getSubjectName() != null && !ar.getSubjectName().isBlank()) {
+                    registerSubject.accept(new SubjectCatalogInfo(ar.getSubjectCode(), ar.getSubjectName().trim()));
+                }
             }
         }
 
-        // Scan concept mastery
-        for (ConceptMastery cm : allConceptMastery) {
-            if (cm.getSubjectName() != null && !cm.getSubjectName().isBlank()) {
-                registerSubject.accept(new SubjectCatalogInfo(cm.getSubjectCode(), cm.getSubjectName().trim()));
+        // Scan concept mastery of valid cohort
+        for (Map.Entry<String, List<ConceptMastery>> entry : masteryByStudent.entrySet()) {
+            for (ConceptMastery cm : entry.getValue()) {
+                if (cm.getSubjectName() != null && !cm.getSubjectName().isBlank()) {
+                    registerSubject.accept(new SubjectCatalogInfo(cm.getSubjectCode(), cm.getSubjectName().trim()));
+                }
             }
         }
 
-        // Scan quizzes
-        for (QuizSession qs : allQuizzes) {
-            if (qs.getSubjectName() != null && !qs.getSubjectName().isBlank()) {
-                registerSubject.accept(new SubjectCatalogInfo(qs.getSubjectCode(), qs.getSubjectName().trim()));
+        // Scan quizzes of valid cohort
+        for (Map.Entry<String, List<QuizSession>> entry : quizzesByStudent.entrySet()) {
+            for (QuizSession qs : entry.getValue()) {
+                if (qs.getSubjectName() != null && !qs.getSubjectName().isBlank()) {
+                    registerSubject.accept(new SubjectCatalogInfo(qs.getSubjectCode(), qs.getSubjectName().trim()));
+                }
             }
         }
 
-        // Scan roadmaps
-        for (SubjectRoadmap sr : allRoadmaps) {
-            if (sr.getSubjectName() != null && !sr.getSubjectName().isBlank()) {
-                registerSubject.accept(new SubjectCatalogInfo(sr.getSubjectCode(), sr.getSubjectName().trim()));
+        // Scan roadmaps of valid cohort
+        for (Map.Entry<String, List<SubjectRoadmap>> entry : roadmapsByStudent.entrySet()) {
+            for (SubjectRoadmap sr : entry.getValue()) {
+                if (sr.getSubjectName() != null && !sr.getSubjectName().isBlank()) {
+                    registerSubject.accept(new SubjectCatalogInfo(sr.getSubjectCode(), sr.getSubjectName().trim()));
+                }
             }
         }
 
         if (canonicalSubjects.isEmpty()) {
             return new AdminCohortSubjectAnalyticsDTO(
                     0, validStudentIds.size(), 0,
-                    "No subject records found across enrolled cohort.",
+                    "No subject records found across filtered student cohort.",
                     Collections.emptyList()
             );
         }
 
-        // 5. Pre-compute each student's EARLIEST authentic diagnostic assessment
+        // 5. Pre-compute each student's EARLIEST authentic diagnostic assessment GLOBALLY (K0 is immutable and never bounded by date filters)
         Map<String, AssessmentResult> earliestDiagnosticByStudent = new HashMap<>();
         for (String studentId : validStudentIds) {
             List<AssessmentResult> sAssessments = assessmentsByStudent.get(studentId);
             if (sAssessments != null && !sAssessments.isEmpty()) {
-                sAssessments.sort(Comparator.comparing(AssessmentResult::getCreatedAt));
-                for (AssessmentResult ar : sAssessments) {
+                List<AssessmentResult> sortedAssessments = new ArrayList<>(sAssessments);
+                sortedAssessments.sort(Comparator.comparing(AssessmentResult::getCreatedAt));
+                for (AssessmentResult ar : sortedAssessments) {
                     if (ar.getTotalQuestions() > 0 || ar.getPercentage() > 0 || ar.getScore() > 0) {
                         earliestDiagnosticByStudent.put(studentId, ar);
                         break;
@@ -1316,14 +1483,11 @@ public class AdminAnalyticsService {
         }
 
         int globalEvaluatedStudentsWithBaseline = 0;
-        Set<String> studentsWithAnyBaseline = new HashSet<>();
         for (String studentId : validStudentIds) {
-            Map<String, Double> baselineMap = studentGrowthService.extractBaselineConceptAccuracies(studentId, null);
-            if (baselineMap != null && !baselineMap.isEmpty()) {
-                studentsWithAnyBaseline.add(studentId);
+            if (Boolean.TRUE.equals(ctx.baselineMap.get(studentId))) {
+                globalEvaluatedStudentsWithBaseline++;
             }
         }
-        globalEvaluatedStudentsWithBaseline = studentsWithAnyBaseline.size();
 
         // 6. Calculate subject research metrics for each canonical subject
         List<AdminCohortSubjectAnalyticsDTO.SubjectResearchSummaryDTO> subjectSummaries = new ArrayList<>();
@@ -1344,7 +1508,7 @@ public class AdminAnalyticsService {
                 boolean hasSubjectEvidence = false;
 
                 // Check profile enrollment
-                StudentProfile sp = studentToProfileMap.get(studentId);
+                StudentProfile sp = ctx.profileMap.get(studentId);
                 if (sp != null && sp.getSubjects() != null) {
                     for (String subj : sp.getSubjects()) {
                         if (isSubjectMatch(subj, subjectName)) {
@@ -1354,7 +1518,7 @@ public class AdminAnalyticsService {
                     }
                 }
 
-                // 1. Calculate authentic Subject K0 (strictly from earliest diagnostic)
+                // 1. Calculate authentic Subject K0 (strictly from earliest diagnostic globally)
                 Double studentSubjectK0 = null;
                 AssessmentResult earliestDiag = earliestDiagnosticByStudent.get(studentId);
                 if (earliestDiag != null) {
@@ -1435,11 +1599,13 @@ public class AdminAnalyticsService {
             Double meanGrowth = !validGrowthPoints.isEmpty() ? round2(validGrowthPoints.stream().mapToDouble(Double::doubleValue).average().orElse(0.0)) : null;
             Double meanGain = !validNormalizedGains.isEmpty() ? round2(validNormalizedGains.stream().mapToDouble(Double::doubleValue).average().orElse(0.0)) : null;
 
-            // C. Concept Analytics for this subject (across all enrolled students)
+            // C. Concept Analytics for this subject (across filtered students)
             List<ConceptMastery> allSubjMastery = allConceptMastery.stream()
                     .filter(cm -> {
-                        String studentId = resolveStudentId(cm.getUserId(), cm.getStudentProfileId(), validStudentIds, profileToUserMap);
-                        return studentId != null && (isSubjectMatch(cm.getSubjectName(), subjectName) || (cm.getSubjectCode() != null && cm.getSubjectCode().equalsIgnoreCase(subjectCode)));
+                        String studentId = resolveStudentId(cm.getUserId(), cm.getStudentProfileId(), validStudentIds, ctx.profileToUserMap);
+                        if (studentId == null) return false;
+                        if (criteria != null && !criteria.isDateTimeInRange(cm.getLastAssessedAt())) return false;
+                        return (isSubjectMatch(cm.getSubjectName(), subjectName) || (cm.getSubjectCode() != null && cm.getSubjectCode().equalsIgnoreCase(subjectCode)));
                     })
                     .collect(Collectors.toList());
 
@@ -1468,9 +1634,11 @@ public class AdminAnalyticsService {
             // D. Quiz Analytics for this subject
             List<QuizSession> allSubjQuizzes = allQuizzes.stream()
                     .filter(qs -> {
-                        String studentId = resolveStudentId(qs.getUserId(), qs.getStudentProfileId(), validStudentIds, profileToUserMap);
-                        return studentId != null && qs.getStatus() == QuizSession.Status.COMPLETED &&
-                                (isSubjectMatch(qs.getSubjectName(), subjectName) || (qs.getSubjectCode() != null && qs.getSubjectCode().equalsIgnoreCase(subjectCode)));
+                        String studentId = resolveStudentId(qs.getUserId(), qs.getStudentProfileId(), validStudentIds, ctx.profileToUserMap);
+                        if (studentId == null || qs.getStatus() != QuizSession.Status.COMPLETED) return false;
+                        LocalDateTime qTime = qs.getLastAnswerTime() != null ? qs.getLastAnswerTime() : qs.getStartTime();
+                        if (criteria != null && !criteria.isDateTimeInRange(qTime)) return false;
+                        return (isSubjectMatch(qs.getSubjectName(), subjectName) || (qs.getSubjectCode() != null && qs.getSubjectCode().equalsIgnoreCase(subjectCode)));
                     })
                     .collect(Collectors.toList());
 
@@ -1482,8 +1650,11 @@ public class AdminAnalyticsService {
             // E. Roadmap Analytics for this subject
             List<SubjectRoadmap> allSubjRoadmaps = allRoadmaps.stream()
                     .filter(sr -> {
-                        String studentId = resolveStudentId(sr.getUserId(), null, validStudentIds, profileToUserMap);
-                        return studentId != null && (isSubjectMatch(sr.getSubjectName(), subjectName) || (sr.getSubjectCode() != null && sr.getSubjectCode().equalsIgnoreCase(subjectCode)));
+                        String studentId = resolveStudentId(sr.getUserId(), null, validStudentIds, ctx.profileToUserMap);
+                        if (studentId == null) return false;
+                        LocalDateTime rTime = sr.getUpdatedAt() != null ? sr.getUpdatedAt() : sr.getCreatedAt();
+                        if (criteria != null && !criteria.isDateTimeInRange(rTime)) return false;
+                        return (isSubjectMatch(sr.getSubjectName(), subjectName) || (sr.getSubjectCode() != null && sr.getSubjectCode().equalsIgnoreCase(subjectCode)));
                     })
                     .collect(Collectors.toList());
 
@@ -1546,15 +1717,56 @@ public class AdminAnalyticsService {
         }
     }
 
+    private Double findSubjectBaseline(String subjectName, List<AssessmentResult> arList, Map<String, Double> baselineMap) {
+        if (baselineMap != null && !baselineMap.isEmpty() && arList != null && !arList.isEmpty()) {
+            for (int i = arList.size() - 1; i >= 0; i--) {
+                AssessmentResult ar = arList.get(i);
+                if (ar.getSubjectName() != null && isSubjectMatch(ar.getSubjectName(), subjectName)) {
+                    double sc = ar.getPercentage() > 0 ? ar.getPercentage() : (ar.getScore() > 0 ? ar.getScore() : 0.0);
+                    if (sc <= 1.0) sc *= 100.0;
+                    return round2(sc);
+                }
+            }
+        }
+        return null;
+    }
+
+    private boolean isSubjectMatch(String s1, String s2) {
+        if (s1 == null || s2 == null) return false;
+        String clean1 = s1.trim().toLowerCase();
+        String clean2 = s2.trim().toLowerCase();
+        return clean1.equals(clean2) || clean1.contains(clean2) || clean2.contains(clean1);
+    }
+
+    private boolean matchesSubject(String recordSubjectCode, String recordSubjectName, String filterSubjectCode) {
+        if (filterSubjectCode == null || filterSubjectCode.trim().isEmpty()) {
+            return true;
+        }
+        String cleanFilter = filterSubjectCode.trim();
+        if (recordSubjectCode != null && recordSubjectCode.trim().equalsIgnoreCase(cleanFilter)) {
+            return true;
+        }
+        if (recordSubjectName != null && (recordSubjectName.trim().equalsIgnoreCase(cleanFilter) || isSubjectMatch(recordSubjectName, cleanFilter))) {
+            return true;
+        }
+        return false;
+    }
+
     private String resolveStudentId(String userId, String profileId, Set<String> validStudentIds, Map<String, String> profileToUserMap) {
         if (userId != null && validStudentIds.contains(userId)) {
             return userId;
         }
         if (profileId != null && profileToUserMap.containsKey(profileId)) {
-            return profileToUserMap.get(profileId);
+            String mapped = profileToUserMap.get(profileId);
+            if (validStudentIds.contains(mapped)) {
+                return mapped;
+            }
         }
         if (userId != null && profileToUserMap.containsKey(userId)) {
-            return profileToUserMap.get(userId);
+            String mapped = profileToUserMap.get(userId);
+            if (validStudentIds.contains(mapped)) {
+                return mapped;
+            }
         }
         return null;
     }

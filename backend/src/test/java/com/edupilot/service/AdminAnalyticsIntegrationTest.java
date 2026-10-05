@@ -1,5 +1,6 @@
 package com.edupilot.service;
 
+import com.edupilot.dto.AdminAnalyticsFilterCriteria;
 import com.edupilot.dto.AdminAnalyticsOverviewDTO;
 import com.edupilot.dto.AdminCohortAnalyticsDTO;
 import com.edupilot.dto.AdminCohortSubjectAnalyticsDTO;
@@ -22,6 +23,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -1752,5 +1754,463 @@ public class AdminAnalyticsIntegrationTest {
         assertNull(history.getRoadmapCompletionPercentage());
         assertEquals(0, history.getConceptCount());
         assertEquals(0, history.getWeakConceptCount());
+    }
+
+    // ==========================================
+    // PHASE 2C-3A FILTERING CORE TESTS
+    // ==========================================
+
+    @Test
+    public void testEmptyCriteriaReturnsAllEligibleStudents() {
+        String studentId = studentUser.getId();
+
+        // Create profile for student
+        StudentProfile profile = new StudentProfile();
+        profile.setUserId(studentId);
+        profile.setFullName("Alice Student");
+        profile.setBranch("CSE");
+        profile.setSemester(4);
+        studentProfileRepository.save(profile);
+
+        AdminAnalyticsFilterCriteria criteria = new AdminAnalyticsFilterCriteria();
+        assertTrue(criteria.isEmpty());
+
+        List<AdminStudentDirectoryDTO> directory = adminAnalyticsService.getStudentDirectory(criteria);
+        assertNotNull(directory);
+        assertEquals(1, directory.size());
+        assertEquals(studentId, directory.get(0).getUserId());
+
+        AdminCohortAnalyticsDTO cohort = adminAnalyticsService.getCohortAnalytics(criteria);
+        assertNotNull(cohort);
+        assertEquals(1, cohort.getTotalEnrolled());
+    }
+
+    @Test
+    public void testBranchFilterSelectsOnlyMatchingProfileBranch() {
+        // Alice in CSE
+        StudentProfile p1 = new StudentProfile();
+        p1.setUserId(studentUser.getId());
+        p1.setFullName("Alice Student");
+        p1.setBranch("CSE");
+        p1.setSemester(4);
+        studentProfileRepository.save(p1);
+
+        // Bob in ECE
+        User bob = new User();
+        bob.setEmail("bob_branch_" + System.currentTimeMillis() + "@edupilot.com");
+        bob.setPassword(passwordEncoder.encode("bobpass123"));
+        bob.setFullName("Bob Student");
+        bob.setRole(User.Role.STUDENT);
+        bob.setCreatedAt(LocalDateTime.now());
+        bob = userRepository.save(bob);
+
+        StudentProfile p2 = new StudentProfile();
+        p2.setUserId(bob.getId());
+        p2.setFullName("Bob Student");
+        p2.setBranch("ECE");
+        p2.setSemester(4);
+        studentProfileRepository.save(p2);
+
+        // Filter for CSE
+        AdminAnalyticsFilterCriteria cseCriteria = new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null);
+        List<AdminStudentDirectoryDTO> cseDir = adminAnalyticsService.getStudentDirectory(cseCriteria);
+        assertEquals(1, cseDir.size());
+        assertEquals(studentUser.getId(), cseDir.get(0).getUserId());
+
+        // Filter for ECE (case-insensitive)
+        AdminAnalyticsFilterCriteria eceCriteria = new AdminAnalyticsFilterCriteria(null, null, "ece", null, null, null, null);
+        List<AdminStudentDirectoryDTO> eceDir = adminAnalyticsService.getStudentDirectory(eceCriteria);
+        assertEquals(1, eceDir.size());
+        assertEquals(bob.getId(), eceDir.get(0).getUserId());
+
+        // Filter for ME (non-existent branch)
+        AdminAnalyticsFilterCriteria meCriteria = new AdminAnalyticsFilterCriteria(null, null, "ME", null, null, null, null);
+        List<AdminStudentDirectoryDTO> meDir = adminAnalyticsService.getStudentDirectory(meCriteria);
+        assertEquals(0, meDir.size());
+    }
+
+    @Test
+    public void testCurrentSemesterFilterSelectsOnlyMatchingProfileSemester() {
+        // Alice: Semester 4
+        StudentProfile p1 = new StudentProfile();
+        p1.setUserId(studentUser.getId());
+        p1.setFullName("Alice Student");
+        p1.setBranch("CSE");
+        p1.setSemester(4);
+        studentProfileRepository.save(p1);
+
+        // Bob: Semester 6
+        User bob = new User();
+        bob.setEmail("bob_sem_" + System.currentTimeMillis() + "@edupilot.com");
+        bob.setPassword(passwordEncoder.encode("bobpass123"));
+        bob.setFullName("Bob Student");
+        bob.setRole(User.Role.STUDENT);
+        bob.setCreatedAt(LocalDateTime.now());
+        bob = userRepository.save(bob);
+
+        StudentProfile p2 = new StudentProfile();
+        p2.setUserId(bob.getId());
+        p2.setFullName("Bob Student");
+        p2.setBranch("CSE");
+        p2.setSemester(6);
+        studentProfileRepository.save(p2);
+
+        // Filter for Semester 4
+        AdminAnalyticsFilterCriteria sem4 = new AdminAnalyticsFilterCriteria(null, null, null, 4, null, null, null);
+        List<AdminStudentDirectoryDTO> dir4 = adminAnalyticsService.getStudentDirectory(sem4);
+        assertEquals(1, dir4.size());
+        assertEquals(studentUser.getId(), dir4.get(0).getUserId());
+
+        // Filter for Semester 6
+        AdminAnalyticsFilterCriteria sem6 = new AdminAnalyticsFilterCriteria(null, null, null, 6, null, null, null);
+        List<AdminStudentDirectoryDTO> dir6 = adminAnalyticsService.getStudentDirectory(sem6);
+        assertEquals(1, dir6.size());
+        assertEquals(bob.getId(), dir6.get(0).getUserId());
+
+        // Filter for Semester 8 (no students)
+        AdminAnalyticsFilterCriteria sem8 = new AdminAnalyticsFilterCriteria(null, null, null, 8, null, null, null);
+        List<AdminStudentDirectoryDTO> dir8 = adminAnalyticsService.getStudentDirectory(sem8);
+        assertEquals(0, dir8.size());
+    }
+
+    @Test
+    public void testMissingBranchDoesNotBecomeFakeBranch() {
+        // Alice has no profile (branch is null)
+        studentProfileRepository.deleteAll();
+
+        AdminAnalyticsFilterCriteria branchFilter = new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null);
+        List<AdminStudentDirectoryDTO> dir = adminAnalyticsService.getStudentDirectory(branchFilter);
+        assertEquals(0, dir.size(), "Student with null/missing branch must not match 'CSE'");
+
+        AdminCohortAnalyticsDTO cohort = adminAnalyticsService.getCohortAnalytics(branchFilter);
+        assertEquals(0, cohort.getTotalEnrolled());
+    }
+
+    @Test
+    public void testMissingSemesterHandledSafely() {
+        // Alice has no profile, so semester is null
+        studentProfileRepository.deleteAll();
+
+        AdminAnalyticsFilterCriteria semFilter = new AdminAnalyticsFilterCriteria(null, null, null, 4, null, null, null);
+        List<AdminStudentDirectoryDTO> dir = adminAnalyticsService.getStudentDirectory(semFilter);
+        assertEquals(0, dir.size(), "Student with null semester must safely not match semester 4");
+    }
+
+    @Test
+    public void testAuthenticBaselineFilterWithAndWithoutBaseline() {
+        String aliceId = studentUser.getId();
+
+        // 1. Alice has authentic diagnostic baseline
+        AssessmentResult diagnostic = new AssessmentResult();
+        diagnostic.setUserId(aliceId);
+        diagnostic.setSubjectName("Computer Science");
+        diagnostic.setScore(10);
+        diagnostic.setTotalMarks(20);
+        diagnostic.setPercentage(50.0);
+        diagnostic.setTotalQuestions(20);
+        diagnostic.setCreatedAt(LocalDateTime.now().minusDays(10));
+        diagnostic.setTopicBreakdown(Map.of("OS", Map.of("percentage", 50.0, "correct", 5, "total", 10)));
+        assessmentResultRepository.save(diagnostic);
+
+        // 2. Bob has NO baseline (only quiz)
+        User bob = new User();
+        bob.setEmail("bob_baseline_" + System.currentTimeMillis() + "@edupilot.com");
+        bob.setPassword(passwordEncoder.encode("bobpass123"));
+        bob.setFullName("Bob NoBaseline");
+        bob.setRole(User.Role.STUDENT);
+        bob.setCreatedAt(LocalDateTime.now());
+        bob = userRepository.save(bob);
+
+        QuizSession qs = new QuizSession();
+        qs.setUserId(bob.getId());
+        qs.setSubjectName("Computer Science");
+        qs.setTotalQuestions(5);
+        qs.setCorrectCount(4);
+        qs.setStatus(QuizSession.Status.COMPLETED);
+        quizSessionRepository.save(qs);
+
+        // Filter: hasAuthenticBaseline = true
+        AdminAnalyticsFilterCriteria trueCriteria = new AdminAnalyticsFilterCriteria(null, null, null, null, null, null, true);
+        List<AdminStudentDirectoryDTO> withBaseline = adminAnalyticsService.getStudentDirectory(trueCriteria);
+        assertEquals(1, withBaseline.size());
+        assertEquals(aliceId, withBaseline.get(0).getUserId());
+        assertTrue(withBaseline.get(0).isHasAuthenticBaseline());
+
+        // Filter: hasAuthenticBaseline = false
+        AdminAnalyticsFilterCriteria falseCriteria = new AdminAnalyticsFilterCriteria(null, null, null, null, null, null, false);
+        List<AdminStudentDirectoryDTO> withoutBaseline = adminAnalyticsService.getStudentDirectory(falseCriteria);
+        assertEquals(1, withoutBaseline.size());
+        assertEquals(bob.getId(), withoutBaseline.get(0).getUserId());
+        assertFalse(withoutBaseline.get(0).isHasAuthenticBaseline());
+    }
+
+    @Test
+    public void testActivityStatusFilterAcrossCategories() {
+        // Setup 4 students: Active, At-Risk, Inactive, No Activity
+        String aliceId = studentUser.getId(); // Active (study session 2 days ago)
+        StudySession ssAlice = new StudySession();
+        ssAlice.setUserId(aliceId);
+        ssAlice.setStartTime(LocalDateTime.now().minusDays(2));
+        ssAlice.setEndTime(LocalDateTime.now().minusDays(2).plusHours(1));
+        studySessionRepository.save(ssAlice);
+
+        User bob = new User(); // At Risk (quiz 10 days ago)
+        bob.setEmail("bob_act_" + System.currentTimeMillis() + "@edupilot.com");
+        bob.setPassword(passwordEncoder.encode("bobpass123"));
+        bob.setFullName("Bob AtRisk");
+        bob.setRole(User.Role.STUDENT);
+        bob.setCreatedAt(LocalDateTime.now().minusDays(20));
+        bob = userRepository.save(bob);
+        QuizSession qsBob = new QuizSession();
+        qsBob.setUserId(bob.getId());
+        qsBob.setLastAnswerTime(LocalDateTime.now().minusDays(10));
+        qsBob.setStatus(QuizSession.Status.COMPLETED);
+        quizSessionRepository.save(qsBob);
+
+        User charlie = new User(); // Inactive (assessment 25 days ago)
+        charlie.setEmail("charlie_act_" + System.currentTimeMillis() + "@edupilot.com");
+        charlie.setPassword(passwordEncoder.encode("charliepass123"));
+        charlie.setFullName("Charlie Inactive");
+        charlie.setRole(User.Role.STUDENT);
+        charlie.setCreatedAt(LocalDateTime.now().minusDays(30));
+        charlie = userRepository.save(charlie);
+        AssessmentResult arCharlie = new AssessmentResult();
+        arCharlie.setUserId(charlie.getId());
+        arCharlie.setCreatedAt(LocalDateTime.now().minusDays(25));
+        arCharlie.setScore(50);
+        assessmentResultRepository.save(arCharlie);
+
+        User david = new User(); // No activity
+        david.setEmail("david_act_" + System.currentTimeMillis() + "@edupilot.com");
+        david.setPassword(passwordEncoder.encode("davidpass123"));
+        david.setFullName("David NoAct");
+        david.setRole(User.Role.STUDENT);
+        david.setCreatedAt(LocalDateTime.now());
+        david = userRepository.save(david);
+
+        // ACTIVE
+        AdminAnalyticsFilterCriteria actCriteria = new AdminAnalyticsFilterCriteria(null, null, null, null, null, "ACTIVE", null);
+        List<AdminStudentDirectoryDTO> actList = adminAnalyticsService.getStudentDirectory(actCriteria);
+        assertEquals(1, actList.size());
+        assertEquals(aliceId, actList.get(0).getUserId());
+
+        // AT_RISK
+        AdminAnalyticsFilterCriteria riskCriteria = new AdminAnalyticsFilterCriteria(null, null, null, null, null, "AT_RISK", null);
+        List<AdminStudentDirectoryDTO> riskList = adminAnalyticsService.getStudentDirectory(riskCriteria);
+        assertEquals(1, riskList.size());
+        assertEquals(bob.getId(), riskList.get(0).getUserId());
+
+        // INACTIVE
+        AdminAnalyticsFilterCriteria inactCriteria = new AdminAnalyticsFilterCriteria(null, null, null, null, null, "INACTIVE", null);
+        List<AdminStudentDirectoryDTO> inactList = adminAnalyticsService.getStudentDirectory(inactCriteria);
+        assertEquals(1, inactList.size());
+        assertEquals(charlie.getId(), inactList.get(0).getUserId());
+
+        // NO_ACTIVITY
+        AdminAnalyticsFilterCriteria noActCriteria = new AdminAnalyticsFilterCriteria(null, null, null, null, null, "NO_ACTIVITY", null);
+        List<AdminStudentDirectoryDTO> noActList = adminAnalyticsService.getStudentDirectory(noActCriteria);
+        assertEquals(1, noActList.size());
+        assertEquals(david.getId(), noActList.get(0).getUserId());
+    }
+
+    @Test
+    public void testDateCriteriaBoundsOnHistoricalTrends() {
+        String studentId = studentUser.getId();
+
+        // 3 assessments: Day -30, Day -15, Day -5
+        AssessmentResult a1 = new AssessmentResult();
+        a1.setUserId(studentId);
+        a1.setSubjectName("Math");
+        a1.setScore(40);
+        a1.setTotalMarks(100);
+        a1.setPercentage(40.0);
+        a1.setCreatedAt(LocalDateTime.now().minusDays(30));
+        assessmentResultRepository.save(a1);
+
+        AssessmentResult a2 = new AssessmentResult();
+        a2.setUserId(studentId);
+        a2.setSubjectName("Math");
+        a2.setScore(60);
+        a2.setTotalMarks(100);
+        a2.setPercentage(60.0);
+        a2.setCreatedAt(LocalDateTime.now().minusDays(15));
+        assessmentResultRepository.save(a2);
+
+        AssessmentResult a3 = new AssessmentResult();
+        a3.setUserId(studentId);
+        a3.setSubjectName("Math");
+        a3.setScore(80);
+        a3.setTotalMarks(100);
+        a3.setPercentage(80.0);
+        a3.setCreatedAt(LocalDateTime.now().minusDays(5));
+        assessmentResultRepository.save(a3);
+
+        // 1. startDate only (Day -20 to now) -> includes a2 (Day -15) and a3 (Day -5)
+        AdminAnalyticsFilterCriteria startOnly = new AdminAnalyticsFilterCriteria();
+        startOnly.setStartDate(LocalDate.now().minusDays(20));
+        AdminResearchTrendsDTO trendsStart = adminAnalyticsService.getResearchTrends(startOnly);
+        assertEquals(2, trendsStart.getTotalAssessments());
+        assertEquals(2, trendsStart.getObservations().size());
+
+        // 2. endDate only (up to Day -10) -> includes a1 (Day -30) and a2 (Day -15)
+        AdminAnalyticsFilterCriteria endOnly = new AdminAnalyticsFilterCriteria();
+        endOnly.setEndDate(LocalDate.now().minusDays(10));
+        AdminResearchTrendsDTO trendsEnd = adminAnalyticsService.getResearchTrends(endOnly);
+        assertEquals(2, trendsEnd.getTotalAssessments());
+        assertEquals(2, trendsEnd.getObservations().size());
+
+        // 3. Both start and end (Day -20 to Day -10) -> includes only a2 (Day -15)
+        AdminAnalyticsFilterCriteria both = new AdminAnalyticsFilterCriteria();
+        both.setStartDate(LocalDate.now().minusDays(20));
+        both.setEndDate(LocalDate.now().minusDays(10));
+        AdminResearchTrendsDTO trendsBoth = adminAnalyticsService.getResearchTrends(both);
+        assertEquals(1, trendsBoth.getTotalAssessments());
+        assertEquals(1, trendsBoth.getObservations().size());
+        assertEquals(60.0, trendsBoth.getObservations().get(0).getMeanAssessmentScore());
+
+        // 4. No date filter -> includes all 3
+        AdminResearchTrendsDTO trendsAll = adminAnalyticsService.getResearchTrends(new AdminAnalyticsFilterCriteria());
+        assertEquals(3, trendsAll.getTotalAssessments());
+        assertEquals(3, trendsAll.getObservations().size());
+    }
+
+    @Test
+    public void testInvalidDateRangeThrowsException() {
+        AdminAnalyticsFilterCriteria criteria = new AdminAnalyticsFilterCriteria();
+        criteria.setStartDate(LocalDate.now());
+
+        assertThrows(IllegalArgumentException.class, () -> {
+            criteria.setEndDate(LocalDate.now().minusDays(5));
+        });
+
+        assertThrows(IllegalArgumentException.class, () -> {
+            new AdminAnalyticsFilterCriteria(LocalDate.now(), LocalDate.now().minusDays(1), null, null, null, null, null);
+        });
+    }
+
+    @Test
+    public void testK0ImmutabilityUnderDateFiltering() {
+        String studentId = studentUser.getId();
+
+        // 1. Diagnostic assessment in January (Day -120) with score 45.0%
+        AssessmentResult diagnostic = new AssessmentResult();
+        diagnostic.setUserId(studentId);
+        diagnostic.setSubjectCode("CS101");
+        diagnostic.setSubjectName("Computer Science");
+        diagnostic.setScore(45);
+        diagnostic.setTotalMarks(100);
+        diagnostic.setPercentage(45.0);
+        diagnostic.setTotalQuestions(20);
+        diagnostic.setCreatedAt(LocalDateTime.now().minusDays(120));
+        diagnostic.setTopicBreakdown(Map.of("Algorithms", Map.of("percentage", 45.0, "correct", 9, "total", 20)));
+        assessmentResultRepository.save(diagnostic);
+
+        // 2. Later assessment in August (Day -40) with score 75.0%
+        AssessmentResult laterAssessment = new AssessmentResult();
+        laterAssessment.setUserId(studentId);
+        laterAssessment.setSubjectCode("CS101");
+        laterAssessment.setSubjectName("Computer Science");
+        laterAssessment.setScore(75);
+        laterAssessment.setTotalMarks(100);
+        laterAssessment.setPercentage(75.0);
+        laterAssessment.setTotalQuestions(20);
+        laterAssessment.setCreatedAt(LocalDateTime.now().minusDays(40));
+        assessmentResultRepository.save(laterAssessment);
+
+        // 3. Current concept mastery: 85.0%
+        ConceptMastery cm = new ConceptMastery();
+        cm.setUserId(studentId);
+        cm.setSubjectCode("CS101");
+        cm.setSubjectName("Computer Science");
+        cm.setConceptName("Algorithms");
+        cm.setAccuracy(85.0);
+        cm.setMasteryScore(85.0);
+        cm.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        cm.setLastAssessedAt(LocalDateTime.now().minusDays(10));
+        conceptMasteryRepository.save(cm);
+
+        // Apply a date filter restricted to July–October (Day -60 to now), which excludes the January diagnostic
+        AdminAnalyticsFilterCriteria filterJulyOctober = new AdminAnalyticsFilterCriteria();
+        filterJulyOctober.setStartDate(LocalDate.now().minusDays(60));
+        filterJulyOctober.setEndDate(LocalDate.now());
+
+        // Verify Subject Research Analytics under date filtering
+        AdminCohortSubjectAnalyticsDTO subjectAnalytics = adminAnalyticsService.getCohortSubjectAnalytics(filterJulyOctober);
+        assertNotNull(subjectAnalytics);
+        assertEquals(1, subjectAnalytics.getTotalSubjectsCount());
+
+        SubjectResearchSummaryDTO csSummary = subjectAnalytics.getSubjects().get(0);
+        assertEquals("CS101", csSummary.getSubjectCode());
+
+        // CRITICAL RESEARCH INTEGRITY ASSERTION:
+        // Baseline K0 MUST REMAIN 45.0% from the January diagnostic.
+        // It must NEVER be redefined or changed to 75.0% because of the date range filter!
+        assertEquals(45.0, csSummary.getMeanBaselineKnowledge(),
+                "K0 must be permanently derived from globally earliest diagnostic (45.0%), never redefined inside date filter range");
+        assertEquals(85.0, csSummary.getMeanCurrentKnowledge());
+        assertEquals(40.0, csSummary.getMeanGrowthPp());
+    }
+
+    @Test
+    public void testSubjectCodeFilterMatchingIsDeterministic() {
+        String studentId = studentUser.getId();
+
+        // S1 enrolled in CS101 and MATH101
+        StudentProfile p = new StudentProfile();
+        p.setUserId(studentId);
+        p.setSubjects(List.of("Data Structures", "Mathematics"));
+        studentProfileRepository.save(p);
+
+        // CS101 Concept Mastery
+        ConceptMastery cm1 = new ConceptMastery();
+        cm1.setUserId(studentId);
+        cm1.setSubjectCode("CS101");
+        cm1.setSubjectName("Data Structures");
+        cm1.setConceptName("Queues");
+        cm1.setAccuracy(80.0);
+        cm1.setMasteryScore(80.0);
+        cm1.setLastAssessedAt(LocalDateTime.now());
+        conceptMasteryRepository.save(cm1);
+
+        // MATH101 Concept Mastery
+        ConceptMastery cm2 = new ConceptMastery();
+        cm2.setUserId(studentId);
+        cm2.setSubjectCode("MATH101");
+        cm2.setSubjectName("Mathematics");
+        cm2.setConceptName("Calculus");
+        cm2.setAccuracy(90.0);
+        cm2.setMasteryScore(90.0);
+        cm2.setLastAssessedAt(LocalDateTime.now());
+        conceptMasteryRepository.save(cm2);
+
+        // Filter: subjectCode = "CS101"
+        AdminAnalyticsFilterCriteria csCriteria = new AdminAnalyticsFilterCriteria();
+        csCriteria.setSubjectCode("CS101");
+
+        AdminCohortSubjectAnalyticsDTO csResult = adminAnalyticsService.getCohortSubjectAnalytics(csCriteria);
+        assertEquals(1, csResult.getTotalSubjectsCount());
+        assertEquals("CS101", csResult.getSubjects().get(0).getSubjectCode());
+
+        // Filter: subjectCode = "MATH101"
+        AdminAnalyticsFilterCriteria mathCriteria = new AdminAnalyticsFilterCriteria();
+        mathCriteria.setSubjectCode("MATH101");
+
+        AdminCohortSubjectAnalyticsDTO mathResult = adminAnalyticsService.getCohortSubjectAnalytics(mathCriteria);
+        assertEquals(1, mathResult.getTotalSubjectsCount());
+        assertEquals("MATH101", mathResult.getSubjects().get(0).getSubjectCode());
+    }
+
+    @Test
+    public void testNoSyntheticObservationsCreatedWhenEmpty() {
+        // Date range with zero activity
+        AdminAnalyticsFilterCriteria futureFilter = new AdminAnalyticsFilterCriteria();
+        futureFilter.setStartDate(LocalDate.now().plusDays(10));
+        futureFilter.setEndDate(LocalDate.now().plusDays(20));
+
+        AdminResearchTrendsDTO trends = adminAnalyticsService.getResearchTrends(futureFilter);
+        assertNotNull(trends);
+        assertEquals(0, trends.getTotalObservations());
+        assertEquals(0, trends.getTotalAssessments());
+        assertEquals(0, trends.getObservations().size(), "No fabricated or synthetic trend points should be created");
     }
 }
