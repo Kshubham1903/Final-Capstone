@@ -49,12 +49,22 @@ import {
   AdminStudentDirectoryDTO,
   AdminResearchTrendsDTO,
   AdminCohortSubjectAnalyticsDTO,
-  SubjectResearchSummaryDTO
+  SubjectResearchSummaryDTO,
+  AdminResearchAnalyticsFilters
 } from "../../../services/api";
+import { AdminResearchFilterBar } from "../../../components/admin/AdminResearchFilterBar";
 
 export default function ResearchAnalyticsPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<"cohort" | "trends" | "subjects" | "directory">("cohort");
+
+  // Filter State
+  const [filters, setFilters] = useState<AdminResearchAnalyticsFilters>({});
+  const [isFilterApplying, setIsFilterApplying] = useState(false);
+
+  // Persistent Reference Lists for Filter Selectors (Unfiltered)
+  const [allAvailableBranches, setAllAvailableBranches] = useState<string[]>([]);
+  const [allAvailableSubjects, setAllAvailableSubjects] = useState<Array<{ code: string; name: string }>>([]);
 
   // Cohort state
   const [cohort, setCohort] = useState<AdminCohortAnalytics | null>(null);
@@ -78,75 +88,125 @@ export default function ResearchAnalyticsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterActivity, setFilterActivity] = useState<string>("ALL");
 
-  const loadCohortAnalytics = async () => {
+  const loadCohortAnalytics = async (f: AdminResearchAnalyticsFilters = filters) => {
     setCohortLoading(true);
     setCohortError(null);
     try {
-      const data = await fetchAdminCohortAnalytics();
+      const data = await fetchAdminCohortAnalytics(f);
       if (data) {
         setCohort(data);
       } else {
         setCohortError("Unable to retrieve cohort research analytics. Please ensure you are logged in as an ADMIN.");
       }
-    } catch (err) {
-      setCohortError("Network error while communicating with the cohort analytics service.");
+    } catch (err: any) {
+      setCohortError(err?.message || "Invalid research analytics filter. Please check the selected filters.");
     } finally {
       setCohortLoading(false);
     }
   };
 
-  const loadResearchTrends = async () => {
+  const loadResearchTrends = async (f: AdminResearchAnalyticsFilters = filters) => {
     setTrendsLoading(true);
     setTrendsError(null);
     try {
-      const data = await fetchAdminResearchTrends();
+      const data = await fetchAdminResearchTrends(f);
       if (data) {
         setTrends(data);
       } else {
         setTrendsError("Unable to retrieve historical research trends. Please ensure you are logged in as an ADMIN.");
       }
-    } catch (err) {
-      setTrendsError("Network error while communicating with the research trends service.");
+    } catch (err: any) {
+      setTrendsError(err?.message || "Invalid research analytics filter. Please check the selected filters.");
     } finally {
       setTrendsLoading(false);
     }
   };
 
-  const loadSubjectAnalytics = async () => {
+  const loadSubjectAnalytics = async (f: AdminResearchAnalyticsFilters = filters) => {
     setSubjectsLoading(true);
     setSubjectsError(null);
     try {
-      const data = await fetchAdminSubjectAnalytics();
+      const data = await fetchAdminSubjectAnalytics(f);
       if (data) {
         setSubjectsData(data);
+
+        // Extract and preserve unfiltered subjects reference list
+        const isUnfiltered = !f || Object.keys(f).length === 0;
+        if (isUnfiltered && data.subjects && data.subjects.length > 0) {
+          const subjects = data.subjects.map((sub) => ({
+            code: sub.subjectCode,
+            name: sub.subjectName
+          }));
+          setAllAvailableSubjects((prev) => {
+            const existingKeys = new Set(prev.map((p) => p.code || p.name));
+            const newOnes = subjects.filter((s) => !existingKeys.has(s.code || s.name));
+            return [...prev, ...newOnes];
+          });
+        }
       } else {
         setSubjectsError("Unable to retrieve subject research analytics. Please ensure you are logged in as an ADMIN.");
       }
-    } catch (err) {
-      setSubjectsError("Network error while communicating with the subject analytics service.");
+    } catch (err: any) {
+      setSubjectsError(err?.message || "Invalid research analytics filter. Please check the selected filters.");
     } finally {
       setSubjectsLoading(false);
     }
   };
 
-  const loadStudentDirectory = async () => {
+  const loadStudentDirectory = async (f: AdminResearchAnalyticsFilters = filters) => {
     setDirectoryLoading(true);
     setDirectoryError(null);
     try {
-      const list = await fetchAdminStudentDirectory();
+      const list = await fetchAdminStudentDirectory(f);
       setStudents(list);
-    } catch (err) {
-      setDirectoryError("Network error while communicating with the student directory service.");
+
+      // Extract and preserve unfiltered branches reference list
+      const isUnfiltered = !f || Object.keys(f).length === 0;
+      if (isUnfiltered && list.length > 0) {
+        const branches = Array.from(
+          new Set(
+            list
+              .map((s) => s.branch)
+              .filter((b): b is string => Boolean(b && b.trim()))
+          )
+        );
+        if (branches.length > 0) {
+          setAllAvailableBranches((prev) => Array.from(new Set([...prev, ...branches])));
+        }
+      }
+    } catch (err: any) {
+      setDirectoryError(err?.message || "Invalid research analytics filter. Please check the selected filters.");
     } finally {
       setDirectoryLoading(false);
     }
   };
 
+  const loadAllAnalytics = async (f: AdminResearchAnalyticsFilters = filters) => {
+    setIsFilterApplying(true);
+    try {
+      await Promise.allSettled([
+        loadCohortAnalytics(f),
+        loadResearchTrends(f),
+        loadSubjectAnalytics(f),
+        loadStudentDirectory(f)
+      ]);
+    } finally {
+      setIsFilterApplying(false);
+    }
+  };
+
+  const handleApplyFilters = (newFilters: AdminResearchAnalyticsFilters) => {
+    setFilters(newFilters);
+    loadAllAnalytics(newFilters);
+  };
+
+  const handleClearFilters = () => {
+    setFilters({});
+    loadAllAnalytics({});
+  };
+
   useEffect(() => {
-    loadCohortAnalytics();
-    loadResearchTrends();
-    loadSubjectAnalytics();
-    loadStudentDirectory();
+    loadAllAnalytics(filters);
   }, []);
 
   const filteredStudents = students.filter((s) => {
@@ -265,10 +325,10 @@ export default function ResearchAnalyticsPage() {
 
             <button
               onClick={() => {
-                if (activeTab === "cohort") loadCohortAnalytics();
-                else if (activeTab === "trends") loadResearchTrends();
-                else if (activeTab === "subjects") loadSubjectAnalytics();
-                else loadStudentDirectory();
+                if (activeTab === "cohort") loadCohortAnalytics(filters);
+                else if (activeTab === "trends") loadResearchTrends(filters);
+                else if (activeTab === "subjects") loadSubjectAnalytics(filters);
+                else loadStudentDirectory(filters);
               }}
               disabled={
                 activeTab === "cohort" ? cohortLoading :
@@ -294,6 +354,16 @@ export default function ResearchAnalyticsPage() {
           </div>
         </div>
 
+        {/* REUSABLE RESEARCH FILTER BAR */}
+        <AdminResearchFilterBar
+          filters={filters}
+          onApplyFilters={handleApplyFilters}
+          onClearFilters={handleClearFilters}
+          isLoading={isFilterApplying || cohortLoading || trendsLoading || subjectsLoading || directoryLoading}
+          availableBranches={allAvailableBranches}
+          availableSubjects={allAvailableSubjects}
+        />
+
         {/* TAB 1: COHORT ANALYTICS */}
         {activeTab === "cohort" && (
           <>
@@ -305,7 +375,7 @@ export default function ResearchAnalyticsPage() {
                   <span>{cohortError}</span>
                 </div>
                 <button
-                  onClick={loadCohortAnalytics}
+                  onClick={() => loadCohortAnalytics(filters)}
                   className="px-4 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs transition-colors cursor-pointer"
                 >
                   Retry
@@ -670,7 +740,7 @@ export default function ResearchAnalyticsPage() {
                   <span>{trendsError}</span>
                 </div>
                 <button
-                  onClick={loadResearchTrends}
+                  onClick={() => loadResearchTrends(filters)}
                   className="px-4 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs transition-colors cursor-pointer"
                 >
                   Retry
@@ -927,7 +997,7 @@ export default function ResearchAnalyticsPage() {
                   <span>{subjectsError}</span>
                 </div>
                 <button
-                  onClick={loadSubjectAnalytics}
+                  onClick={() => loadSubjectAnalytics(filters)}
                   className="px-4 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs transition-colors cursor-pointer"
                 >
                   Retry
@@ -1469,7 +1539,7 @@ export default function ResearchAnalyticsPage() {
                   <span>{directoryError}</span>
                 </div>
                 <button
-                  onClick={loadStudentDirectory}
+                  onClick={() => loadStudentDirectory(filters)}
                   className="px-4 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs"
                 >
                   Retry

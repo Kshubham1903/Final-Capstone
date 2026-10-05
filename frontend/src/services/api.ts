@@ -2136,19 +2136,65 @@ export interface AdminAnalyticsOverview {
   atRiskStudentCount: number;
 }
 
-export async function fetchAdminAnalyticsOverview(): Promise<AdminAnalyticsOverview | null> {
+export interface AdminResearchAnalyticsFilters {
+  startDate?: string;
+  endDate?: string;
+  branch?: string;
+  semester?: number;
+  subjectCode?: string;
+  activityStatus?: string;
+  hasAuthenticBaseline?: boolean;
+}
+
+export function buildAnalyticsQueryString(filters?: AdminResearchAnalyticsFilters): string {
+  if (!filters) return "";
+  const params = new URLSearchParams();
+  if (filters.startDate && filters.startDate.trim()) {
+    params.set("startDate", filters.startDate.trim());
+  }
+  if (filters.endDate && filters.endDate.trim()) {
+    params.set("endDate", filters.endDate.trim());
+  }
+  if (filters.branch && filters.branch.trim() && filters.branch.trim().toUpperCase() !== "ALL") {
+    params.set("branch", filters.branch.trim());
+  }
+  if (filters.semester !== undefined && filters.semester !== null && !isNaN(filters.semester)) {
+    params.set("semester", String(filters.semester));
+  }
+  if (filters.subjectCode && filters.subjectCode.trim() && filters.subjectCode.trim().toUpperCase() !== "ALL") {
+    params.set("subjectCode", filters.subjectCode.trim());
+  }
+  if (filters.activityStatus && filters.activityStatus.trim() && filters.activityStatus.trim().toUpperCase() !== "ALL") {
+    params.set("activityStatus", filters.activityStatus.trim());
+  }
+  if (filters.hasAuthenticBaseline !== undefined && filters.hasAuthenticBaseline !== null) {
+    params.set("hasAuthenticBaseline", String(filters.hasAuthenticBaseline));
+  }
+  const str = params.toString();
+  return str ? `?${str}` : "";
+}
+
+export async function fetchAdminAnalyticsOverview(filters?: AdminResearchAnalyticsFilters): Promise<AdminAnalyticsOverview | null> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/overview`, {
+      const q = buildAnalyticsQueryString(filters);
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/overview${q}`, {
         method: "GET",
         headers: getAuthHeaders()
       });
       if (res.ok) {
         return await res.json();
       }
+      if (res.status === 400) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.message || "Invalid research analytics filter. Please check the selected filters.");
+      }
       handleAuthError(res);
-    } catch (err) {
+    } catch (err: any) {
+      if (err.message && err.message.includes("Invalid")) {
+        throw err;
+      }
       console.warn("Failed to fetch admin analytics overview:", err);
     }
   }
@@ -2184,19 +2230,27 @@ export interface AdminCohortAnalytics {
   dataSufficiencyNote: string;
 }
 
-export async function fetchAdminCohortAnalytics(): Promise<AdminCohortAnalytics | null> {
+export async function fetchAdminCohortAnalytics(filters?: AdminResearchAnalyticsFilters): Promise<AdminCohortAnalytics | null> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/cohort`, {
+      const q = buildAnalyticsQueryString(filters);
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/cohort${q}`, {
         method: "GET",
         headers: getAuthHeaders()
       });
       if (res.ok) {
         return await res.json();
       }
+      if (res.status === 400) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.message || "Invalid research analytics filter. Please check the selected filters.");
+      }
       handleAuthError(res);
-    } catch (err) {
+    } catch (err: any) {
+      if (err.message && err.message.includes("Invalid")) {
+        throw err;
+      }
       console.warn("Failed to fetch admin cohort analytics:", err);
     }
   }
@@ -2216,19 +2270,27 @@ export interface AdminStudentDirectoryDTO {
   growthPp: number | null;
 }
 
-export async function fetchAdminStudentDirectory(): Promise<AdminStudentDirectoryDTO[]> {
+export async function fetchAdminStudentDirectory(filters?: AdminResearchAnalyticsFilters): Promise<AdminStudentDirectoryDTO[]> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/students`, {
+      const q = buildAnalyticsQueryString(filters);
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/students${q}`, {
         method: "GET",
         headers: getAuthHeaders()
       });
       if (res.ok) {
         return await res.json();
       }
+      if (res.status === 400) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.message || "Invalid research analytics filter. Please check the selected filters.");
+      }
       handleAuthError(res);
-    } catch (err) {
+    } catch (err: any) {
+      if (err.message && err.message.includes("Invalid")) {
+        throw err;
+      }
       console.warn("Failed to fetch admin student directory:", err);
     }
   }
@@ -2417,19 +2479,27 @@ export interface AdminResearchTrendsDTO {
   observations: AdminTrendPointDTO[];
 }
 
-export async function fetchAdminResearchTrends(): Promise<AdminResearchTrendsDTO | null> {
+export async function fetchAdminResearchTrends(filters?: AdminResearchAnalyticsFilters): Promise<AdminResearchTrendsDTO | null> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/trends`, {
+      const q = buildAnalyticsQueryString(filters);
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/trends${q}`, {
         method: "GET",
         headers: getAuthHeaders()
       });
       if (res.ok) {
         return await res.json();
       }
+      if (res.status === 400) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.message || "Invalid research analytics filter. Please check the selected filters.");
+      }
       handleAuthError(res);
-    } catch (err) {
+    } catch (err: any) {
+      if (err.message && err.message.includes("Invalid")) {
+        throw err;
+      }
       console.warn("Failed to fetch admin research trends:", err);
     }
   }
@@ -2467,19 +2537,27 @@ export interface AdminCohortSubjectAnalyticsDTO {
   subjects: SubjectResearchSummaryDTO[];
 }
 
-export async function fetchAdminSubjectAnalytics(): Promise<AdminCohortSubjectAnalyticsDTO | null> {
+export async function fetchAdminSubjectAnalytics(filters?: AdminResearchAnalyticsFilters): Promise<AdminCohortSubjectAnalyticsDTO | null> {
   const online = await checkBackendConnection();
   if (online) {
     try {
-      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/subjects`, {
+      const q = buildAnalyticsQueryString(filters);
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/subjects${q}`, {
         method: "GET",
         headers: getAuthHeaders()
       });
       if (res.ok) {
         return await res.json();
       }
+      if (res.status === 400) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.message || "Invalid research analytics filter. Please check the selected filters.");
+      }
       handleAuthError(res);
-    } catch (err) {
+    } catch (err: any) {
+      if (err.message && err.message.includes("Invalid")) {
+        throw err;
+      }
       console.warn("Failed to fetch admin subject analytics:", err);
     }
   }
