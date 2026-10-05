@@ -2202,3 +2202,189 @@ export async function fetchAdminCohortAnalytics(): Promise<AdminCohortAnalytics 
   }
   return null;
 }
+
+export interface AdminStudentDirectoryDTO {
+  userId: string;
+  fullName: string;
+  email: string;
+  branch: string | null;
+  semester: number | null;
+  activityStatus: "ACTIVE" | "AT_RISK" | "INACTIVE" | "NO_ACTIVITY" | string;
+  hasAuthenticBaseline: boolean;
+  baselineKnowledge: number | null;
+  currentKnowledge: number | null;
+  growthPp: number | null;
+}
+
+export async function fetchAdminStudentDirectory(): Promise<AdminStudentDirectoryDTO[]> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/students`, {
+        method: "GET",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      handleAuthError(res);
+    } catch (err) {
+      console.warn("Failed to fetch admin student directory:", err);
+    }
+  }
+  return [];
+}
+
+export interface AdminStudentAnalyticsDTO {
+  student: {
+    userId: string;
+    fullName: string;
+    email: string;
+    branch: string | null;
+    semester: number | null;
+    institution: string | null;
+    degree: string | null;
+    careerGoals: string | null;
+    learningStyle: string | null;
+    enrolledSubjects: string[];
+  };
+  knowledge: {
+    hasAuthenticBaseline: boolean;
+    baselineKnowledge: number | null;
+    currentKnowledge: number | null;
+    growthPp: number | null;
+    normalizedLearningGain: number | null;
+  };
+  assessmentSummary: {
+    totalAssessments: number;
+    completedAssessments: number;
+    baselineAssessmentDate: string | null;
+    latestAssessmentDate: string | null;
+    latestAssessmentScore: number | null;
+    latestAssessmentPercentage: number | null;
+  };
+  assessmentHistory: Array<{
+    id: string;
+    sessionId: string;
+    subjectCode: string;
+    subjectName: string;
+    moduleType: string;
+    status: string;
+    score: number;
+    totalMarks: number;
+    percentage: number;
+    accuracy: number;
+    masteryLevel: string;
+    totalQuestions: number;
+    correctAnswers: number;
+    incorrectAnswers: number;
+    skippedQuestions: number;
+    topicBreakdown: Record<string, any> | null;
+    createdAt: string;
+  }>;
+  quizSummary: {
+    totalCompletedQuizzes: number;
+    totalQuestions: number;
+    totalCorrect: number;
+    accuracy: number;
+  };
+  quizHistory: Array<{
+    id: string;
+    subjectCode: string;
+    subjectName: string;
+    moduleType: string;
+    isVerificationQuiz: boolean;
+    targetConcept: string;
+    totalQuestions: number;
+    correctCount: number;
+    incorrectCount: number;
+    accuracy: number;
+    status: string;
+    startTime: string;
+    lastAnswerTime: string;
+  }>;
+  subjectPerformance: Array<{
+    subjectCode: string;
+    subjectName: string;
+    baselineScore: number | null;
+    currentScore: number | null;
+    growthPp: number | null;
+    normalizedGain: number | null;
+    totalConcepts: number;
+    weakConcepts: number;
+    roadmapProgressPercentage: number | null;
+  }>;
+  conceptMastery: Array<{
+    id: string;
+    subjectCode: string;
+    subjectName: string;
+    topic: string;
+    conceptName: string;
+    masteryLevel: string;
+    status: string;
+    accuracy: number;
+    confidenceScore: number;
+    attemptCount: number;
+    correctCount: number;
+    wrongCount: number;
+    masteryScore: number;
+    lastAssessedAt: string;
+  }>;
+  activity: {
+    status: "ACTIVE" | "AT_RISK" | "INACTIVE" | "NO_ACTIVITY" | string;
+    lastActivityAt: string | null;
+    daysSinceLastActivity: number | null;
+    totalStudySessions: number;
+    totalStudyMinutes: number;
+  };
+  satisfaction: {
+    averageRating: number | null;
+    totalReviews: number;
+    latestRating: number | null;
+    byCategory: Record<string, number | null>;
+    reviews: Array<{
+      rating: number;
+      feedbackType: string;
+      comment: string;
+      timestamp: string;
+    }>;
+  };
+  remediation: {
+    totalSessions: number;
+    completedSessions: number;
+    activeSessions: number;
+    sessions: Array<{
+      id: string;
+      subject: string;
+      concept: string;
+      moduleType: string;
+      completed: boolean;
+      createdAt: string;
+    }>;
+  };
+  trajectory: Array<{
+    timestamp: string;
+    overallKnowledgeScore: number;
+    engagementScore: number;
+    topicMastery: Record<string, number>;
+  }>;
+}
+
+export async function fetchAdminStudentAnalytics(userId: string): Promise<AdminStudentAnalyticsDTO | null> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/students/${encodeURIComponent(userId)}`, {
+        method: "GET",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      handleAuthError(res);
+    } catch (err) {
+      console.warn("Failed to fetch admin individual student analytics:", err);
+    }
+  }
+  return null;
+}

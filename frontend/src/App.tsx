@@ -10,6 +10,7 @@ import FacultyDashboard from "./app/faculty/page";
 import QuizManagerDashboard from "./app/faculty/quiz-manager/page";
 import AdminDashboard from "./app/admin/page";
 import ResearchAnalyticsPage from "./app/admin/research-analytics/page";
+import IndividualStudentAnalyticsPage from "./app/admin/research-analytics/students/[userId]/page";
 import AITutorPage from "./pages/AITutorPage";
 import OnboardingGuard from "./components/OnboardingGuard";
 
@@ -34,6 +35,7 @@ export default function App() {
       <Route path="/faculty/quiz-manager" element={<QuizManagerDashboard />} />
       <Route path="/admin" element={<AdminDashboard />} />
       <Route path="/admin/research-analytics" element={<ResearchAnalyticsPage />} />
+      <Route path="/admin/research-analytics/students/:userId" element={<IndividualStudentAnalyticsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

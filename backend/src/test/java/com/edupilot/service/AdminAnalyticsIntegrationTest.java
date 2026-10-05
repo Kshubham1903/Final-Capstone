@@ -2,17 +2,11 @@ package com.edupilot.service;
 
 import com.edupilot.dto.AdminAnalyticsOverviewDTO;
 import com.edupilot.dto.AdminCohortAnalyticsDTO;
-import com.edupilot.model.AssessmentResult;
-import com.edupilot.model.ConceptMastery;
-import com.edupilot.model.QuizSession;
-import com.edupilot.model.StudentSatisfaction;
-import com.edupilot.model.User;
-import com.edupilot.repository.AssessmentResultRepository;
-import com.edupilot.repository.ConceptMasteryRepository;
-import com.edupilot.repository.QuizSessionRepository;
-import com.edupilot.repository.StudentProfileRepository;
-import com.edupilot.repository.StudentSatisfactionRepository;
-import com.edupilot.repository.UserRepository;
+import com.edupilot.dto.AdminStudentAnalyticsDTO;
+import com.edupilot.dto.AdminStudentDirectoryDTO;
+import com.edupilot.model.*;
+import com.edupilot.repository.*;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -63,6 +57,18 @@ public class AdminAnalyticsIntegrationTest {
     private StudentSatisfactionRepository satisfactionRepository;
 
     @Autowired
+    private StudySessionRepository studySessionRepository;
+
+    @Autowired
+    private RemediationSessionRepository remediationSessionRepository;
+
+    @Autowired
+    private StudentStateSnapshotRepository snapshotRepository;
+
+    @Autowired
+    private SubjectRoadmapRepository subjectRoadmapRepository;
+
+    @Autowired
     private StudentService studentService;
 
     @Autowired
@@ -91,6 +97,10 @@ public class AdminAnalyticsIntegrationTest {
         quizSessionRepository.deleteAll();
         conceptMasteryRepository.deleteAll();
         satisfactionRepository.deleteAll();
+        studySessionRepository.deleteAll();
+        remediationSessionRepository.deleteAll();
+        snapshotRepository.deleteAll();
+        subjectRoadmapRepository.deleteAll();
 
         long timestamp = System.currentTimeMillis();
 
@@ -571,5 +581,622 @@ public class AdminAnalyticsIntegrationTest {
         assertNull(dto.getSatisfaction().getByCategory().get("LEARNING_ACTIVITY"));
 
         assertEquals("Based on 1 student(s) with verified diagnostic baselines.", dto.getDataSufficiencyNote());
+    }
+
+    @Test
+    public void testAdminCanAccessStudentDirectoryEndpoint() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/students")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String json = result.getResponse().getContentAsString();
+        List<AdminStudentDirectoryDTO> directory = objectMapper.readValue(json, new TypeReference<List<AdminStudentDirectoryDTO>>() {});
+        assertNotNull(directory);
+        assertEquals(1, directory.size(), "Directory should contain exactly 1 student");
+        assertEquals(studentUser.getId(), directory.get(0).getUserId());
+        assertEquals("Alice Student", directory.get(0).getFullName());
+        assertEquals(studentUser.getEmail(), directory.get(0).getEmail());
+    }
+
+    @Test
+    public void testStudentCannotAccessStudentDirectoryEndpoint() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/students")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testFacultyCannotAccessStudentDirectoryEndpoint() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/students")
+                        .header("Authorization", "Bearer " + facultyToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testUnauthenticatedCannotAccessStudentDirectoryEndpoint() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/students")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void testStudentDirectoryContainsOnlyStudents() throws Exception {
+        // Setup additional student
+        User student2 = new User();
+        student2.setEmail("bob_dir_" + System.currentTimeMillis() + "@edupilot.com");
+        student2.setPassword(passwordEncoder.encode("bobpass123"));
+        student2.setFullName("Bob Student");
+        student2.setRole(User.Role.STUDENT);
+        student2.setCreatedAt(LocalDateTime.now());
+        userRepository.save(student2);
+
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/students")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String json = result.getResponse().getContentAsString();
+        List<AdminStudentDirectoryDTO> directory = objectMapper.readValue(json, new TypeReference<List<AdminStudentDirectoryDTO>>() {});
+        assertNotNull(directory);
+        assertEquals(2, directory.size(), "Should only contain the 2 STUDENT users and exclude ADMIN/FACULTY");
+
+        for (AdminStudentDirectoryDTO item : directory) {
+            assertNotEquals(adminUser.getId(), item.getUserId());
+            assertNotEquals(facultyUser.getId(), item.getUserId());
+        }
+    }
+
+    @Test
+    public void testStudentWithoutAuthenticBaselineHasNullBaselineAndGrowth() throws Exception {
+        // studentUser in setup has no diagnostic assessment
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/students")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String json = result.getResponse().getContentAsString();
+        List<AdminStudentDirectoryDTO> directory = objectMapper.readValue(json, new TypeReference<List<AdminStudentDirectoryDTO>>() {});
+        assertNotNull(directory);
+        assertEquals(1, directory.size());
+
+        AdminStudentDirectoryDTO studentDto = directory.get(0);
+        assertFalse(studentDto.isHasAuthenticBaseline(), "Student without diagnostic must not have authentic baseline");
+        assertNull(studentDto.getBaselineKnowledge(), "Baseline knowledge must be null");
+        assertNull(studentDto.getGrowthPp(), "Growth pp must be null");
+        assertEquals("NO_ACTIVITY", studentDto.getActivityStatus());
+    }
+
+    @Test
+    public void testStudentWithAuthenticBaselineCalculatesMetrics() throws Exception {
+        String studentId = studentUser.getId();
+
+        // 1. Create authentic diagnostic
+        AssessmentResult diagnostic = new AssessmentResult();
+        diagnostic.setUserId(studentId);
+        diagnostic.setSubjectName("Data Structures & Algorithms");
+        diagnostic.setScore(8);
+        diagnostic.setTotalMarks(20);
+        diagnostic.setPercentage(40.0);
+        diagnostic.setTotalQuestions(20);
+        diagnostic.setCreatedAt(LocalDateTime.now().minusDays(5));
+        diagnostic.setTopicBreakdown(Map.of(
+                "Trees", Map.of("percentage", 40.0, "correct", 4, "total", 10),
+                "Graphs", Map.of("percentage", 40.0, "correct", 4, "total", 10)
+        ));
+        assessmentResultRepository.save(diagnostic);
+
+        // 2. Create concept mastery records
+        ConceptMastery cm1 = new ConceptMastery();
+        cm1.setUserId(studentId);
+        cm1.setSubjectName("Data Structures & Algorithms");
+        cm1.setTopic("Trees");
+        cm1.setConceptName("Trees");
+        cm1.setAccuracy(80.0);
+        cm1.setMasteryScore(80.0);
+        cm1.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        cm1.setLastAssessedAt(LocalDateTime.now().minusDays(1));
+        conceptMasteryRepository.save(cm1);
+
+        ConceptMastery cm2 = new ConceptMastery();
+        cm2.setUserId(studentId);
+        cm2.setSubjectName("Data Structures & Algorithms");
+        cm2.setTopic("Graphs");
+        cm2.setConceptName("Graphs");
+        cm2.setAccuracy(70.0);
+        cm2.setMasteryScore(70.0);
+        cm2.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        cm2.setLastAssessedAt(LocalDateTime.now().minusDays(1));
+        conceptMasteryRepository.save(cm2);
+
+        // 3. Quiz session for active status (2 days ago)
+        QuizSession qs = new QuizSession();
+        qs.setUserId(studentId);
+        qs.setSubjectName("Data Structures & Algorithms");
+        qs.setTotalQuestions(5);
+        qs.setCorrectCount(4);
+        qs.setStatus(QuizSession.Status.COMPLETED);
+        qs.setLastAnswerTime(LocalDateTime.now().minusDays(2));
+        quizSessionRepository.save(qs);
+
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/students")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String json = result.getResponse().getContentAsString();
+        List<AdminStudentDirectoryDTO> directory = objectMapper.readValue(json, new TypeReference<List<AdminStudentDirectoryDTO>>() {});
+        assertNotNull(directory);
+        assertEquals(1, directory.size());
+
+        AdminStudentDirectoryDTO studentDto = directory.get(0);
+        assertTrue(studentDto.isHasAuthenticBaseline(), "Should be authentic baseline");
+        assertEquals(40.0, studentDto.getBaselineKnowledge(), 0.1);
+        assertEquals(75.0, studentDto.getCurrentKnowledge(), 0.1);
+        assertEquals(35.0, studentDto.getGrowthPp(), 0.1);
+        assertEquals("ACTIVE", studentDto.getActivityStatus());
+    }
+
+    @Test
+    public void testStudentDirectoryMissingProfileHandledGracefully() throws Exception {
+        // Ensure studentProfileRepository is empty
+        studentProfileRepository.deleteAll();
+
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/students")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String json = result.getResponse().getContentAsString();
+        List<AdminStudentDirectoryDTO> directory = objectMapper.readValue(json, new TypeReference<List<AdminStudentDirectoryDTO>>() {});
+        assertNotNull(directory);
+        assertEquals(1, directory.size());
+        assertEquals("Alice Student", directory.get(0).getFullName());
+        assertNull(directory.get(0).getBranch());
+        assertNull(directory.get(0).getSemester());
+    }
+
+    @Test
+    public void testAdminCanRetrieveIndividualStudentAnalyticsForValidStudent() {
+        String studentId = studentUser.getId();
+
+        // 1. Create StudentProfile
+        StudentProfile profile = new StudentProfile();
+        profile.setUserId(studentId);
+        profile.setFullName("Alice Student");
+        profile.setEmail(studentUser.getEmail());
+        profile.setInstitution("EduPilot Institute of Technology");
+        profile.setDegree("B.Tech");
+        profile.setBranch("Computer Science");
+        profile.setSemester(4);
+        profile.setCareerGoals(List.of("AI Engineer", "Software Architect"));
+        profile.setLearningStyle("Visual");
+        profile.setSubjects(List.of("Data Structures & Algorithms"));
+        studentProfileRepository.save(profile);
+
+        // 2. Create Diagnostic Assessment (Baseline)
+        AssessmentResult diagnostic = new AssessmentResult();
+        diagnostic.setUserId(studentId);
+        diagnostic.setSubjectCode("CS201");
+        diagnostic.setSubjectName("Data Structures & Algorithms");
+        diagnostic.setScore(8);
+        diagnostic.setTotalMarks(20);
+        diagnostic.setPercentage(40.0);
+        diagnostic.setAccuracy(40.0);
+        diagnostic.setMasteryLevel("NOVICE");
+        diagnostic.setTotalQuestions(20);
+        diagnostic.setCorrectAnswers(8);
+        diagnostic.setIncorrectAnswers(12);
+        diagnostic.setSkippedQuestions(0);
+        diagnostic.setCreatedAt(LocalDateTime.now().minusDays(10));
+        diagnostic.setTopicBreakdown(Map.of(
+                "Trees", Map.of("percentage", 40.0, "correct", 4, "total", 10),
+                "Graphs", Map.of("percentage", 40.0, "correct", 4, "total", 10)
+        ));
+        assessmentResultRepository.save(diagnostic);
+
+        // 3. Create ConceptMastery
+        ConceptMastery cm1 = new ConceptMastery();
+        cm1.setUserId(studentId);
+        cm1.setSubjectCode("CS201");
+        cm1.setSubjectName("Data Structures & Algorithms");
+        cm1.setTopic("Trees");
+        cm1.setConceptName("Trees");
+        cm1.setAccuracy(80.0);
+        cm1.setMasteryScore(80.0);
+        cm1.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        cm1.setMasteryLevel(ConceptMastery.MasteryLevel.PROFICIENT);
+        cm1.setLastAssessedAt(LocalDateTime.now().minusDays(1));
+        conceptMasteryRepository.save(cm1);
+
+        ConceptMastery cm2 = new ConceptMastery();
+        cm2.setUserId(studentId);
+        cm2.setSubjectCode("CS201");
+        cm2.setSubjectName("Data Structures & Algorithms");
+        cm2.setTopic("Graphs");
+        cm2.setConceptName("Graphs");
+        cm2.setAccuracy(70.0);
+        cm2.setMasteryScore(70.0);
+        cm2.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        cm2.setMasteryLevel(ConceptMastery.MasteryLevel.INTERMEDIATE);
+        cm2.setLastAssessedAt(LocalDateTime.now().minusDays(1));
+        conceptMasteryRepository.save(cm2);
+
+        // 4. Create Quiz Session
+        QuizSession qs = new QuizSession();
+        qs.setUserId(studentId);
+        qs.setSubjectCode("CS201");
+        qs.setSubjectName("Data Structures & Algorithms");
+        qs.setTotalQuestions(10);
+        qs.setCorrectCount(8);
+        qs.setIncorrectCount(2);
+        qs.setStatus(QuizSession.Status.COMPLETED);
+        qs.setLastAnswerTime(LocalDateTime.now().minusDays(2));
+        quizSessionRepository.save(qs);
+
+        // 5. Create Study Session
+        StudySession ss = new StudySession();
+        ss.setUserId(studentId);
+        ss.setSubjectCode("CS201");
+        ss.setConceptName("Trees");
+        ss.setActualDurationMinutes(45);
+        ss.setStatus(StudySession.SessionStatus.COMPLETED);
+        ss.setStartTime(LocalDateTime.now().minusDays(2));
+        studySessionRepository.save(ss);
+
+        // 6. Create Satisfaction
+        StudentSatisfaction sat = new StudentSatisfaction(studentId, 5, StudentSatisfaction.FeedbackType.AI_TUTOR, "Excellent explanations");
+        satisfactionRepository.save(sat);
+
+        // 7. Create Remediation Session
+        RemediationSession rem = new RemediationSession();
+        rem.setStudentId(studentId);
+        rem.setSubject("Data Structures & Algorithms");
+        rem.setConcept("Trees");
+        rem.setCompleted(true);
+        rem.setCreatedAt(LocalDateTime.now().minusDays(3));
+        remediationSessionRepository.save(rem);
+
+        // 8. Create StudentStateSnapshot
+        StudentStateSnapshot snap = new StudentStateSnapshot(studentId, 0.75, 0.85, Map.of("Trees", 0.8, "Graphs", 0.7));
+        snapshotRepository.save(snap);
+
+        // Call service method
+        AdminStudentAnalyticsDTO result = adminAnalyticsService.getIndividualStudentAnalytics(studentId);
+
+        assertNotNull(result);
+
+        // Verify Student Info
+        assertNotNull(result.getStudent());
+        assertEquals(studentId, result.getStudent().getUserId());
+        assertEquals("Alice Student", result.getStudent().getFullName());
+        assertEquals("Computer Science", result.getStudent().getBranch());
+        assertEquals(4, result.getStudent().getSemester());
+        assertEquals("EduPilot Institute of Technology", result.getStudent().getInstitution());
+        assertEquals("B.Tech", result.getStudent().getDegree());
+        assertTrue(result.getStudent().getCareerGoals().contains("AI Engineer"));
+        assertEquals("Visual", result.getStudent().getLearningStyle());
+
+        // Verify Knowledge Growth
+        assertNotNull(result.getKnowledge());
+        assertTrue(result.getKnowledge().isHasAuthenticBaseline());
+        assertEquals(40.0, result.getKnowledge().getBaselineKnowledge(), 0.1);
+        assertEquals(75.0, result.getKnowledge().getCurrentKnowledge(), 0.1);
+        assertEquals(35.0, result.getKnowledge().getGrowthPp(), 0.1);
+        assertEquals(0.58, result.getKnowledge().getNormalizedLearningGain(), 0.05);
+
+        // Verify Assessment Summary & History
+        assertNotNull(result.getAssessmentSummary());
+        assertEquals(1, result.getAssessmentSummary().getTotalAssessments());
+        assertEquals(1, result.getAssessmentSummary().getCompletedAssessments());
+        assertNotNull(result.getAssessmentSummary().getBaselineAssessmentDate());
+        assertNotNull(result.getAssessmentSummary().getLatestAssessmentDate());
+        assertEquals(1, result.getAssessmentHistory().size());
+        assertEquals(40.0, result.getAssessmentHistory().get(0).getPercentage(), 0.1);
+
+        // Verify Quiz Summary & History
+        assertNotNull(result.getQuizSummary());
+        assertEquals(1, result.getQuizSummary().getTotalCompletedQuizzes());
+        assertEquals(10, result.getQuizSummary().getTotalQuestions());
+        assertEquals(8, result.getQuizSummary().getTotalCorrect());
+        assertEquals(80.0, result.getQuizSummary().getAccuracy(), 0.1);
+        assertEquals(1, result.getQuizHistory().size());
+
+        // Verify Subject Performance
+        assertNotNull(result.getSubjectPerformance());
+        assertFalse(result.getSubjectPerformance().isEmpty());
+        assertEquals("Data Structures & Algorithms", result.getSubjectPerformance().get(0).getSubjectName());
+        assertEquals(40.0, result.getSubjectPerformance().get(0).getBaselineScore(), 0.1);
+        assertEquals(75.0, result.getSubjectPerformance().get(0).getCurrentScore(), 0.1);
+        assertEquals(35.0, result.getSubjectPerformance().get(0).getGrowthPp(), 0.1);
+
+        // Verify Concept Mastery
+        assertNotNull(result.getConceptMastery());
+        assertEquals(2, result.getConceptMastery().size());
+
+        // Verify Activity
+        assertNotNull(result.getActivity());
+        assertEquals("ACTIVE", result.getActivity().getStatus());
+        assertEquals(1, result.getActivity().getTotalStudySessions());
+        assertEquals(45, result.getActivity().getTotalStudyMinutes());
+
+        // Verify Satisfaction
+        assertNotNull(result.getSatisfaction());
+        assertEquals(5.0, result.getSatisfaction().getAverageRating(), 0.1);
+        assertEquals(1, result.getSatisfaction().getTotalReviews());
+        assertEquals(5.0, result.getSatisfaction().getByCategory().get("AI_TUTOR"), 0.1);
+
+        // Verify Remediation
+        assertNotNull(result.getRemediation());
+        assertEquals(1, result.getRemediation().getTotalSessions());
+        assertEquals(1, result.getRemediation().getCompletedSessions());
+        assertEquals(0, result.getRemediation().getActiveSessions());
+
+        // Verify Trajectory
+        assertNotNull(result.getTrajectory());
+        assertEquals(1, result.getTrajectory().size());
+        assertEquals(0.75, result.getTrajectory().get(0).getOverallKnowledgeScore(), 0.01);
+    }
+
+    @Test
+    public void testIndividualAnalyticsRejectsNonExistentUserId() {
+        assertThrows(IllegalArgumentException.class, () -> {
+            adminAnalyticsService.getIndividualStudentAnalytics("nonexistent_user_id_12345");
+        });
+    }
+
+    @Test
+    public void testIndividualAnalyticsRejectsAdminUserId() {
+        assertThrows(IllegalArgumentException.class, () -> {
+            adminAnalyticsService.getIndividualStudentAnalytics(adminUser.getId());
+        });
+    }
+
+    @Test
+    public void testIndividualAnalyticsRejectsFacultyUserId() {
+        assertThrows(IllegalArgumentException.class, () -> {
+            adminAnalyticsService.getIndividualStudentAnalytics(facultyUser.getId());
+        });
+    }
+
+    @Test
+    public void testIndividualAnalyticsStudentWithoutAuthenticBaselineHasNullBaselineAndGain() {
+        String studentId = studentUser.getId();
+
+        // No diagnostic assessment created
+        AdminStudentAnalyticsDTO result = adminAnalyticsService.getIndividualStudentAnalytics(studentId);
+
+        assertNotNull(result);
+        assertNotNull(result.getKnowledge());
+        assertFalse(result.getKnowledge().isHasAuthenticBaseline());
+        assertNull(result.getKnowledge().getBaselineKnowledge());
+        assertNull(result.getKnowledge().getGrowthPp());
+        assertNull(result.getKnowledge().getNormalizedLearningGain());
+        assertNull(result.getAssessmentSummary().getBaselineAssessmentDate());
+    }
+
+    @Test
+    public void testIndividualAnalyticsMissingProfileHandledGracefully() {
+        String studentId = studentUser.getId();
+        studentProfileRepository.deleteAll();
+
+        AdminStudentAnalyticsDTO result = adminAnalyticsService.getIndividualStudentAnalytics(studentId);
+
+        assertNotNull(result);
+        assertNotNull(result.getStudent());
+        assertEquals(studentId, result.getStudent().getUserId());
+        assertEquals("Alice Student", result.getStudent().getFullName());
+        assertNull(result.getStudent().getBranch());
+        assertNull(result.getStudent().getSemester());
+        assertNull(result.getStudent().getInstitution());
+    }
+
+    @Test
+    public void testIndividualAnalyticsMissingSatisfactionRemediationTrajectoryReturnsSafeDefaults() {
+        String studentId = studentUser.getId();
+        satisfactionRepository.deleteAll();
+        remediationSessionRepository.deleteAll();
+        snapshotRepository.deleteAll();
+        studySessionRepository.deleteAll();
+
+        AdminStudentAnalyticsDTO result = adminAnalyticsService.getIndividualStudentAnalytics(studentId);
+
+        assertNotNull(result);
+        assertNotNull(result.getSatisfaction());
+        assertNull(result.getSatisfaction().getAverageRating());
+        assertEquals(0, result.getSatisfaction().getTotalReviews());
+        assertTrue(result.getSatisfaction().getReviews().isEmpty());
+
+        assertNotNull(result.getRemediation());
+        assertEquals(0, result.getRemediation().getTotalSessions());
+        assertEquals(0, result.getRemediation().getCompletedSessions());
+        assertTrue(result.getRemediation().getSessions().isEmpty());
+
+        assertNotNull(result.getTrajectory());
+        assertTrue(result.getTrajectory().isEmpty());
+
+        assertNotNull(result.getActivity());
+        assertEquals(0, result.getActivity().getTotalStudySessions());
+        assertEquals(0, result.getActivity().getTotalStudyMinutes());
+        assertEquals("NO_ACTIVITY", result.getActivity().getStatus());
+    }
+
+    @Test
+    public void testIndividualAnalyticsSubjectWithoutDiagnosticHasNullBaselineAndGain() {
+        String studentId = studentUser.getId();
+
+        // 1. Diagnostic for Data Structures & Algorithms ONLY
+        AssessmentResult diagnostic = new AssessmentResult();
+        diagnostic.setUserId(studentId);
+        diagnostic.setSubjectCode("CS201");
+        diagnostic.setSubjectName("Data Structures & Algorithms");
+        diagnostic.setScore(8);
+        diagnostic.setTotalMarks(20);
+        diagnostic.setPercentage(40.0);
+        diagnostic.setCreatedAt(LocalDateTime.now().minusDays(10));
+        diagnostic.setTopicBreakdown(Map.of("Trees", Map.of("percentage", 40.0, "correct", 4, "total", 10)));
+        assessmentResultRepository.save(diagnostic);
+
+        // 2. ConceptMastery for CS201 (DSA) and CS301 (DBMS)
+        ConceptMastery cmDSA = new ConceptMastery();
+        cmDSA.setUserId(studentId);
+        cmDSA.setSubjectCode("CS201");
+        cmDSA.setSubjectName("Data Structures & Algorithms");
+        cmDSA.setTopic("Trees");
+        cmDSA.setConceptName("Trees");
+        cmDSA.setAccuracy(80.0);
+        cmDSA.setMasteryScore(80.0);
+        cmDSA.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        conceptMasteryRepository.save(cmDSA);
+
+        ConceptMastery cmDBMS = new ConceptMastery();
+        cmDBMS.setUserId(studentId);
+        cmDBMS.setSubjectCode("CS301");
+        cmDBMS.setSubjectName("Database Management Systems");
+        cmDBMS.setTopic("Indexing");
+        cmDBMS.setConceptName("B-Trees");
+        cmDBMS.setAccuracy(65.0);
+        cmDBMS.setMasteryScore(65.0);
+        cmDBMS.setStatus(ConceptMastery.ConceptStatus.WEAK);
+        conceptMasteryRepository.save(cmDBMS);
+
+        AdminStudentAnalyticsDTO result = adminAnalyticsService.getIndividualStudentAnalytics(studentId);
+        assertNotNull(result);
+        assertNotNull(result.getSubjectPerformance());
+        assertEquals(2, result.getSubjectPerformance().size());
+
+        // DSA: has authentic diagnostic
+        var dsa = result.getSubjectPerformance().stream()
+                .filter(s -> "Data Structures & Algorithms".equals(s.getSubjectName()))
+                .findFirst().orElseThrow();
+        assertEquals(40.0, dsa.getBaselineScore(), 0.1);
+        assertEquals(80.0, dsa.getCurrentScore(), 0.1);
+        assertEquals(40.0, dsa.getGrowthPp(), 0.1);
+        assertEquals(0.67, dsa.getNormalizedGain(), 0.05);
+        assertEquals(0, dsa.getWeakConcepts());
+
+        // DBMS: no authentic diagnostic -> baselineScore, growth, gain must be null
+        var dbms = result.getSubjectPerformance().stream()
+                .filter(s -> "Database Management Systems".equals(s.getSubjectName()))
+                .findFirst().orElseThrow();
+        assertNull(dbms.getBaselineScore(), "DBMS must NOT have fabricated baseline score");
+        assertEquals(65.0, dbms.getCurrentScore(), 0.1);
+        assertNull(dbms.getGrowthPp(), "DBMS must NOT have fabricated growth");
+        assertNull(dbms.getNormalizedGain(), "DBMS must NOT have fabricated normalized gain");
+        assertEquals(1, dbms.getWeakConcepts(), "DBMS concept accuracy 65% is < 70% and marked WEAK");
+    }
+
+    @Test
+    public void testIndividualAnalyticsTrajectoryPreservesChronologicalOrder() {
+        String studentId = studentUser.getId();
+
+        LocalDateTime t1 = LocalDateTime.now().minusDays(5);
+        LocalDateTime t2 = LocalDateTime.now().minusDays(3);
+        LocalDateTime t3 = LocalDateTime.now().minusDays(1);
+
+        StudentStateSnapshot s1 = new StudentStateSnapshot(studentId, 0.50, 0.60, Map.of("Trees", 0.5));
+        s1.setTimestamp(t1);
+        snapshotRepository.save(s1);
+
+        StudentStateSnapshot s2 = new StudentStateSnapshot(studentId, 0.70, 0.80, Map.of("Trees", 0.7));
+        s2.setTimestamp(t2);
+        snapshotRepository.save(s2);
+
+        StudentStateSnapshot s3 = new StudentStateSnapshot(studentId, 0.85, 0.90, Map.of("Trees", 0.85));
+        s3.setTimestamp(t3);
+        snapshotRepository.save(s3);
+
+        AdminStudentAnalyticsDTO result = adminAnalyticsService.getIndividualStudentAnalytics(studentId);
+        assertNotNull(result);
+        assertNotNull(result.getTrajectory());
+        assertEquals(3, result.getTrajectory().size());
+
+        assertEquals(0.50, result.getTrajectory().get(0).getOverallKnowledgeScore(), 0.01);
+        assertEquals(0.70, result.getTrajectory().get(1).getOverallKnowledgeScore(), 0.01);
+        assertEquals(0.85, result.getTrajectory().get(2).getOverallKnowledgeScore(), 0.01);
+        assertTrue(result.getTrajectory().get(0).getTimestamp().isBefore(result.getTrajectory().get(1).getTimestamp()));
+        assertTrue(result.getTrajectory().get(1).getTimestamp().isBefore(result.getTrajectory().get(2).getTimestamp()));
+    }
+
+    @Test
+    public void testAdminCanAccessIndividualStudentAnalyticsEndpoint() throws Exception {
+        String studentId = studentUser.getId();
+
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/students/" + studentId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String json = result.getResponse().getContentAsString();
+        AdminStudentAnalyticsDTO dto = objectMapper.readValue(json, AdminStudentAnalyticsDTO.class);
+        assertNotNull(dto);
+        assertNotNull(dto.getStudent());
+        assertEquals(studentId, dto.getStudent().getUserId());
+        assertNotNull(dto.getKnowledge());
+        assertNotNull(dto.getAssessmentSummary());
+        assertNotNull(dto.getAssessmentHistory());
+        assertNotNull(dto.getQuizSummary());
+        assertNotNull(dto.getQuizHistory());
+        assertNotNull(dto.getSubjectPerformance());
+        assertNotNull(dto.getConceptMastery());
+        assertNotNull(dto.getActivity());
+        assertNotNull(dto.getSatisfaction());
+        assertNotNull(dto.getRemediation());
+        assertNotNull(dto.getTrajectory());
+    }
+
+    @Test
+    public void testStudentCannotAccessIndividualStudentAnalyticsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/students/" + studentUser.getId())
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testFacultyCannotAccessIndividualStudentAnalyticsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/students/" + studentUser.getId())
+                        .header("Authorization", "Bearer " + facultyToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testUnauthenticatedCannotAccessIndividualStudentAnalyticsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/students/" + studentUser.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void testAdminRequestingAdminUserIdReturns4xx() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/students/" + adminUser.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().is4xxClientError());
+    }
+
+    @Test
+    public void testAdminRequestingFacultyUserIdReturns4xx() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/students/" + facultyUser.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().is4xxClientError());
+    }
+
+    @Test
+    public void testAdminRequestingNonExistentUserIdReturns404() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/students/non_existent_id_99999")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound());
     }
 }
