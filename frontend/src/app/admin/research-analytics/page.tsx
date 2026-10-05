@@ -23,32 +23,45 @@ import {
   Search,
   X,
   ChevronRight,
-  GraduationCap
+  GraduationCap,
+  Calendar,
+  Layers
 } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
-  Cell
+  Cell,
+  Legend,
+  CartesianGrid
 } from "recharts";
 import {
   fetchAdminCohortAnalytics,
   fetchAdminStudentDirectory,
+  fetchAdminResearchTrends,
   AdminCohortAnalytics,
-  AdminStudentDirectoryDTO
+  AdminStudentDirectoryDTO,
+  AdminResearchTrendsDTO
 } from "../../../services/api";
 
 export default function ResearchAnalyticsPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"cohort" | "directory">("cohort");
+  const [activeTab, setActiveTab] = useState<"cohort" | "trends" | "directory">("cohort");
 
   // Cohort state
   const [cohort, setCohort] = useState<AdminCohortAnalytics | null>(null);
   const [cohortLoading, setCohortLoading] = useState(true);
   const [cohortError, setCohortError] = useState<string | null>(null);
+
+  // Historical Trends state
+  const [trends, setTrends] = useState<AdminResearchTrendsDTO | null>(null);
+  const [trendsLoading, setTrendsLoading] = useState(false);
+  const [trendsError, setTrendsError] = useState<string | null>(null);
 
   // Directory state
   const [students, setStudents] = useState<AdminStudentDirectoryDTO[]>([]);
@@ -74,6 +87,23 @@ export default function ResearchAnalyticsPage() {
     }
   };
 
+  const loadResearchTrends = async () => {
+    setTrendsLoading(true);
+    setTrendsError(null);
+    try {
+      const data = await fetchAdminResearchTrends();
+      if (data) {
+        setTrends(data);
+      } else {
+        setTrendsError("Unable to retrieve historical research trends. Please ensure you are logged in as an ADMIN.");
+      }
+    } catch (err) {
+      setTrendsError("Network error while communicating with the research trends service.");
+    } finally {
+      setTrendsLoading(false);
+    }
+  };
+
   const loadStudentDirectory = async () => {
     setDirectoryLoading(true);
     setDirectoryError(null);
@@ -89,6 +119,7 @@ export default function ResearchAnalyticsPage() {
 
   useEffect(() => {
     loadCohortAnalytics();
+    loadResearchTrends();
     loadStudentDirectory();
   }, []);
 
@@ -138,7 +169,7 @@ export default function ResearchAnalyticsPage() {
               <span>Research & Analytics</span>
             </h1>
             <p className="text-secondary-theme text-sm mt-1">
-              Cohort-level learning growth and individual student research profiles
+              Cohort-level learning growth, empirical historical trends, and individual student profiles
             </p>
           </div>
 
@@ -155,6 +186,22 @@ export default function ResearchAnalyticsPage() {
               >
                 <FlaskConical className="h-3.5 w-3.5" />
                 <span>Cohort Analytics</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("trends")}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === "trends"
+                    ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
+                    : "text-secondary-theme hover:text-main-theme"
+                }`}
+              >
+                <TrendingUp className="h-3.5 w-3.5" />
+                <span>Historical Trends</span>
+                {trends && trends.totalObservations > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-[10px] font-extrabold">
+                    {trends.totalObservations}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab("directory")}
@@ -175,12 +222,28 @@ export default function ResearchAnalyticsPage() {
             </div>
 
             <button
-              onClick={activeTab === "cohort" ? loadCohortAnalytics : loadStudentDirectory}
-              disabled={activeTab === "cohort" ? cohortLoading : directoryLoading}
+              onClick={() => {
+                if (activeTab === "cohort") loadCohortAnalytics();
+                else if (activeTab === "trends") loadResearchTrends();
+                else loadStudentDirectory();
+              }}
+              disabled={
+                activeTab === "cohort" ? cohortLoading :
+                activeTab === "trends" ? trendsLoading :
+                directoryLoading
+              }
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-main-theme transition-all cursor-pointer w-fit"
             >
-              <RefreshCw className={`h-4 w-4 text-purple-theme ${(activeTab === "cohort" ? cohortLoading : directoryLoading) ? "animate-spin" : ""}`} />
-              <span>{(activeTab === "cohort" ? cohortLoading : directoryLoading) ? "Refreshing..." : "Refresh"}</span>
+              <RefreshCw className={`h-4 w-4 text-purple-theme ${(
+                activeTab === "cohort" ? cohortLoading :
+                activeTab === "trends" ? trendsLoading :
+                directoryLoading
+              ) ? "animate-spin" : ""}`} />
+              <span>{(
+                activeTab === "cohort" ? cohortLoading :
+                activeTab === "trends" ? trendsLoading :
+                directoryLoading
+              ) ? "Refreshing..." : "Refresh"}</span>
             </button>
           </div>
         </div>
@@ -550,7 +613,264 @@ export default function ResearchAnalyticsPage() {
           </>
         )}
 
-        {/* TAB 2: STUDENT DIRECTORY */}
+        {/* TAB 2: HISTORICAL RESEARCH TRENDS */}
+        {activeTab === "trends" && (
+          <div className="space-y-6">
+            {/* Error State */}
+            {trendsError && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-theme flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-sm">
+                <div className="flex items-center gap-3">
+                  <ShieldAlert className="h-5 w-5 shrink-0" />
+                  <span>{trendsError}</span>
+                </div>
+                <button
+                  onClick={loadResearchTrends}
+                  className="px-4 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {/* Loading Skeleton */}
+            {trendsLoading && !trends && (
+              <div className="space-y-6 animate-pulse">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="glass-panel p-5 rounded-2xl border border-white/5 h-28 bg-white/5" />
+                  ))}
+                </div>
+                <div className="glass-panel p-6 rounded-3xl border border-white/5 h-80 bg-white/5" />
+                <div className="glass-panel p-6 rounded-2xl border border-white/5 h-64 bg-white/5" />
+              </div>
+            )}
+
+            {/* Loaded Trends Content */}
+            {trends && (
+              <>
+                {/* 1. Summary Overview Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                  {/* Total Assessments */}
+                  <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Total Assessments</span>
+                      <Layers className="h-4 w-4 text-purple-400" />
+                    </div>
+                    <div className="text-2xl font-black text-main-theme">
+                      {trends.totalAssessments}
+                    </div>
+                    <p className="text-[10px] text-secondary-theme">Persisted assessment results ({trends.totalObservations} total events).</p>
+                  </div>
+
+                  {/* Represented Students */}
+                  <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Evaluated Students</span>
+                      <Users className="h-4 w-4 text-emerald-400" />
+                    </div>
+                    <div className="text-2xl font-black text-emerald-theme">
+                      {trends.uniqueStudentsCount}
+                    </div>
+                    <p className="text-[10px] text-secondary-theme">Distinct learners with evaluation data.</p>
+                  </div>
+
+                  {/* Baseline Validated */}
+                  <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Verified Baselines</span>
+                      <CheckCircle2 className="h-4 w-4 text-indigo-400" />
+                    </div>
+                    <div className="text-2xl font-black text-indigo-400">
+                      {trends.evaluatedStudentsWithBaseline}
+                    </div>
+                    <p className="text-[10px] text-secondary-theme">Students with authentic diagnostic baseline.</p>
+                  </div>
+
+                  {/* Observation Span */}
+                  <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Milestone Dates</span>
+                      <Calendar className="h-4 w-4 text-cyan-400" />
+                    </div>
+                    <div className="text-2xl font-black text-cyan-400">
+                      {trends.observations.length}
+                    </div>
+                    <p className="text-[10px] text-secondary-theme">Distinct calendar dates with evaluation data.</p>
+                  </div>
+                </div>
+
+                {/* 2. Longitudinal Trend Chart */}
+                <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/5 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
+                    <div>
+                      <h3 className="text-sm font-extrabold text-main-theme flex items-center gap-2">
+                        <TrendingUp className="h-4 w-4 text-purple-theme" />
+                        <span>Empirical Observed Assessment Performance</span>
+                      </h3>
+                      <p className="text-xs text-secondary-theme mt-0.5">
+                        Chronological progression of observed knowledge evaluation performance (AssessmentResult records only)
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs flex-wrap">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                        Observed Assessment Score
+                      </span>
+                      {trends.observations.some(o => o.meanQuizAccuracy != null) && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                          <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                          Quiz Accuracy (Separate)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {trends.observations.length > 0 ? (
+                    <div className="h-72 w-full pt-4">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={trends.observations} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                          <XAxis
+                            dataKey="date"
+                            stroke="#71717a"
+                            fontSize={11}
+                            tickLine={false}
+                            tickFormatter={(val) => {
+                              const d = new Date(val);
+                              return !isNaN(d.getTime()) ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : val;
+                            }}
+                          />
+                          <YAxis stroke="#71717a" fontSize={11} tickLine={false} domain={[0, 100]} />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: "#0d0f1e",
+                              borderColor: "rgba(255,255,255,0.1)",
+                              borderRadius: "12px",
+                              fontSize: "12px"
+                            }}
+                            formatter={(value: any, name: any) => [value != null ? `${value}%` : "N/A", name]}
+                            labelFormatter={(label: any) => `Date: ${label}`}
+                          />
+                          <Legend />
+                          <Line
+                            type="monotone"
+                            dataKey="meanAssessmentScore"
+                            name="Observed Assessment Performance (%)"
+                            stroke="#10b981"
+                            strokeWidth={2.5}
+                            connectNulls={true}
+                            dot={{ fill: "#10b981", r: 4 }}
+                          />
+                          {trends.observations.some(o => o.meanQuizAccuracy != null) && (
+                            <Line
+                              type="monotone"
+                              dataKey="meanQuizAccuracy"
+                              name="Quiz Accuracy (% separate)"
+                              stroke="#06b6d4"
+                              strokeWidth={1.5}
+                              strokeDasharray="4 4"
+                              connectNulls={true}
+                              dot={{ fill: "#06b6d4", r: 3 }}
+                            />
+                          )}
+                          {trends.observations.some(o => o.meanEngagementScore != null) && (
+                            <Line
+                              type="monotone"
+                              dataKey="meanEngagementScore"
+                              name="Engagement Index (% separate)"
+                              stroke="#6366f1"
+                              strokeWidth={1.5}
+                              strokeDasharray="2 2"
+                              connectNulls={true}
+                              dot={{ fill: "#6366f1", r: 3 }}
+                            />
+                          )}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="py-16 text-center text-xs text-secondary-theme">
+                      No historical empirical evaluation records found for student cohort.
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Observed Longitudinal Milestones Table */}
+                {trends.observations.length > 0 && (
+                  <div className="glass-panel p-6 rounded-3xl border border-white/5 space-y-4">
+                    <div className="border-b border-white/5 pb-3">
+                      <h3 className="text-sm font-extrabold text-main-theme flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-purple-theme" />
+                        <span>Empirical Observation Milestones</span>
+                      </h3>
+                      <p className="text-xs text-secondary-theme mt-0.5">
+                        Chronological breakdown of observation events, evaluated learners, and segregated metrics by date
+                      </p>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-white/5 text-[10px] uppercase font-extrabold text-secondary-theme">
+                            <th className="pb-3 pl-2">Observation Date</th>
+                            <th className="pb-3 text-right">Assessment Score</th>
+                            <th className="pb-3 text-right">Quiz Accuracy</th>
+                            <th className="pb-3 text-right">Engagement</th>
+                            <th className="pb-3 text-right">Total Events</th>
+                            <th className="pb-3 text-right">Students</th>
+                            <th className="pb-3 text-right">Assessments</th>
+                            <th className="pb-3 text-right">Quizzes</th>
+                            <th className="pb-3 text-right pr-2">Snapshots</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {trends.observations.map((pt, idx) => (
+                            <tr key={pt.date || idx} className="hover:bg-white/[0.02]">
+                              <td className="py-3 pl-2 font-mono font-semibold text-main-theme">{pt.date}</td>
+                              <td className="py-3 text-right font-mono font-bold text-emerald-400">
+                                {pt.meanAssessmentScore != null ? `${pt.meanAssessmentScore.toFixed(1)}%` : <span className="text-secondary-theme font-normal">N/A</span>}
+                              </td>
+                              <td className="py-3 text-right font-mono text-cyan-400">
+                                {pt.meanQuizAccuracy != null ? `${pt.meanQuizAccuracy.toFixed(1)}%` : <span className="text-secondary-theme font-normal">N/A</span>}
+                              </td>
+                              <td className="py-3 text-right font-mono text-indigo-300">
+                                {pt.meanEngagementScore != null ? `${pt.meanEngagementScore.toFixed(1)}%` : <span className="text-secondary-theme font-normal">N/A</span>}
+                              </td>
+                              <td className="py-3 text-right font-mono font-bold text-main-theme">{pt.observationCount}</td>
+                              <td className="py-3 text-right font-mono text-purple-300">{pt.studentCount}</td>
+                              <td className="py-3 text-right font-mono text-secondary-theme">{pt.assessmentCount}</td>
+                              <td className="py-3 text-right font-mono text-secondary-theme">{pt.quizCount}</td>
+                              <td className="py-3 text-right pr-2 font-mono text-secondary-theme">{pt.snapshotCount}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Research Data Sufficiency Banner */}
+                <div className="glass-panel p-5 rounded-2xl border border-indigo-500/20 bg-indigo-500/5 flex items-start gap-4">
+                  <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 shrink-0 mt-0.5">
+                    <Info className="h-5 w-5" />
+                  </div>
+                  <div className="space-y-1 text-xs">
+                    <h4 className="font-bold text-indigo-300 uppercase tracking-wider">Research Data Sufficiency & Authenticity</h4>
+                    <p className="text-sm font-semibold text-main-theme">
+                      {trends.dataSufficiencyNote}
+                    </p>
+                    <p className="text-secondary-theme">
+                      Research integrity rule: Historical trends plot only genuine evaluation records. Dates without observations are not interpolated, and no artificial baseline estimations are generated. Primary knowledge trend strictly reflects AssessmentResult records.
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* TAB 3: STUDENT DIRECTORY */}
         {activeTab === "directory" && (
           <div className="space-y-6">
             {/* Directory Controls */}

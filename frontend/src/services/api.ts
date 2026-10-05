@@ -2388,3 +2388,50 @@ export async function fetchAdminStudentAnalytics(userId: string): Promise<AdminS
   }
   return null;
 }
+
+export interface AdminTrendPointDTO {
+  date: string;
+  timestamp: string;
+  meanAssessmentScore: number | null;
+  meanKnowledgeScore: number | null;
+  meanQuizAccuracy: number | null;
+  meanSnapshotKnowledgeScore: number | null;
+  meanEngagementScore: number | null;
+  observationCount: number;
+  studentCount: number;
+  assessmentCount: number;
+  quizCount: number;
+  snapshotCount: number;
+}
+
+export interface AdminResearchTrendsDTO {
+  totalObservations: number;
+  totalAssessments: number;
+  totalQuizzes: number;
+  totalSnapshots: number;
+  uniqueStudentsCount: number;
+  evaluatedStudentsWithBaseline: number;
+  earliestObservationDate: string | null;
+  latestObservationDate: string | null;
+  dataSufficiencyNote: string;
+  observations: AdminTrendPointDTO[];
+}
+
+export async function fetchAdminResearchTrends(): Promise<AdminResearchTrendsDTO | null> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/trends`, {
+        method: "GET",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      handleAuthError(res);
+    } catch (err) {
+      console.warn("Failed to fetch admin research trends:", err);
+    }
+  }
+  return null;
+}

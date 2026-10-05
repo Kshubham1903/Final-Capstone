@@ -2,6 +2,7 @@ package com.edupilot.controller;
 
 import com.edupilot.dto.AdminAnalyticsOverviewDTO;
 import com.edupilot.dto.AdminCohortAnalyticsDTO;
+import com.edupilot.dto.AdminResearchTrendsDTO;
 import com.edupilot.dto.AdminStudentDirectoryDTO;
 import com.edupilot.service.AdminAnalyticsService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +31,12 @@ public class AdminAnalyticsController {
     public ResponseEntity<AdminCohortAnalyticsDTO> getCohortAnalytics() {
         AdminCohortAnalyticsDTO cohort = adminAnalyticsService.getCohortAnalytics();
         return ResponseEntity.ok(cohort);
+    }
+
+    @GetMapping("/trends")
+    public ResponseEntity<AdminResearchTrendsDTO> getResearchTrends() {
+        AdminResearchTrendsDTO trends = adminAnalyticsService.getResearchTrends();
+        return ResponseEntity.ok(trends);
     }
 
     @GetMapping("/students")

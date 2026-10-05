@@ -2,6 +2,8 @@ package com.edupilot.service;
 
 import com.edupilot.dto.AdminAnalyticsOverviewDTO;
 import com.edupilot.dto.AdminCohortAnalyticsDTO;
+import com.edupilot.dto.AdminResearchTrendsDTO;
+import com.edupilot.dto.AdminResearchTrendsDTO.TrendPointDTO;
 import com.edupilot.dto.AdminStudentAnalyticsDTO;
 import com.edupilot.dto.AdminStudentAnalyticsDTO.*;
 import com.edupilot.dto.AdminStudentDirectoryDTO;
@@ -896,6 +898,276 @@ public class AdminAnalyticsService {
         String clean1 = s1.trim().toLowerCase();
         String clean2 = s2.trim().toLowerCase();
         return clean1.equals(clean2) || clean1.contains(clean2) || clean2.contains(clean1);
+    }
+
+    public AdminResearchTrendsDTO getResearchTrends() {
+        // 1. Authoritative Student Population from User collection
+        List<User> studentUsers = userRepository.findByRole(User.Role.STUDENT);
+        if (studentUsers == null || studentUsers.isEmpty()) {
+            return new AdminResearchTrendsDTO(
+                    0, 0, 0, 0, 0, 0, null, null,
+                    "No enrolled students found in directory.",
+                    Collections.emptyList()
+            );
+        }
+
+        Set<String> validStudentIds = new HashSet<>();
+        for (User u : studentUsers) {
+            if (u.getId() != null && !u.getId().isBlank()) {
+                validStudentIds.add(u.getId());
+            }
+        }
+
+        // Map profile IDs to canonical user IDs for accurate matching
+        List<StudentProfile> profiles = studentProfileRepository.findAll();
+        Map<String, String> profileToUserMap = new HashMap<>();
+        for (StudentProfile p : profiles) {
+            if (p.getId() != null && p.getUserId() != null && validStudentIds.contains(p.getUserId())) {
+                profileToUserMap.put(p.getId(), p.getUserId());
+            }
+        }
+
+        // Count students with authentic diagnostic baselines
+        int evaluatedStudentsWithBaseline = 0;
+        for (String studentId : validStudentIds) {
+            Map<String, Double> baselineMap = studentGrowthService.extractBaselineConceptAccuracies(studentId, null);
+            if (baselineMap != null && !baselineMap.isEmpty()) {
+                evaluatedStudentsWithBaseline++;
+            }
+        }
+
+        // 2. Batch retrieve chronological observations from 3 distinct sources
+        List<AssessmentResult> assessments = assessmentResultRepository.findAll();
+        List<StudentStateSnapshot> snapshots = snapshotRepository.findAll();
+        List<QuizSession> allQuizzes = quizSessionRepository.findAll();
+        List<QuizSession> quizzes = allQuizzes.stream()
+                .filter(q -> q.getStatus() == QuizSession.Status.COMPLETED)
+                .collect(Collectors.toList());
+
+        // Distinct evaluation observation types
+        class AssessmentObservation {
+            final LocalDateTime timestamp;
+            final String dateStr;
+            final double scorePct;
+            final String studentId;
+
+            AssessmentObservation(LocalDateTime timestamp, double scorePct, String studentId) {
+                this.timestamp = timestamp;
+                this.dateStr = timestamp.toLocalDate().toString();
+                this.scorePct = scorePct;
+                this.studentId = studentId;
+            }
+        }
+
+        class QuizObservation {
+            final LocalDateTime timestamp;
+            final String dateStr;
+            final double accuracyPct;
+            final String studentId;
+
+            QuizObservation(LocalDateTime timestamp, double accuracyPct, String studentId) {
+                this.timestamp = timestamp;
+                this.dateStr = timestamp.toLocalDate().toString();
+                this.accuracyPct = accuracyPct;
+                this.studentId = studentId;
+            }
+        }
+
+        class SnapshotObservation {
+            final LocalDateTime timestamp;
+            final String dateStr;
+            final double knowledgePct;
+            final double engagementPct;
+            final String studentId;
+
+            SnapshotObservation(LocalDateTime timestamp, double knowledgePct, double engagementPct, String studentId) {
+                this.timestamp = timestamp;
+                this.dateStr = timestamp.toLocalDate().toString();
+                this.knowledgePct = knowledgePct;
+                this.engagementPct = engagementPct;
+                this.studentId = studentId;
+            }
+        }
+
+        List<AssessmentObservation> assessmentObs = new ArrayList<>();
+        List<QuizObservation> quizObs = new ArrayList<>();
+        List<SnapshotObservation> snapshotObs = new ArrayList<>();
+        List<LocalDateTime> allTimestamps = new ArrayList<>();
+        Set<String> distinctStudentsRepresented = new HashSet<>();
+        Set<String> allActiveDates = new TreeSet<>();
+
+        // A. Ingest AssessmentResult records (PRIMARY GROUND TRUTH FOR KNOWLEDGE PERFORMANCE)
+        for (AssessmentResult ar : assessments) {
+            if (ar.getCreatedAt() == null) continue;
+            String canonicalId = null;
+            if (ar.getUserId() != null && validStudentIds.contains(ar.getUserId())) {
+                canonicalId = ar.getUserId();
+            } else if (ar.getStudentProfileId() != null && profileToUserMap.containsKey(ar.getStudentProfileId())) {
+                canonicalId = profileToUserMap.get(ar.getStudentProfileId());
+            }
+            if (canonicalId != null) {
+                double pct = ar.getPercentage() > 0 ? ar.getPercentage() : (ar.getScore() > 0 && ar.getTotalMarks() > 0 ? (ar.getScore() * 100.0 / ar.getTotalMarks()) : 0.0);
+                if (pct <= 1.0 && pct > 0) pct *= 100.0;
+                assessmentObs.add(new AssessmentObservation(ar.getCreatedAt(), round2(pct), canonicalId));
+                allTimestamps.add(ar.getCreatedAt());
+                distinctStudentsRepresented.add(canonicalId);
+                allActiveDates.add(ar.getCreatedAt().toLocalDate().toString());
+            }
+        }
+
+        // B. Ingest QuizSession records (SEPARATE QUIZ ACCURACY METRIC)
+        for (QuizSession q : quizzes) {
+            LocalDateTime qTime = q.getLastAnswerTime() != null ? q.getLastAnswerTime() : q.getStartTime();
+            if (qTime == null) continue;
+            String canonicalId = null;
+            if (q.getUserId() != null && validStudentIds.contains(q.getUserId())) {
+                canonicalId = q.getUserId();
+            } else if (q.getStudentProfileId() != null && profileToUserMap.containsKey(q.getStudentProfileId())) {
+                canonicalId = profileToUserMap.get(q.getStudentProfileId());
+            }
+            if (canonicalId != null) {
+                double acc = q.getTotalQuestions() > 0 ? (q.getCorrectCount() * 100.0 / q.getTotalQuestions()) : 0.0;
+                quizObs.add(new QuizObservation(qTime, round2(acc), canonicalId));
+                allTimestamps.add(qTime);
+                distinctStudentsRepresented.add(canonicalId);
+                allActiveDates.add(qTime.toLocalDate().toString());
+            }
+        }
+
+        // C. Ingest StudentStateSnapshot records (SEPARATE BAYESIAN STATE & ENGAGEMENT METRICS)
+        for (StudentStateSnapshot snap : snapshots) {
+            if (snap.getTimestamp() == null) continue;
+            String canonicalId = null;
+            if (snap.getStudentId() != null && validStudentIds.contains(snap.getStudentId())) {
+                canonicalId = snap.getStudentId();
+            } else if (snap.getStudentId() != null && profileToUserMap.containsKey(snap.getStudentId())) {
+                canonicalId = profileToUserMap.get(snap.getStudentId());
+            }
+            if (canonicalId != null) {
+                double k = snap.getOverallKnowledgeScore();
+                if (k <= 1.0) k *= 100.0;
+                double eng = snap.getEngagementScore();
+                if (eng <= 1.0) eng *= 100.0;
+                snapshotObs.add(new SnapshotObservation(snap.getTimestamp(), round2(k), round2(eng), canonicalId));
+                allTimestamps.add(snap.getTimestamp());
+                distinctStudentsRepresented.add(canonicalId);
+                allActiveDates.add(snap.getTimestamp().toLocalDate().toString());
+            }
+        }
+
+        int totalAssessments = assessmentObs.size();
+        int totalQuizzes = quizObs.size();
+        int totalSnapshots = snapshotObs.size();
+        int totalObservations = totalAssessments + totalQuizzes + totalSnapshots;
+
+        if (totalObservations == 0) {
+            return new AdminResearchTrendsDTO(
+                    0, 0, 0, 0, 0, evaluatedStudentsWithBaseline, null, null,
+                    "No historical empirical evaluation records found for student cohort.",
+                    Collections.emptyList()
+            );
+        }
+
+        allTimestamps.sort(LocalDateTime::compareTo);
+        LocalDateTime earliestDate = allTimestamps.get(0);
+        LocalDateTime latestDate = allTimestamps.get(allTimestamps.size() - 1);
+
+        // Group observations by date
+        Map<String, List<AssessmentObservation>> assessmentsByDate = assessmentObs.stream()
+                .collect(Collectors.groupingBy(o -> o.dateStr));
+        Map<String, List<QuizObservation>> quizzesByDate = quizObs.stream()
+                .collect(Collectors.groupingBy(o -> o.dateStr));
+        Map<String, List<SnapshotObservation>> snapshotsByDate = snapshotObs.stream()
+                .collect(Collectors.groupingBy(o -> o.dateStr));
+
+        List<AdminResearchTrendsDTO.TrendPointDTO> trendPoints = new ArrayList<>();
+
+        for (String dateStr : allActiveDates) {
+            List<AssessmentObservation> dayAssessments = assessmentsByDate.getOrDefault(dateStr, Collections.emptyList());
+            List<QuizObservation> dayQuizzes = quizzesByDate.getOrDefault(dateStr, Collections.emptyList());
+            List<SnapshotObservation> daySnapshots = snapshotsByDate.getOrDefault(dateStr, Collections.emptyList());
+
+            Set<String> dayStudents = new HashSet<>();
+            LocalDateTime repTime = null;
+
+            // 1. Primary Knowledge Performance: AssessmentResult ONLY
+            Double meanAssessmentScore = null;
+            if (!dayAssessments.isEmpty()) {
+                double sumAssessments = 0.0;
+                for (AssessmentObservation a : dayAssessments) {
+                    sumAssessments += a.scorePct;
+                    dayStudents.add(a.studentId);
+                    if (repTime == null) repTime = a.timestamp;
+                }
+                meanAssessmentScore = round2(sumAssessments / dayAssessments.size());
+            }
+
+            // 2. Separate Quiz Accuracy (Never blended into assessment score)
+            Double meanQuizAccuracy = null;
+            if (!dayQuizzes.isEmpty()) {
+                double sumQuiz = 0.0;
+                for (QuizObservation q : dayQuizzes) {
+                    sumQuiz += q.accuracyPct;
+                    dayStudents.add(q.studentId);
+                    if (repTime == null) repTime = q.timestamp;
+                }
+                meanQuizAccuracy = round2(sumQuiz / dayQuizzes.size());
+            }
+
+            // 3. Separate Snapshot State & Engagement (Never blended into assessment score)
+            Double meanSnapshotKnowledge = null;
+            Double meanEngagement = null;
+            if (!daySnapshots.isEmpty()) {
+                double sumSnapK = 0.0;
+                double sumEng = 0.0;
+                for (SnapshotObservation s : daySnapshots) {
+                    sumSnapK += s.knowledgePct;
+                    sumEng += s.engagementPct;
+                    dayStudents.add(s.studentId);
+                    if (repTime == null) repTime = s.timestamp;
+                }
+                meanSnapshotKnowledge = round2(sumSnapK / daySnapshots.size());
+                meanEngagement = round2(sumEng / daySnapshots.size());
+            }
+
+            if (repTime == null) {
+                repTime = LocalDateTime.parse(dateStr + "T00:00:00");
+            }
+
+            int dayObsCount = dayAssessments.size() + dayQuizzes.size() + daySnapshots.size();
+
+            trendPoints.add(new AdminResearchTrendsDTO.TrendPointDTO(
+                    dateStr,
+                    repTime,
+                    meanAssessmentScore,
+                    meanQuizAccuracy,
+                    meanSnapshotKnowledge,
+                    meanEngagement,
+                    dayObsCount,
+                    dayStudents.size(),
+                    dayAssessments.size(),
+                    dayQuizzes.size(),
+                    daySnapshots.size()
+            ));
+        }
+
+        int uniqueStudents = distinctStudentsRepresented.size();
+        String sufficiencyNote = "Empirical research trend based on " + totalAssessments + " assessment(s), "
+                + totalQuizzes + " quiz(zes), and " + totalSnapshots + " state snapshot(s) across "
+                + uniqueStudents + " student(s). Primary trend strictly reflects persisted AssessmentResult performance.";
+
+        return new AdminResearchTrendsDTO(
+                totalObservations,
+                totalAssessments,
+                totalQuizzes,
+                totalSnapshots,
+                uniqueStudents,
+                evaluatedStudentsWithBaseline,
+                earliestDate,
+                latestDate,
+                sufficiencyNote,
+                trendPoints
+        );
     }
 
     private static double round2(double val) {

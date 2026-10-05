@@ -2,6 +2,7 @@ package com.edupilot.service;
 
 import com.edupilot.dto.AdminAnalyticsOverviewDTO;
 import com.edupilot.dto.AdminCohortAnalyticsDTO;
+import com.edupilot.dto.AdminResearchTrendsDTO;
 import com.edupilot.dto.AdminStudentAnalyticsDTO;
 import com.edupilot.dto.AdminStudentDirectoryDTO;
 import com.edupilot.model.*;
@@ -1198,5 +1199,208 @@ public class AdminAnalyticsIntegrationTest {
                         .header("Authorization", "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound());
+    }
+
+    // ==========================================
+    // PHASE 2C-1: HISTORICAL RESEARCH TRENDS TESTS
+    // ==========================================
+
+    @Test
+    public void testAdminCanAccessResearchTrendsEndpoint() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/trends")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String json = result.getResponse().getContentAsString();
+        AdminResearchTrendsDTO dto = objectMapper.readValue(json, AdminResearchTrendsDTO.class);
+        assertNotNull(dto);
+        assertNotNull(dto.getObservations());
+        assertNotNull(dto.getDataSufficiencyNote());
+    }
+
+    @Test
+    public void testStudentCannotAccessResearchTrendsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/trends")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testFacultyCannotAccessResearchTrendsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/trends")
+                        .header("Authorization", "Bearer " + facultyToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testUnauthenticatedCannotAccessResearchTrendsEndpoint() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/trends")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void testResearchTrendsDeterministicAggregationAndChronologicalOrder() {
+        String studentId1 = studentUser.getId();
+
+        // Create second student
+        User student2 = new User();
+        student2.setEmail("student2_trend@edupilot.com");
+        student2.setPassword(passwordEncoder.encode("studentpass123"));
+        student2.setFullName("Second Student");
+        student2.setRole(User.Role.STUDENT);
+        student2 = userRepository.save(student2);
+        String studentId2 = student2.getId();
+
+        LocalDateTime tMinus10 = LocalDateTime.now().minusDays(10);
+        LocalDateTime tMinus5 = LocalDateTime.now().minusDays(5);
+        LocalDateTime tMinus1 = LocalDateTime.now().minusDays(1);
+
+        // 1. T-10: Student 1 takes diagnostic assessment (score 50.0%)
+        AssessmentResult ar1 = new AssessmentResult();
+        ar1.setUserId(studentId1);
+        ar1.setSubjectCode("CS101");
+        ar1.setSubjectName("Introduction to Programming");
+        ar1.setScore(10);
+        ar1.setTotalMarks(20);
+        ar1.setPercentage(50.0);
+        ar1.setAccuracy(50.0);
+        ar1.setCreatedAt(tMinus10);
+        ar1.setTopicBreakdown(Map.of("Variables", Map.of("percentage", 50.0, "correct", 5, "total", 10)));
+        assessmentResultRepository.save(ar1);
+
+        // 2. T-5: Student 1 takes module assessment (70.0%)
+        AssessmentResult ar2 = new AssessmentResult();
+        ar2.setUserId(studentId1);
+        ar2.setSubjectCode("CS101");
+        ar2.setSubjectName("Introduction to Programming");
+        ar2.setScore(14);
+        ar2.setTotalMarks(20);
+        ar2.setPercentage(70.0);
+        ar2.setAccuracy(70.0);
+        ar2.setCreatedAt(tMinus5);
+        assessmentResultRepository.save(ar2);
+
+        // 3. T-5: Student 2 records state snapshot (overallKnowledge = 0.80 -> 80.0%, engagement = 0.75 -> 75.0%)
+        StudentStateSnapshot snap2 = new StudentStateSnapshot(studentId2, 0.80, 0.75, Map.of("Trees", 0.80));
+        snap2.setTimestamp(tMinus5);
+        snapshotRepository.save(snap2);
+
+        // 4. T-1: Student 2 completes quiz (accuracy 90.0%)
+        QuizSession q2 = new QuizSession();
+        q2.setUserId(studentId2);
+        q2.setSubjectCode("CS201");
+        q2.setSubjectName("Data Structures");
+        q2.setStatus(QuizSession.Status.COMPLETED);
+        q2.setTotalQuestions(10);
+        q2.setCorrectCount(9);
+        q2.setLastAnswerTime(tMinus1);
+        quizSessionRepository.save(q2);
+
+        AdminResearchTrendsDTO trends = adminAnalyticsService.getResearchTrends();
+        assertNotNull(trends);
+        assertEquals(4, trends.getTotalObservations(), "Total observation events must equal 4");
+        assertEquals(2, trends.getUniqueStudentsCount(), "Unique students represented must equal 2");
+        assertEquals(1, trends.getEvaluatedStudentsWithBaseline(), "Only student 1 has authentic baseline");
+        assertEquals(3, trends.getObservations().size(), "Must have exactly 3 date points (no synthetic dates)");
+
+        // Verify strictly chronological ordering
+        var obsList = trends.getObservations();
+        assertEquals(tMinus10.toLocalDate().toString(), obsList.get(0).getDate());
+        assertEquals(tMinus5.toLocalDate().toString(), obsList.get(1).getDate());
+        assertEquals(tMinus1.toLocalDate().toString(), obsList.get(2).getDate());
+
+        // Point 1 (T-10): 1 assessment with 50.0%
+        var p0 = obsList.get(0);
+        assertEquals(50.0, p0.getMeanAssessmentScore(), 0.01);
+        assertEquals(50.0, p0.getMeanKnowledgeScore(), 0.01);
+        assertNull(p0.getMeanQuizAccuracy(), "Quiz accuracy must be null when no quizzes occurred");
+        assertNull(p0.getMeanSnapshotKnowledgeScore(), "Snapshot score must be null when no snapshots occurred");
+        assertNull(p0.getMeanEngagementScore(), "Engagement score must be null when no snapshots occurred");
+        assertEquals(1, p0.getObservationCount());
+        assertEquals(1, p0.getStudentCount());
+        assertEquals(1, p0.getAssessmentCount());
+        assertEquals(0, p0.getQuizCount());
+        assertEquals(0, p0.getSnapshotCount());
+
+        // Point 2 (T-5): 1 assessment (70.0%) + 1 snapshot (80.0% knowledge, 75.0% engagement)
+        // Primary Assessment score MUST be 70.0% (NOT averaged with 80.0% snapshot)
+        var p1 = obsList.get(1);
+        assertEquals(70.0, p1.getMeanAssessmentScore(), 0.01, "Primary assessment score must strictly reflect AssessmentResult only");
+        assertEquals(70.0, p1.getMeanKnowledgeScore(), 0.01);
+        assertNull(p1.getMeanQuizAccuracy(), "Quiz accuracy must be null when no quizzes occurred");
+        assertEquals(80.0, p1.getMeanSnapshotKnowledgeScore(), 0.01, "Snapshot knowledge metric must be separate");
+        assertEquals(75.0, p1.getMeanEngagementScore(), 0.01, "Engagement metric must be separate");
+        assertEquals(2, p1.getObservationCount());
+        assertEquals(2, p1.getStudentCount());
+        assertEquals(1, p1.getAssessmentCount());
+        assertEquals(0, p1.getQuizCount());
+        assertEquals(1, p1.getSnapshotCount());
+
+        // Point 3 (T-1): 1 quiz (90.0%)
+        // Assessment score must be null on dates with zero assessments
+        var p2 = obsList.get(2);
+        assertNull(p2.getMeanAssessmentScore(), "Assessment score must be null on dates without assessments");
+        assertNull(p2.getMeanKnowledgeScore(), "Knowledge score alias must be null on dates without assessments");
+        assertEquals(90.0, p2.getMeanQuizAccuracy(), 0.01, "Quiz accuracy must strictly reflect QuizSession only");
+        assertNull(p2.getMeanSnapshotKnowledgeScore());
+        assertNull(p2.getMeanEngagementScore());
+        assertEquals(1, p2.getObservationCount());
+        assertEquals(1, p2.getStudentCount());
+        assertEquals(0, p2.getAssessmentCount());
+        assertEquals(1, p2.getQuizCount());
+        assertEquals(0, p2.getSnapshotCount());
+    }
+
+    @Test
+    public void testStudentWithoutAuthenticBaselineIsNotAssigned50PercentResearchBaseline() {
+        String studentId = studentUser.getId();
+
+        // Student has only completed a quiz (no diagnostic assessment)
+        QuizSession q = new QuizSession();
+        q.setUserId(studentId);
+        q.setSubjectCode("CS101");
+        q.setSubjectName("Intro to CS");
+        q.setStatus(QuizSession.Status.COMPLETED);
+        q.setTotalQuestions(10);
+        q.setCorrectCount(7);
+        q.setLastAnswerTime(LocalDateTime.now().minusDays(1));
+        quizSessionRepository.save(q);
+
+        // 1. Verify Trends response evaluatedStudentsWithBaseline count
+        AdminResearchTrendsDTO trends = adminAnalyticsService.getResearchTrends();
+        assertNotNull(trends);
+        assertEquals(0, trends.getEvaluatedStudentsWithBaseline(),
+                "Student without authentic diagnostic baseline must NOT be counted as baseline-evaluated (no 50% fallback baseline)");
+
+        // 2. Verify Individual Analytics
+        AdminStudentAnalyticsDTO individual = adminAnalyticsService.getIndividualStudentAnalytics(studentId);
+        assertNotNull(individual);
+        assertNotNull(individual.getKnowledge());
+        assertFalse(individual.getKnowledge().isHasAuthenticBaseline(),
+                "hasAuthenticBaseline must be false");
+        assertNull(individual.getKnowledge().getBaselineKnowledge(),
+                "baselineKnowledge must remain null instead of fabricating 50.0%");
+        assertNull(individual.getKnowledge().getGrowthPp(),
+                "growthPp must remain null without authentic baseline");
+        assertNull(individual.getKnowledge().getNormalizedLearningGain(),
+                "normalizedLearningGain must remain null without authentic baseline");
+    }
+
+    @Test
+    public void testResearchTrendsEmptyStateHandledCleanly() {
+        // No assessments, snapshots, or quizzes persisted
+        AdminResearchTrendsDTO trends = adminAnalyticsService.getResearchTrends();
+        assertNotNull(trends);
+        assertEquals(0, trends.getTotalObservations());
+        assertEquals(0, trends.getUniqueStudentsCount());
+        assertEquals(0, trends.getObservations().size());
+        assertNull(trends.getEarliestObservationDate());
+        assertNull(trends.getLatestObservationDate());
+        assertTrue(trends.getDataSufficiencyNote().toLowerCase().contains("no historical"));
     }
 }
