@@ -2,6 +2,8 @@ package com.edupilot.service;
 
 import com.edupilot.dto.AdminAnalyticsOverviewDTO;
 import com.edupilot.dto.AdminCohortAnalyticsDTO;
+import com.edupilot.dto.AdminCohortSubjectAnalyticsDTO;
+import com.edupilot.dto.AdminCohortSubjectAnalyticsDTO.SubjectResearchSummaryDTO;
 import com.edupilot.dto.AdminResearchTrendsDTO;
 import com.edupilot.dto.AdminStudentAnalyticsDTO;
 import com.edupilot.dto.AdminStudentDirectoryDTO;
@@ -1402,5 +1404,353 @@ public class AdminAnalyticsIntegrationTest {
         assertNull(trends.getEarliestObservationDate());
         assertNull(trends.getLatestObservationDate());
         assertTrue(trends.getDataSufficiencyNote().toLowerCase().contains("no historical"));
+    }
+
+    // ==========================================
+    // PHASE 2C-2: SUBJECT RESEARCH ANALYTICS TESTS
+    // ==========================================
+
+    @Test
+    public void testAdminCanAccessSubjectAnalyticsEndpoint_200() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/subjects")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    public void testStudentCannotAccessSubjectAnalyticsEndpoint_403() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/subjects")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testFacultyCannotAccessSubjectAnalyticsEndpoint_403() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/subjects")
+                        .header("Authorization", "Bearer " + facultyToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testUnauthenticatedCannotAccessSubjectAnalyticsEndpoint_401() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/subjects")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void testSubjectAnalyticsDeterministicCalculations() throws Exception {
+        String s1Id = studentUser.getId();
+
+        // Create Student 2
+        User student2 = new User();
+        student2.setEmail("student2_subj@ritindia.edu");
+        student2.setPassword(passwordEncoder.encode("password123"));
+        student2.setRole(User.Role.STUDENT);
+        student2 = userRepository.save(student2);
+        String s2Id = student2.getId();
+
+        // Student 1 Profile: Enrolled in "Mathematics" and "Physics"
+        StudentProfile sp1 = new StudentProfile();
+        sp1.setUserId(s1Id);
+        sp1.setFullName("Student One");
+        sp1.setSubjects(List.of("Mathematics", "Physics"));
+        studentProfileRepository.save(sp1);
+
+        // Student 2 Profile: Enrolled in "Mathematics"
+        StudentProfile sp2 = new StudentProfile();
+        sp2.setUserId(s2Id);
+        sp2.setFullName("Student Two");
+        sp2.setSubjects(List.of("Mathematics"));
+        studentProfileRepository.save(sp2);
+
+        // Student 1 Math Diagnostic (Earliest): 40.0%
+        AssessmentResult ar1 = new AssessmentResult();
+        ar1.setUserId(s1Id);
+        ar1.setSubjectCode("MATH101");
+        ar1.setSubjectName("Mathematics");
+        ar1.setPercentage(40.0);
+        ar1.setScore(40);
+        ar1.setTotalMarks(100);
+        ar1.setTotalQuestions(20);
+        ar1.setCreatedAt(LocalDateTime.now().minusDays(10));
+        assessmentResultRepository.save(ar1);
+
+        // Student 2 Math Diagnostic (Earliest): 60.0%
+        AssessmentResult ar2 = new AssessmentResult();
+        ar2.setUserId(s2Id);
+        ar2.setSubjectCode("MATH101");
+        ar2.setSubjectName("Mathematics");
+        ar2.setPercentage(60.0);
+        ar2.setScore(60);
+        ar2.setTotalMarks(100);
+        ar2.setTotalQuestions(20);
+        ar2.setCreatedAt(LocalDateTime.now().minusDays(10));
+        assessmentResultRepository.save(ar2);
+
+        // Student 1 Math Concepts: Calculus (80%), Algebra (70%) -> mean Kt = 75.0%
+        ConceptMastery cm1 = new ConceptMastery();
+        cm1.setUserId(s1Id);
+        cm1.setSubjectCode("MATH101");
+        cm1.setSubjectName("Mathematics");
+        cm1.setTopic("Calculus");
+        cm1.setConceptName("Limits");
+        cm1.setAccuracy(80.0);
+        cm1.setMasteryScore(80.0);
+        cm1.setMasteryLevel(ConceptMastery.MasteryLevel.PROFICIENT);
+        cm1.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        conceptMasteryRepository.save(cm1);
+
+        ConceptMastery cm2 = new ConceptMastery();
+        cm2.setUserId(s1Id);
+        cm2.setSubjectCode("MATH101");
+        cm2.setSubjectName("Mathematics");
+        cm2.setTopic("Algebra");
+        cm2.setConceptName("Matrices");
+        cm2.setAccuracy(70.0);
+        cm2.setMasteryScore(70.0);
+        cm2.setMasteryLevel(ConceptMastery.MasteryLevel.INTERMEDIATE);
+        cm2.setStatus(ConceptMastery.ConceptStatus.UNCERTAIN);
+        conceptMasteryRepository.save(cm2);
+
+        // Student 2 Math Concept: Calculus (90%) -> mean Kt = 90.0%
+        ConceptMastery cm3 = new ConceptMastery();
+        cm3.setUserId(s2Id);
+        cm3.setSubjectCode("MATH101");
+        cm3.setSubjectName("Mathematics");
+        cm3.setTopic("Calculus");
+        cm3.setConceptName("Derivatives");
+        cm3.setAccuracy(90.0);
+        cm3.setMasteryScore(90.0);
+        cm3.setMasteryLevel(ConceptMastery.MasteryLevel.MASTER);
+        cm3.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        conceptMasteryRepository.save(cm3);
+
+        // Mathematics Quizzes: 1 completed quiz (10 questions, 8 correct)
+        QuizSession qMath = new QuizSession();
+        qMath.setUserId(s1Id);
+        qMath.setSubjectCode("MATH101");
+        qMath.setSubjectName("Mathematics");
+        qMath.setStatus(QuizSession.Status.COMPLETED);
+        qMath.setTotalQuestions(10);
+        qMath.setCorrectCount(8);
+        quizSessionRepository.save(qMath);
+
+        // Mathematics Roadmap: 1 student, 4 topics, 2 completed
+        SubjectRoadmap rmMath = new SubjectRoadmap();
+        rmMath.setUserId(s1Id);
+        rmMath.setSubjectCode("MATH101");
+        rmMath.setSubjectName("Mathematics");
+        SubjectRoadmap.RoadmapTopicNode t1 = new SubjectRoadmap.RoadmapTopicNode();
+        t1.setCompleted(true);
+        SubjectRoadmap.RoadmapTopicNode t2 = new SubjectRoadmap.RoadmapTopicNode();
+        t2.setCompleted(true);
+        SubjectRoadmap.RoadmapTopicNode t3 = new SubjectRoadmap.RoadmapTopicNode();
+        t3.setCompleted(false);
+        SubjectRoadmap.RoadmapTopicNode t4 = new SubjectRoadmap.RoadmapTopicNode();
+        t4.setCompleted(false);
+        rmMath.setTopics(List.of(t1, t2, t3, t4));
+        subjectRoadmapRepository.save(rmMath);
+
+        // Call Service
+        AdminCohortSubjectAnalyticsDTO result = adminAnalyticsService.getCohortSubjectAnalytics();
+        assertNotNull(result);
+        assertEquals(2, result.getTotalEnrolledStudents());
+        assertTrue(result.getTotalSubjectsCount() >= 2);
+
+        SubjectResearchSummaryDTO mathSummary = result.getSubjects().stream()
+                .filter(s -> s.getSubjectName().equalsIgnoreCase("Mathematics"))
+                .findFirst().orElse(null);
+        assertNotNull(mathSummary);
+
+        // Student 1 Math: K0 = 40.0, Kt = 75.0, Growth = +35.0 pp, Gain = (0.75 - 0.40)/(1.0 - 0.40) = 0.35/0.60 = 0.5833 (0.58)
+        // Student 2 Math: K0 = 60.0, Kt = 90.0, Growth = +30.0 pp, Gain = (0.90 - 0.60)/(1.0 - 0.60) = 0.30/0.40 = 0.75
+        // Mean K0 = (40 + 60)/2 = 50.0
+        // Mean Kt = (75 + 90)/2 = 82.5
+        // Mean Growth = (35 + 30)/2 = 32.5 pp
+        // Mean Gain = (0.58 + 0.75)/2 = 0.665 -> 0.67
+        assertEquals(2, mathSummary.getStudentsRepresented());
+        assertEquals(2, mathSummary.getStudentsWithAuthenticBaseline());
+        assertEquals(2, mathSummary.getStudentsWithObservedKnowledge());
+        assertEquals(50.0, mathSummary.getMeanBaselineKnowledge());
+        assertEquals(82.5, mathSummary.getMeanCurrentKnowledge());
+        assertEquals(32.5, mathSummary.getMeanGrowthPp());
+        assertNotNull(mathSummary.getMeanNormalizedGain());
+        assertEquals(0.67, mathSummary.getMeanNormalizedGain());
+
+        // Concept Metrics: 3 unique concepts (Limits, Matrices, Derivatives)
+        assertEquals(3, mathSummary.getConceptCount());
+        // Weak count: accuracy < 70 OR status == WEAK (Limits: 80, Matrices: 70, Derivatives: 90 -> 0 weak)
+        assertEquals(0, mathSummary.getWeakConceptCount());
+
+        // Quiz Metrics
+        assertEquals(1, mathSummary.getQuizSessionsCount());
+        assertEquals(10, mathSummary.getTotalQuizQuestions());
+        assertEquals(8, mathSummary.getCorrectQuizAnswers());
+        assertEquals(80.0, mathSummary.getMeanQuizAccuracy());
+
+        // Roadmap Metrics
+        assertEquals(1, mathSummary.getStudentsWithRoadmap());
+        assertEquals(4, mathSummary.getTotalRoadmapTopics());
+        assertEquals(2, mathSummary.getCompletedRoadmapTopics());
+        assertEquals(50.0, mathSummary.getRoadmapCompletionPercentage());
+    }
+
+    @Test
+    public void testAuthenticSubjectBaselineExtractionOnlyFromEarliestDiagnostic() {
+        String studentId = studentUser.getId();
+
+        // Earliest diagnostic for Physics is 45.0%
+        AssessmentResult diag = new AssessmentResult();
+        diag.setUserId(studentId);
+        diag.setSubjectCode("PHYS101");
+        diag.setSubjectName("Physics");
+        diag.setPercentage(45.0);
+        diag.setScore(45);
+        diag.setTotalMarks(100);
+        diag.setTotalQuestions(20);
+        diag.setCreatedAt(LocalDateTime.now().minusDays(20));
+        assessmentResultRepository.save(diag);
+
+        // Later assessment for Physics (85.0%) - should NOT overwrite baseline
+        AssessmentResult later = new AssessmentResult();
+        later.setUserId(studentId);
+        later.setSubjectCode("PHYS101");
+        later.setSubjectName("Physics");
+        later.setPercentage(85.0);
+        later.setScore(85);
+        later.setTotalMarks(100);
+        later.setTotalQuestions(20);
+        later.setCreatedAt(LocalDateTime.now().minusDays(5));
+        assessmentResultRepository.save(later);
+
+        AdminCohortSubjectAnalyticsDTO result = adminAnalyticsService.getCohortSubjectAnalytics();
+        SubjectResearchSummaryDTO phys = result.getSubjects().stream()
+                .filter(s -> s.getSubjectName().equalsIgnoreCase("Physics"))
+                .findFirst().orElse(null);
+
+        assertNotNull(phys);
+        assertEquals(1, phys.getStudentsWithAuthenticBaseline());
+        assertEquals(45.0, phys.getMeanBaselineKnowledge(),
+                "Baseline K0 must be strictly 45.0% from earliest diagnostic, NOT the later 85.0% assessment");
+    }
+
+    @Test
+    public void testSubjectWithoutDiagnosticBaselineRemainsNull() {
+        String studentId = studentUser.getId();
+
+        // Student has only ConceptMastery for Chemistry (no assessment diagnostic)
+        ConceptMastery cm = new ConceptMastery();
+        cm.setUserId(studentId);
+        cm.setSubjectCode("CHEM101");
+        cm.setSubjectName("Chemistry");
+        cm.setTopic("Organic Chemistry");
+        cm.setConceptName("Hydrocarbons");
+        cm.setAccuracy(75.0);
+        cm.setMasteryScore(75.0);
+        cm.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        cm.setMasteryLevel(ConceptMastery.MasteryLevel.PROFICIENT);
+        conceptMasteryRepository.save(cm);
+
+        AdminCohortSubjectAnalyticsDTO result = adminAnalyticsService.getCohortSubjectAnalytics();
+        SubjectResearchSummaryDTO chem = result.getSubjects().stream()
+                .filter(s -> s.getSubjectName().equalsIgnoreCase("Chemistry"))
+                .findFirst().orElse(null);
+
+        assertNotNull(chem);
+        assertEquals(0, chem.getStudentsWithAuthenticBaseline());
+        assertEquals(1, chem.getStudentsWithObservedKnowledge());
+        assertNull(chem.getMeanBaselineKnowledge(), "Subject without diagnostic must have NULL baseline (never 50% fallback)");
+        assertEquals(75.0, chem.getMeanCurrentKnowledge());
+        assertNull(chem.getMeanGrowthPp(), "Subject without diagnostic must have NULL growth");
+        assertNull(chem.getMeanNormalizedGain(), "Subject without diagnostic must have NULL normalized gain");
+    }
+
+    @Test
+    public void testWeakConceptCountAndMasteryDistribution() {
+        String studentId = studentUser.getId();
+
+        // Concept 1: Weak status
+        ConceptMastery c1 = new ConceptMastery();
+        c1.setUserId(studentId);
+        c1.setSubjectCode("BIO101");
+        c1.setSubjectName("Biology");
+        c1.setConceptName("Photosynthesis");
+        c1.setAccuracy(65.0);
+        c1.setMasteryScore(65.0);
+        c1.setStatus(ConceptMastery.ConceptStatus.WEAK);
+        c1.setMasteryLevel(ConceptMastery.MasteryLevel.BEGINNER);
+        conceptMasteryRepository.save(c1);
+
+        // Concept 2: Accuracy < 70%
+        ConceptMastery c2 = new ConceptMastery();
+        c2.setUserId(studentId);
+        c2.setSubjectCode("BIO101");
+        c2.setSubjectName("Biology");
+        c2.setConceptName("Cell Division");
+        c2.setAccuracy(60.0);
+        c2.setMasteryScore(60.0);
+        c2.setStatus(ConceptMastery.ConceptStatus.UNCERTAIN);
+        c2.setMasteryLevel(ConceptMastery.MasteryLevel.INTERMEDIATE);
+        conceptMasteryRepository.save(c2);
+
+        // Concept 3: Strong
+        ConceptMastery c3 = new ConceptMastery();
+        c3.setUserId(studentId);
+        c3.setSubjectCode("BIO101");
+        c3.setSubjectName("Biology");
+        c3.setConceptName("Genetics");
+        c3.setAccuracy(95.0);
+        c3.setMasteryScore(95.0);
+        c3.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        c3.setMasteryLevel(ConceptMastery.MasteryLevel.MASTER);
+        conceptMasteryRepository.save(c3);
+
+        AdminCohortSubjectAnalyticsDTO result = adminAnalyticsService.getCohortSubjectAnalytics();
+        SubjectResearchSummaryDTO bio = result.getSubjects().stream()
+                .filter(s -> s.getSubjectName().equalsIgnoreCase("Biology"))
+                .findFirst().orElse(null);
+
+        assertNotNull(bio);
+        assertEquals(3, bio.getConceptCount());
+        assertEquals(2, bio.getWeakConceptCount(), "Concepts with status WEAK or accuracy < 70 must be counted as weak");
+        assertNotNull(bio.getMasteryDistribution());
+        assertEquals(1, bio.getMasteryDistribution().get("BEGINNER"));
+        assertEquals(1, bio.getMasteryDistribution().get("INTERMEDIATE"));
+        assertEquals(1, bio.getMasteryDistribution().get("MASTER"));
+        assertEquals(0, bio.getMasteryDistribution().get("PROFICIENT"));
+    }
+
+    @Test
+    public void testMissingSubjectDataIsNotConvertedToZero() {
+        String studentId = studentUser.getId();
+
+        // Student only in profile with subject "History" but no assessments, concepts, quizzes, or roadmaps
+        StudentProfile sp = new StudentProfile();
+        sp.setUserId(studentId);
+        sp.setFullName("Test Student");
+        sp.setSubjects(List.of("History"));
+        studentProfileRepository.save(sp);
+
+        AdminCohortSubjectAnalyticsDTO result = adminAnalyticsService.getCohortSubjectAnalytics();
+        SubjectResearchSummaryDTO history = result.getSubjects().stream()
+                .filter(s -> s.getSubjectName().equalsIgnoreCase("History"))
+                .findFirst().orElse(null);
+
+        assertNotNull(history);
+        assertEquals(1, history.getStudentsRepresented());
+        assertEquals(0, history.getStudentsWithAuthenticBaseline());
+        assertEquals(0, history.getStudentsWithObservedKnowledge());
+        assertNull(history.getMeanBaselineKnowledge());
+        assertNull(history.getMeanCurrentKnowledge());
+        assertNull(history.getMeanGrowthPp());
+        assertNull(history.getMeanNormalizedGain());
+        assertNull(history.getMeanQuizAccuracy());
+        assertNull(history.getRoadmapCompletionPercentage());
+        assertEquals(0, history.getConceptCount());
+        assertEquals(0, history.getWeakConceptCount());
     }
 }

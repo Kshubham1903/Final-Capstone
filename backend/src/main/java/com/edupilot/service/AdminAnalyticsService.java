@@ -2,6 +2,8 @@ package com.edupilot.service;
 
 import com.edupilot.dto.AdminAnalyticsOverviewDTO;
 import com.edupilot.dto.AdminCohortAnalyticsDTO;
+import com.edupilot.dto.AdminCohortSubjectAnalyticsDTO;
+import com.edupilot.dto.AdminCohortSubjectAnalyticsDTO.SubjectResearchSummaryDTO;
 import com.edupilot.dto.AdminResearchTrendsDTO;
 import com.edupilot.dto.AdminResearchTrendsDTO.TrendPointDTO;
 import com.edupilot.dto.AdminStudentAnalyticsDTO;
@@ -1151,23 +1153,415 @@ public class AdminAnalyticsService {
             ));
         }
 
-        int uniqueStudents = distinctStudentsRepresented.size();
-        String sufficiencyNote = "Empirical research trend based on " + totalAssessments + " assessment(s), "
-                + totalQuizzes + " quiz(zes), and " + totalSnapshots + " state snapshot(s) across "
-                + uniqueStudents + " student(s). Primary trend strictly reflects persisted AssessmentResult performance.";
+        trendPoints.sort(Comparator.comparing(AdminResearchTrendsDTO.TrendPointDTO::getDate));
+
+        String dataSufficiencyNote = "Historical research trends reflect empirical student evaluations and activity recorded in system logs. Dates without activity are omitted.";
 
         return new AdminResearchTrendsDTO(
                 totalObservations,
                 totalAssessments,
                 totalQuizzes,
                 totalSnapshots,
-                uniqueStudents,
+                distinctStudentsRepresented.size(),
                 evaluatedStudentsWithBaseline,
                 earliestDate,
                 latestDate,
-                sufficiencyNote,
+                dataSufficiencyNote,
                 trendPoints
         );
+    }
+
+    public AdminCohortSubjectAnalyticsDTO getCohortSubjectAnalytics() {
+        // 1. Authoritative Student Population from User collection
+        List<User> studentUsers = userRepository.findByRole(User.Role.STUDENT);
+        if (studentUsers == null || studentUsers.isEmpty()) {
+            return new AdminCohortSubjectAnalyticsDTO(
+                    0, 0, 0,
+                    "No enrolled students found in directory.",
+                    Collections.emptyList()
+            );
+        }
+
+        Set<String> validStudentIds = new HashSet<>();
+        for (User u : studentUsers) {
+            if (u.getId() != null && !u.getId().isBlank()) {
+                validStudentIds.add(u.getId());
+            }
+        }
+
+        // Map profile IDs to canonical user IDs for accurate matching
+        List<StudentProfile> profiles = studentProfileRepository.findAll();
+        Map<String, String> profileToUserMap = new HashMap<>();
+        Map<String, StudentProfile> studentToProfileMap = new HashMap<>();
+        for (StudentProfile p : profiles) {
+            if (p.getId() != null && p.getUserId() != null && validStudentIds.contains(p.getUserId())) {
+                profileToUserMap.put(p.getId(), p.getUserId());
+                studentToProfileMap.put(p.getUserId(), p);
+            }
+        }
+
+        // 2. Batch retrieve collections
+        List<AssessmentResult> allAssessments = assessmentResultRepository.findAll();
+        List<ConceptMastery> allConceptMastery = conceptMasteryRepository.findAll();
+        List<QuizSession> allQuizzes = quizSessionRepository.findAll();
+        List<SubjectRoadmap> allRoadmaps = subjectRoadmapRepository.findAll();
+
+        // 3. Group by canonical student ID
+        Map<String, List<AssessmentResult>> assessmentsByStudent = new HashMap<>();
+        for (AssessmentResult ar : allAssessments) {
+            String studentId = resolveStudentId(ar.getUserId(), ar.getStudentProfileId(), validStudentIds, profileToUserMap);
+            if (studentId != null) {
+                assessmentsByStudent.computeIfAbsent(studentId, k -> new ArrayList<>()).add(ar);
+            }
+        }
+
+        Map<String, List<ConceptMastery>> masteryByStudent = new HashMap<>();
+        for (ConceptMastery cm : allConceptMastery) {
+            String studentId = resolveStudentId(cm.getUserId(), cm.getStudentProfileId(), validStudentIds, profileToUserMap);
+            if (studentId != null) {
+                masteryByStudent.computeIfAbsent(studentId, k -> new ArrayList<>()).add(cm);
+            }
+        }
+
+        Map<String, List<QuizSession>> quizzesByStudent = new HashMap<>();
+        for (QuizSession qs : allQuizzes) {
+            String studentId = resolveStudentId(qs.getUserId(), qs.getStudentProfileId(), validStudentIds, profileToUserMap);
+            if (studentId != null && qs.getStatus() == QuizSession.Status.COMPLETED) {
+                quizzesByStudent.computeIfAbsent(studentId, k -> new ArrayList<>()).add(qs);
+            }
+        }
+
+        Map<String, List<SubjectRoadmap>> roadmapsByStudent = new HashMap<>();
+        for (SubjectRoadmap sr : allRoadmaps) {
+            String studentId = resolveStudentId(sr.getUserId(), null, validStudentIds, profileToUserMap);
+            if (studentId != null) {
+                roadmapsByStudent.computeIfAbsent(studentId, k -> new ArrayList<>()).add(sr);
+            }
+        }
+
+        // 4. Discover all distinct canonical subjects across data sources
+        Map<String, SubjectCatalogInfo> canonicalSubjects = new LinkedHashMap<>();
+
+        java.util.function.Consumer<SubjectCatalogInfo> registerSubject = (info) -> {
+            if (info != null && info.subjectName != null && !info.subjectName.isBlank()) {
+                String key = normalizeSubjectName(info.subjectName);
+                canonicalSubjects.compute(key, (k, existing) -> {
+                    if (existing == null) return info;
+                    if ((existing.subjectCode == null || existing.subjectCode.isBlank()) && (info.subjectCode != null && !info.subjectCode.isBlank())) {
+                        existing.subjectCode = info.subjectCode;
+                    }
+                    return existing;
+                });
+            }
+        };
+
+        // Scan profiles
+        for (StudentProfile p : profiles) {
+            if (p.getSubjects() != null) {
+                for (String subj : p.getSubjects()) {
+                    registerSubject.accept(new SubjectCatalogInfo(null, subj.trim()));
+                }
+            }
+        }
+
+        // Scan assessments
+        for (AssessmentResult ar : allAssessments) {
+            if (ar.getSubjectName() != null && !ar.getSubjectName().isBlank()) {
+                registerSubject.accept(new SubjectCatalogInfo(ar.getSubjectCode(), ar.getSubjectName().trim()));
+            }
+        }
+
+        // Scan concept mastery
+        for (ConceptMastery cm : allConceptMastery) {
+            if (cm.getSubjectName() != null && !cm.getSubjectName().isBlank()) {
+                registerSubject.accept(new SubjectCatalogInfo(cm.getSubjectCode(), cm.getSubjectName().trim()));
+            }
+        }
+
+        // Scan quizzes
+        for (QuizSession qs : allQuizzes) {
+            if (qs.getSubjectName() != null && !qs.getSubjectName().isBlank()) {
+                registerSubject.accept(new SubjectCatalogInfo(qs.getSubjectCode(), qs.getSubjectName().trim()));
+            }
+        }
+
+        // Scan roadmaps
+        for (SubjectRoadmap sr : allRoadmaps) {
+            if (sr.getSubjectName() != null && !sr.getSubjectName().isBlank()) {
+                registerSubject.accept(new SubjectCatalogInfo(sr.getSubjectCode(), sr.getSubjectName().trim()));
+            }
+        }
+
+        if (canonicalSubjects.isEmpty()) {
+            return new AdminCohortSubjectAnalyticsDTO(
+                    0, validStudentIds.size(), 0,
+                    "No subject records found across enrolled cohort.",
+                    Collections.emptyList()
+            );
+        }
+
+        // 5. Pre-compute each student's EARLIEST authentic diagnostic assessment
+        Map<String, AssessmentResult> earliestDiagnosticByStudent = new HashMap<>();
+        for (String studentId : validStudentIds) {
+            List<AssessmentResult> sAssessments = assessmentsByStudent.get(studentId);
+            if (sAssessments != null && !sAssessments.isEmpty()) {
+                sAssessments.sort(Comparator.comparing(AssessmentResult::getCreatedAt));
+                for (AssessmentResult ar : sAssessments) {
+                    if (ar.getTotalQuestions() > 0 || ar.getPercentage() > 0 || ar.getScore() > 0) {
+                        earliestDiagnosticByStudent.put(studentId, ar);
+                        break;
+                    }
+                }
+            }
+        }
+
+        int globalEvaluatedStudentsWithBaseline = 0;
+        Set<String> studentsWithAnyBaseline = new HashSet<>();
+        for (String studentId : validStudentIds) {
+            Map<String, Double> baselineMap = studentGrowthService.extractBaselineConceptAccuracies(studentId, null);
+            if (baselineMap != null && !baselineMap.isEmpty()) {
+                studentsWithAnyBaseline.add(studentId);
+            }
+        }
+        globalEvaluatedStudentsWithBaseline = studentsWithAnyBaseline.size();
+
+        // 6. Calculate subject research metrics for each canonical subject
+        List<AdminCohortSubjectAnalyticsDTO.SubjectResearchSummaryDTO> subjectSummaries = new ArrayList<>();
+
+        for (Map.Entry<String, SubjectCatalogInfo> entry : canonicalSubjects.entrySet()) {
+            SubjectCatalogInfo catInfo = entry.getValue();
+            String subjectName = catInfo.subjectName;
+            String subjectCode = catInfo.subjectCode != null && !catInfo.subjectCode.isBlank() ? catInfo.subjectCode : subjectName;
+
+            Set<String> subjectStudentsRepresented = new HashSet<>();
+            List<Double> validBaselines = new ArrayList<>();
+            List<Double> validCurrentKnowledge = new ArrayList<>();
+            List<Double> validGrowthPoints = new ArrayList<>();
+            List<Double> validNormalizedGains = new ArrayList<>();
+
+            // A. Per-student subject evaluation
+            for (String studentId : validStudentIds) {
+                boolean hasSubjectEvidence = false;
+
+                // Check profile enrollment
+                StudentProfile sp = studentToProfileMap.get(studentId);
+                if (sp != null && sp.getSubjects() != null) {
+                    for (String subj : sp.getSubjects()) {
+                        if (isSubjectMatch(subj, subjectName)) {
+                            hasSubjectEvidence = true;
+                            break;
+                        }
+                    }
+                }
+
+                // 1. Calculate authentic Subject K0 (strictly from earliest diagnostic)
+                Double studentSubjectK0 = null;
+                AssessmentResult earliestDiag = earliestDiagnosticByStudent.get(studentId);
+                if (earliestDiag != null) {
+                    if (isSubjectMatch(earliestDiag.getSubjectName(), subjectName) ||
+                            (earliestDiag.getSubjectCode() != null && earliestDiag.getSubjectCode().equalsIgnoreCase(subjectCode))) {
+                        double pct = earliestDiag.getPercentage() > 0 ? earliestDiag.getPercentage() :
+                                (earliestDiag.getScore() > 0 && earliestDiag.getTotalMarks() > 0 ? (earliestDiag.getScore() * 100.0 / earliestDiag.getTotalMarks()) : 0.0);
+                        if (pct <= 1.0 && pct > 0) pct *= 100.0;
+                        studentSubjectK0 = round2(pct);
+                        hasSubjectEvidence = true;
+                    }
+                }
+
+                if (studentSubjectK0 != null) {
+                    validBaselines.add(studentSubjectK0);
+                }
+
+                // 2. Calculate Current Subject Knowledge Kt (from student's ConceptMastery records for this subject)
+                Double studentSubjectKt = null;
+                List<ConceptMastery> studentCms = masteryByStudent.get(studentId);
+                if (studentCms != null && !studentCms.isEmpty()) {
+                    List<ConceptMastery> subjCms = studentCms.stream()
+                            .filter(cm -> isSubjectMatch(cm.getSubjectName(), subjectName) || (cm.getSubjectCode() != null && cm.getSubjectCode().equalsIgnoreCase(subjectCode)))
+                            .collect(Collectors.toList());
+                    if (!subjCms.isEmpty()) {
+                        hasSubjectEvidence = true;
+                        double sumAcc = 0.0;
+                        for (ConceptMastery cm : subjCms) {
+                            double acc = cm.getAccuracy() > 0 ? cm.getAccuracy() : cm.getMasteryScore();
+                            sumAcc += acc;
+                        }
+                        studentSubjectKt = round2(sumAcc / subjCms.size());
+                    }
+                }
+
+                if (studentSubjectKt != null) {
+                    validCurrentKnowledge.add(studentSubjectKt);
+                }
+
+                // 3. Growth & Normalized Gain (ONLY when BOTH authentic K0 and valid Kt exist)
+                if (studentSubjectK0 != null && studentSubjectKt != null) {
+                    double growth = round2(studentSubjectKt - studentSubjectK0);
+                    double gain = round2(LearningGainService.computeGain(studentSubjectK0 / 100.0, studentSubjectKt / 100.0));
+                    validGrowthPoints.add(growth);
+                    validNormalizedGains.add(gain);
+                }
+
+                // Check quiz activity
+                List<QuizSession> sQuizzes = quizzesByStudent.get(studentId);
+                if (sQuizzes != null) {
+                    for (QuizSession qs : sQuizzes) {
+                        if (isSubjectMatch(qs.getSubjectName(), subjectName) || (qs.getSubjectCode() != null && qs.getSubjectCode().equalsIgnoreCase(subjectCode))) {
+                            hasSubjectEvidence = true;
+                            break;
+                        }
+                    }
+                }
+
+                // Check roadmaps
+                List<SubjectRoadmap> sRoadmaps = roadmapsByStudent.get(studentId);
+                if (sRoadmaps != null) {
+                    for (SubjectRoadmap sr : sRoadmaps) {
+                        if (isSubjectMatch(sr.getSubjectName(), subjectName) || (sr.getSubjectCode() != null && sr.getSubjectCode().equalsIgnoreCase(subjectCode))) {
+                            hasSubjectEvidence = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (hasSubjectEvidence) {
+                    subjectStudentsRepresented.add(studentId);
+                }
+            }
+
+            // B. Aggregate Subject Means
+            Double meanBaseline = !validBaselines.isEmpty() ? round2(validBaselines.stream().mapToDouble(Double::doubleValue).average().orElse(0.0)) : null;
+            Double meanCurrent = !validCurrentKnowledge.isEmpty() ? round2(validCurrentKnowledge.stream().mapToDouble(Double::doubleValue).average().orElse(0.0)) : null;
+            Double meanGrowth = !validGrowthPoints.isEmpty() ? round2(validGrowthPoints.stream().mapToDouble(Double::doubleValue).average().orElse(0.0)) : null;
+            Double meanGain = !validNormalizedGains.isEmpty() ? round2(validNormalizedGains.stream().mapToDouble(Double::doubleValue).average().orElse(0.0)) : null;
+
+            // C. Concept Analytics for this subject (across all enrolled students)
+            List<ConceptMastery> allSubjMastery = allConceptMastery.stream()
+                    .filter(cm -> {
+                        String studentId = resolveStudentId(cm.getUserId(), cm.getStudentProfileId(), validStudentIds, profileToUserMap);
+                        return studentId != null && (isSubjectMatch(cm.getSubjectName(), subjectName) || (cm.getSubjectCode() != null && cm.getSubjectCode().equalsIgnoreCase(subjectCode)));
+                    })
+                    .collect(Collectors.toList());
+
+            Set<String> distinctConceptNames = new HashSet<>();
+            int weakConceptCount = 0;
+            Map<String, Integer> masteryDist = new LinkedHashMap<>();
+            for (ConceptMastery.MasteryLevel ml : ConceptMastery.MasteryLevel.values()) {
+                masteryDist.put(ml.name(), 0);
+            }
+
+            for (ConceptMastery cm : allSubjMastery) {
+                String cName = cm.getConceptName() != null && !cm.getConceptName().isBlank() ? cm.getConceptName() : cm.getTopic();
+                if (cName != null && !cName.isBlank()) {
+                    distinctConceptNames.add(cName.trim());
+                }
+                double acc = cm.getAccuracy() > 0 ? cm.getAccuracy() : cm.getMasteryScore();
+                if (cm.getStatus() == ConceptMastery.ConceptStatus.WEAK || acc < 70.0) {
+                    weakConceptCount++;
+                }
+                String mlName = cm.getMasteryLevel() != null ? cm.getMasteryLevel().name() : "UNKNOWN";
+                masteryDist.put(mlName, masteryDist.getOrDefault(mlName, 0) + 1);
+            }
+
+            int conceptCount = distinctConceptNames.size();
+
+            // D. Quiz Analytics for this subject
+            List<QuizSession> allSubjQuizzes = allQuizzes.stream()
+                    .filter(qs -> {
+                        String studentId = resolveStudentId(qs.getUserId(), qs.getStudentProfileId(), validStudentIds, profileToUserMap);
+                        return studentId != null && qs.getStatus() == QuizSession.Status.COMPLETED &&
+                                (isSubjectMatch(qs.getSubjectName(), subjectName) || (qs.getSubjectCode() != null && qs.getSubjectCode().equalsIgnoreCase(subjectCode)));
+                    })
+                    .collect(Collectors.toList());
+
+            int quizSessionsCount = allSubjQuizzes.size();
+            int totalQuizQuestions = allSubjQuizzes.stream().mapToInt(QuizSession::getTotalQuestions).sum();
+            int correctQuizAnswers = allSubjQuizzes.stream().mapToInt(QuizSession::getCorrectCount).sum();
+            Double meanQuizAccuracy = totalQuizQuestions > 0 ? round2((double) correctQuizAnswers * 100.0 / totalQuizQuestions) : null;
+
+            // E. Roadmap Analytics for this subject
+            List<SubjectRoadmap> allSubjRoadmaps = allRoadmaps.stream()
+                    .filter(sr -> {
+                        String studentId = resolveStudentId(sr.getUserId(), null, validStudentIds, profileToUserMap);
+                        return studentId != null && (isSubjectMatch(sr.getSubjectName(), subjectName) || (sr.getSubjectCode() != null && sr.getSubjectCode().equalsIgnoreCase(subjectCode)));
+                    })
+                    .collect(Collectors.toList());
+
+            int studentsWithRoadmap = (int) allSubjRoadmaps.stream().map(SubjectRoadmap::getUserId).filter(Objects::nonNull).distinct().count();
+            int totalRoadmapTopics = 0;
+            int completedRoadmapTopics = 0;
+            for (SubjectRoadmap sr : allSubjRoadmaps) {
+                if (sr.getTopics() != null) {
+                    totalRoadmapTopics += sr.getTopics().size();
+                    completedRoadmapTopics += (int) sr.getTopics().stream().filter(SubjectRoadmap.RoadmapTopicNode::isCompleted).count();
+                }
+            }
+            Double roadmapCompletion = totalRoadmapTopics > 0 ? round2((double) completedRoadmapTopics * 100.0 / totalRoadmapTopics) : null;
+
+            subjectSummaries.add(new AdminCohortSubjectAnalyticsDTO.SubjectResearchSummaryDTO(
+                    subjectCode,
+                    subjectName,
+                    subjectStudentsRepresented.size(),
+                    validCurrentKnowledge.size(),
+                    validBaselines.size(),
+                    meanBaseline,
+                    meanCurrent,
+                    meanGrowth,
+                    meanGain,
+                    conceptCount,
+                    weakConceptCount,
+                    masteryDist,
+                    quizSessionsCount,
+                    totalQuizQuestions,
+                    correctQuizAnswers,
+                    meanQuizAccuracy,
+                    studentsWithRoadmap,
+                    totalRoadmapTopics,
+                    completedRoadmapTopics,
+                    roadmapCompletion
+            ));
+        }
+
+        // Sort subjects by name alphabetically
+        subjectSummaries.sort(Comparator.comparing(AdminCohortSubjectAnalyticsDTO.SubjectResearchSummaryDTO::getSubjectName));
+
+        String dataSufficiencyNote = "Subject baseline and learning gain statistics include only students with verified subject-level diagnostic baselines. Missing baseline data is not synthesized or defaulted.";
+
+        return new AdminCohortSubjectAnalyticsDTO(
+                subjectSummaries.size(),
+                validStudentIds.size(),
+                globalEvaluatedStudentsWithBaseline,
+                dataSufficiencyNote,
+                subjectSummaries
+        );
+    }
+
+    private static class SubjectCatalogInfo {
+        String subjectCode;
+        String subjectName;
+
+        SubjectCatalogInfo(String subjectCode, String subjectName) {
+            this.subjectCode = subjectCode;
+            this.subjectName = subjectName;
+        }
+    }
+
+    private String resolveStudentId(String userId, String profileId, Set<String> validStudentIds, Map<String, String> profileToUserMap) {
+        if (userId != null && validStudentIds.contains(userId)) {
+            return userId;
+        }
+        if (profileId != null && profileToUserMap.containsKey(profileId)) {
+            return profileToUserMap.get(profileId);
+        }
+        if (userId != null && profileToUserMap.containsKey(userId)) {
+            return profileToUserMap.get(userId);
+        }
+        return null;
+    }
+
+    private String normalizeSubjectName(String name) {
+        if (name == null) return "";
+        return name.trim().toLowerCase().replaceAll("\\s+", " ");
     }
 
     private static double round2(double val) {

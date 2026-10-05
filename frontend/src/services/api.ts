@@ -2435,3 +2435,53 @@ export async function fetchAdminResearchTrends(): Promise<AdminResearchTrendsDTO
   }
   return null;
 }
+
+export interface SubjectResearchSummaryDTO {
+  subjectCode: string;
+  subjectName: string;
+  studentsRepresented: number;
+  studentsWithObservedKnowledge: number;
+  studentsWithAuthenticBaseline: number;
+  meanBaselineKnowledge: number | null;
+  meanCurrentKnowledge: number | null;
+  meanGrowthPp: number | null;
+  meanNormalizedGain: number | null;
+  conceptCount: number;
+  weakConceptCount: number;
+  masteryDistribution: Record<string, number>;
+  quizSessionsCount: number;
+  totalQuizQuestions: number;
+  correctQuizAnswers: number;
+  meanQuizAccuracy: number | null;
+  studentsWithRoadmap: number;
+  totalRoadmapTopics: number;
+  completedRoadmapTopics: number;
+  roadmapCompletionPercentage: number | null;
+}
+
+export interface AdminCohortSubjectAnalyticsDTO {
+  totalSubjectsCount: number;
+  totalEnrolledStudents: number;
+  evaluatedStudentsWithBaseline: number;
+  dataSufficiencyNote: string;
+  subjects: SubjectResearchSummaryDTO[];
+}
+
+export async function fetchAdminSubjectAnalytics(): Promise<AdminCohortSubjectAnalyticsDTO | null> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/subjects`, {
+        method: "GET",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      handleAuthError(res);
+    } catch (err) {
+      console.warn("Failed to fetch admin subject analytics:", err);
+    }
+  }
+  return null;
+}

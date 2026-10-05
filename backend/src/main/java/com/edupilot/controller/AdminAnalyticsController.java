@@ -2,6 +2,7 @@ package com.edupilot.controller;
 
 import com.edupilot.dto.AdminAnalyticsOverviewDTO;
 import com.edupilot.dto.AdminCohortAnalyticsDTO;
+import com.edupilot.dto.AdminCohortSubjectAnalyticsDTO;
 import com.edupilot.dto.AdminResearchTrendsDTO;
 import com.edupilot.dto.AdminStudentDirectoryDTO;
 import com.edupilot.service.AdminAnalyticsService;
@@ -37,6 +38,12 @@ public class AdminAnalyticsController {
     public ResponseEntity<AdminResearchTrendsDTO> getResearchTrends() {
         AdminResearchTrendsDTO trends = adminAnalyticsService.getResearchTrends();
         return ResponseEntity.ok(trends);
+    }
+
+    @GetMapping("/subjects")
+    public ResponseEntity<AdminCohortSubjectAnalyticsDTO> getCohortSubjectAnalytics() {
+        AdminCohortSubjectAnalyticsDTO subjects = adminAnalyticsService.getCohortSubjectAnalytics();
+        return ResponseEntity.ok(subjects);
     }
 
     @GetMapping("/students")
