@@ -2213,4 +2213,298 @@ public class AdminAnalyticsIntegrationTest {
         assertEquals(0, trends.getTotalAssessments());
         assertEquals(0, trends.getObservations().size(), "No fabricated or synthetic trend points should be created");
     }
+
+    // ==========================================
+    // PHASE 2C-3B: CONTROLLER QUERY PARAMETER INTEGRATION TESTS
+    // ==========================================
+
+    @Test
+    public void testController_ExistingEndpointsWithoutQueryParamsReturn200() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/overview")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/analytics/trends")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/analytics/subjects")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/analytics/students")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    public void testController_OverviewAcceptsBranchFilter() throws Exception {
+        studentService.onboardStudent(
+                studentUser.getId(), "CSE", 3, List.of("CS101"),
+                List.of("Engineer"), 3.0, 8.0, 7.0, 4.0, 25, "Visual"
+        );
+
+        MvcResult resultMatch = mockMvc.perform(get("/api/admin/analytics/overview")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("branch", "CSE"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminAnalyticsOverviewDTO dtoMatch = objectMapper.readValue(resultMatch.getResponse().getContentAsString(), AdminAnalyticsOverviewDTO.class);
+        assertEquals(1, dtoMatch.getTotalStudents());
+
+        MvcResult resultMismatch = mockMvc.perform(get("/api/admin/analytics/overview")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("branch", "ECE"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminAnalyticsOverviewDTO dtoMismatch = objectMapper.readValue(resultMismatch.getResponse().getContentAsString(), AdminAnalyticsOverviewDTO.class);
+        assertEquals(0, dtoMismatch.getTotalStudents());
+    }
+
+    @Test
+    public void testController_CohortAcceptsBranchAndSemesterFilter() throws Exception {
+        studentService.onboardStudent(
+                studentUser.getId(), "IT", 4, List.of("IT201"),
+                List.of("Analyst"), 3.0, 8.0, 7.0, 4.0, 25, "Visual"
+        );
+
+        // Branch match
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("branch", "IT"))
+                .andExpect(status().isOk());
+
+        // Semester match
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("semester", "4"))
+                .andExpect(status().isOk());
+
+        // Semester mismatch
+        MvcResult semMismatchResult = mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("semester", "6"))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminCohortAnalyticsDTO semDto = objectMapper.readValue(semMismatchResult.getResponse().getContentAsString(), AdminCohortAnalyticsDTO.class);
+        assertEquals(0, semDto.getTotalEnrolled());
+    }
+
+    @Test
+    public void testController_TrendsAcceptsDateRange() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/trends")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("startDate", "2026-01-01")
+                        .param("endDate", "2026-12-31"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    public void testController_SubjectsAcceptsSubjectCode() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/subjects")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("subjectCode", "CS101"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    public void testController_StudentDirectoryAcceptsActivityStatus() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/students")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("activityStatus", "NO_ACTIVITY"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    public void testController_HasAuthenticBaselineFilter() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("hasAuthenticBaseline", "true"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("hasAuthenticBaseline", "false"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    public void testController_MultipleFiltersCanBeCombined() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("branch", "CSE")
+                        .param("semester", "3")
+                        .param("subjectCode", "CS101")
+                        .param("activityStatus", "ACTIVE")
+                        .param("hasAuthenticBaseline", "true")
+                        .param("startDate", "2026-01-01")
+                        .param("endDate", "2026-12-31"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    public void testController_InvalidStartDateReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("startDate", "not-a-date"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testController_InvalidEndDateReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("endDate", "2026-99-99"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testController_StartDateAfterEndDateReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("startDate", "2026-10-01")
+                        .param("endDate", "2026-09-01"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testController_InvalidSemesterReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("semester", "third-semester"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testController_InvalidActivityStatusReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/students")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("activityStatus", "SUPER_ACTIVE"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testController_InvalidHasAuthenticBaselineReturns400() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("hasAuthenticBaseline", "not-a-bool"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testController_SecurityAuthorizationOnFilteredEndpoints() throws Exception {
+        // Student role -> 403 Forbidden
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .param("branch", "CSE"))
+                .andExpect(status().isForbidden());
+
+        // Faculty role -> 403 Forbidden
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + facultyToken)
+                        .param("branch", "CSE"))
+                .andExpect(status().isForbidden());
+
+        // Unauthenticated -> 401 Unauthorized
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .param("branch", "CSE"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void testController_K0RemainsUnchangedUnderDateFilteringViaHttp() throws Exception {
+        String studentId = studentUser.getId();
+        studentService.onboardStudent(
+                studentId, "CSE", 3, List.of("CS101"),
+                List.of("Dev"), 3.0, 8.0, 7.0, 4.0, 25, "Visual"
+        );
+
+        // 1. Diagnostic in January 2026 (K0 = 40%)
+        AssessmentResult diagnostic = new AssessmentResult();
+        diagnostic.setUserId(studentId);
+        diagnostic.setSubjectName("CS101");
+        diagnostic.setSubjectCode("CS101");
+        diagnostic.setScore(40);
+        diagnostic.setPercentage(40.0);
+        diagnostic.setCreatedAt(LocalDateTime.of(2026, 1, 15, 10, 0));
+        diagnostic.setTopicBreakdown(Map.of(
+                "TopicA", Map.of("correct", 4, "total", 10, "percentage", 40.0)
+        ));
+        assessmentResultRepository.save(diagnostic);
+
+        // 2. Current ConceptMastery in September 2026 (Kt = 80%)
+        ConceptMastery cm = new ConceptMastery();
+        cm.setUserId(studentId);
+        cm.setSubjectName("CS101");
+        cm.setTopic("TopicA");
+        cm.setConceptName("TopicA");
+        cm.setAccuracy(80.0);
+        cm.setMasteryScore(80.0);
+        cm.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        cm.setLastAssessedAt(LocalDateTime.of(2026, 9, 15, 10, 30));
+        conceptMasteryRepository.save(cm);
+
+        // Request cohort filtered to July–October 2026
+        MvcResult mvcResult = mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("startDate", "2026-07-01")
+                        .param("endDate", "2026-10-31"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminCohortAnalyticsDTO cohort = objectMapper.readValue(mvcResult.getResponse().getContentAsString(), AdminCohortAnalyticsDTO.class);
+        assertNotNull(cohort);
+        assertNotNull(cohort.getGrowthDistribution());
+        // Mean baseline knowledge should remain 40.0% (derived globally from January diagnostic)
+        assertEquals(40.0, cohort.getMeanBaselineKnowledge(), 0.01);
+    }
+
+    @Test
+    public void testController_ExistingUnfilteredResponseSchemasRemainUnchanged() throws Exception {
+        MvcResult overviewRes = mockMvc.perform(get("/api/admin/analytics/overview")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminAnalyticsOverviewDTO overview = objectMapper.readValue(overviewRes.getResponse().getContentAsString(), AdminAnalyticsOverviewDTO.class);
+        assertNotNull(overview);
+        assertTrue(overview.getTotalStudents() >= 0);
+
+        MvcResult cohortRes = mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminCohortAnalyticsDTO cohort = objectMapper.readValue(cohortRes.getResponse().getContentAsString(), AdminCohortAnalyticsDTO.class);
+        assertNotNull(cohort);
+        assertNotNull(cohort.getGrowthDistribution());
+        assertNotNull(cohort.getSatisfaction());
+
+        MvcResult trendsRes = mockMvc.perform(get("/api/admin/analytics/trends")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminResearchTrendsDTO trends = objectMapper.readValue(trendsRes.getResponse().getContentAsString(), AdminResearchTrendsDTO.class);
+        assertNotNull(trends);
+        assertNotNull(trends.getObservations());
+
+        MvcResult subjectsRes = mockMvc.perform(get("/api/admin/analytics/subjects")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        AdminCohortSubjectAnalyticsDTO subjects = objectMapper.readValue(subjectsRes.getResponse().getContentAsString(), AdminCohortSubjectAnalyticsDTO.class);
+        assertNotNull(subjects);
+        assertNotNull(subjects.getSubjects());
+
+        MvcResult studentsRes = mockMvc.perform(get("/api/admin/analytics/students")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        List<AdminStudentDirectoryDTO> directory = objectMapper.readValue(studentsRes.getResponse().getContentAsString(), new TypeReference<List<AdminStudentDirectoryDTO>>() {});
+        assertNotNull(directory);
+    }
 }
