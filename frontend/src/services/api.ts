@@ -2154,4 +2154,51 @@ export async function fetchAdminAnalyticsOverview(): Promise<AdminAnalyticsOverv
   }
   return null;
 }
-
+
+export interface AdminCohortAnalytics {
+  totalEnrolled: number;
+  evaluatedCohortSize: number;
+  activeLast7Days: number;
+  atRiskStudents: number;
+  inactiveStudents: number;
+  meanBaselineKnowledge: number;
+  meanCurrentKnowledge: number;
+  meanNormalizedGain: number;
+  growthDistribution: {
+    improvedCount: number;
+    improvedPercentage: number;
+    unchangedCount: number;
+    unchangedPercentage: number;
+    declinedCount: number;
+    declinedPercentage: number;
+  };
+  satisfaction: {
+    averageRating: number;
+    totalReviews: number;
+    byCategory: {
+      AI_TUTOR: number | null;
+      RECOMMENDATION: number | null;
+      LEARNING_ACTIVITY: number | null;
+    };
+  };
+  dataSufficiencyNote: string;
+}
+
+export async function fetchAdminCohortAnalytics(): Promise<AdminCohortAnalytics | null> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/cohort`, {
+        method: "GET",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      handleAuthError(res);
+    } catch (err) {
+      console.warn("Failed to fetch admin cohort analytics:", err);
+    }
+  }
+  return null;
+}

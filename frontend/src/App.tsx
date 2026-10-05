@@ -9,6 +9,7 @@ import Quizzes from "./app/dashboard/quizzes/page";
 import FacultyDashboard from "./app/faculty/page";
 import QuizManagerDashboard from "./app/faculty/quiz-manager/page";
 import AdminDashboard from "./app/admin/page";
+import ResearchAnalyticsPage from "./app/admin/research-analytics/page";
 import AITutorPage from "./pages/AITutorPage";
 import OnboardingGuard from "./components/OnboardingGuard";
 
@@ -32,6 +33,7 @@ export default function App() {
       <Route path="/faculty" element={<FacultyDashboard />} />
       <Route path="/faculty/quiz-manager" element={<QuizManagerDashboard />} />
       <Route path="/admin" element={<AdminDashboard />} />
+      <Route path="/admin/research-analytics" element={<ResearchAnalyticsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -1,6 +1,7 @@
 package com.edupilot.service;
 
 import com.edupilot.dto.AdminAnalyticsOverviewDTO;
+import com.edupilot.dto.AdminCohortAnalyticsDTO;
 import com.edupilot.model.AssessmentResult;
 import com.edupilot.model.ConceptMastery;
 import com.edupilot.model.QuizSession;
@@ -139,6 +140,47 @@ public class AdminAnalyticsIntegrationTest {
     }
 
     @Test
+    public void testAdminCanAccessCohortEndpoint() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String json = result.getResponse().getContentAsString();
+        AdminCohortAnalyticsDTO dto = objectMapper.readValue(json, AdminCohortAnalyticsDTO.class);
+        assertNotNull(dto);
+        assertEquals(1, dto.getTotalEnrolled());
+        assertEquals(0, dto.getEvaluatedCohortSize());
+        assertNotNull(dto.getGrowthDistribution());
+        assertNotNull(dto.getSatisfaction());
+        assertNotNull(dto.getDataSufficiencyNote());
+    }
+
+    @Test
+    public void testStudentCannotAccessCohortEndpoint() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testFacultyCannotAccessCohortEndpoint() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + facultyToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testUnauthenticatedCannotAccessCohortEndpoint() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     public void testStudentCannotAccessAdminEndpoint() throws Exception {
         mockMvc.perform(get("/api/admin/analytics/overview")
                         .header("Authorization", "Bearer " + studentToken)
@@ -255,5 +297,279 @@ public class AdminAnalyticsIntegrationTest {
 
         // Satisfaction: 5.0
         assertEquals(5.0, overview.getAverageSatisfactionRating(), 0.1, "Average satisfaction rating must be 5.0");
+    }
+
+    @Test
+    public void testCohortAnalyticsCalculationWithMixedCohort() {
+        // Create 2 additional student users (Bob and Charlie)
+        User student2 = new User();
+        student2.setEmail("bob_" + System.currentTimeMillis() + "@edupilot.com");
+        student2.setPassword(passwordEncoder.encode("bobpass123"));
+        student2.setFullName("Bob Student");
+        student2.setRole(User.Role.STUDENT);
+        student2.setCreatedAt(LocalDateTime.now().minusDays(20));
+        student2 = userRepository.save(student2);
+
+        User student3 = new User();
+        student3.setEmail("charlie_" + System.currentTimeMillis() + "@edupilot.com");
+        student3.setPassword(passwordEncoder.encode("charliepass123"));
+        student3.setFullName("Charlie Student");
+        student3.setRole(User.Role.STUDENT);
+        student3.setCreatedAt(LocalDateTime.now().minusDays(30));
+        student3 = userRepository.save(student3);
+
+        String aliceId = studentUser.getId();
+        String bobId = student2.getId();
+        String charlieId = student3.getId();
+
+        // 1. Alice setup: Authentic baseline (40%), current knowledge (80%), active 1 hour ago, 5-star AI_TUTOR review
+        studentService.onboardStudent(
+                aliceId, "CSE", 2, List.of("Data Structures & Algorithms"),
+                List.of("Software Engineer"), 4.0, 8.5, 7.5, 4.0, 30, "Visual"
+        );
+        AssessmentResult diagnosticAlice = new AssessmentResult();
+        diagnosticAlice.setUserId(aliceId);
+        diagnosticAlice.setSubjectName("Data Structures & Algorithms");
+        diagnosticAlice.setTotalQuestions(10);
+        diagnosticAlice.setCorrectAnswers(4);
+        diagnosticAlice.setScore(40);
+        diagnosticAlice.setPercentage(40.0);
+        diagnosticAlice.setCreatedAt(LocalDateTime.now().minusDays(2));
+        diagnosticAlice.setTopicBreakdown(Map.of(
+                "Arrays", Map.of("correct", 2, "total", 5, "percentage", 40.0),
+                "Trees", Map.of("correct", 2, "total", 5, "percentage", 40.0)
+        ));
+        assessmentResultRepository.save(diagnosticAlice);
+
+        ConceptMastery cm1 = new ConceptMastery();
+        cm1.setUserId(aliceId);
+        cm1.setSubjectName("Data Structures & Algorithms");
+        cm1.setTopic("Arrays");
+        cm1.setConceptName("Arrays");
+        cm1.setAccuracy(80.0);
+        cm1.setMasteryScore(80.0);
+        cm1.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        cm1.setLastAssessedAt(LocalDateTime.now());
+        conceptMasteryRepository.save(cm1);
+
+        ConceptMastery cm2 = new ConceptMastery();
+        cm2.setUserId(aliceId);
+        cm2.setSubjectName("Data Structures & Algorithms");
+        cm2.setTopic("Trees");
+        cm2.setConceptName("Trees");
+        cm2.setAccuracy(80.0);
+        cm2.setMasteryScore(80.0);
+        cm2.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        cm2.setLastAssessedAt(LocalDateTime.now());
+        conceptMasteryRepository.save(cm2);
+
+        QuizSession qsAlice = new QuizSession();
+        qsAlice.setUserId(aliceId);
+        qsAlice.setSubjectName("Data Structures & Algorithms");
+        qsAlice.setTotalQuestions(5);
+        qsAlice.setCorrectCount(4);
+        qsAlice.setStatus(QuizSession.Status.COMPLETED);
+        qsAlice.setLastAnswerTime(LocalDateTime.now().minusHours(1));
+        quizSessionRepository.save(qsAlice);
+
+        satisfactionRepository.save(new StudentSatisfaction(aliceId, 5, StudentSatisfaction.FeedbackType.AI_TUTOR, "Great AI tutor"));
+
+        // 2. Bob setup: NO baseline assessment. At-risk activity (quiz completed 10 days ago).
+        QuizSession qsBob = new QuizSession();
+        qsBob.setUserId(bobId);
+        qsBob.setSubjectName("Data Structures & Algorithms");
+        qsBob.setTotalQuestions(5);
+        qsBob.setCorrectCount(3);
+        qsBob.setStatus(QuizSession.Status.COMPLETED);
+        qsBob.setLastAnswerTime(LocalDateTime.now().minusDays(10));
+        quizSessionRepository.save(qsBob);
+
+        StudentSatisfaction satBob = new StudentSatisfaction(bobId, 4, StudentSatisfaction.FeedbackType.AI_TUTOR, "Good");
+        satBob.setTimestamp(LocalDateTime.now().minusDays(10));
+        satisfactionRepository.save(satBob);
+
+        // 3. Charlie setup: NO baseline assessment, no activity (inactive).
+
+        // Execute calculation
+        var cohort = adminAnalyticsService.getCohortAnalytics();
+        assertNotNull(cohort);
+
+        // 1. Enrollment & Evaluated Cohort
+        assertEquals(3, cohort.getTotalEnrolled(), "Total enrolled should be 3 students");
+        assertEquals(1, cohort.getEvaluatedCohortSize(), "Only Alice has authentic baseline diagnostic");
+
+        // 2. Activity Stratification (sum must equal totalEnrolled = 3)
+        assertEquals(1, cohort.getActiveLast7Days(), "Alice is active (1 hr ago)");
+        assertEquals(1, cohort.getAtRiskStudents(), "Bob is at-risk (10 days ago)");
+        assertEquals(1, cohort.getInactiveStudents(), "Charlie is inactive (>14 days / no activity)");
+        assertEquals(cohort.getTotalEnrolled(), cohort.getActiveLast7Days() + cohort.getAtRiskStudents() + cohort.getInactiveStudents());
+
+        // 3. Knowledge & Gain (evaluated cohort only)
+        assertEquals(40.0, cohort.getMeanBaselineKnowledge(), 0.5);
+        assertEquals(80.0, cohort.getMeanCurrentKnowledge(), 0.5);
+        assertEquals(0.67, cohort.getMeanNormalizedGain(), 0.05);
+
+        // 4. Growth Distribution
+        assertNotNull(cohort.getGrowthDistribution());
+        assertEquals(1, cohort.getGrowthDistribution().getImprovedCount());
+        assertEquals(100.0, cohort.getGrowthDistribution().getImprovedPercentage(), 0.1);
+        assertEquals(0, cohort.getGrowthDistribution().getUnchangedCount());
+        assertEquals(0.0, cohort.getGrowthDistribution().getUnchangedPercentage(), 0.1);
+        assertEquals(0, cohort.getGrowthDistribution().getDeclinedCount());
+        assertEquals(0.0, cohort.getGrowthDistribution().getDeclinedPercentage(), 0.1);
+
+        // 5. Satisfaction
+        assertNotNull(cohort.getSatisfaction());
+        assertEquals(4.5, cohort.getSatisfaction().getAverageRating(), 0.1);
+        assertEquals(2, cohort.getSatisfaction().getTotalReviews());
+        assertEquals(4.5, cohort.getSatisfaction().getByCategory().get("AI_TUTOR"), 0.1);
+        assertNull(cohort.getSatisfaction().getByCategory().get("RECOMMENDATION"));
+        assertNull(cohort.getSatisfaction().getByCategory().get("LEARNING_ACTIVITY"));
+
+        // 6. Data Sufficiency Note
+        assertEquals("Based on 1 student(s) with verified diagnostic baselines.", cohort.getDataSufficiencyNote());
+    }
+
+    @Test
+    public void testCohortAnalyticsEmptyDatabase() {
+        // Clear all students
+        userRepository.deleteAll();
+
+        var cohort = adminAnalyticsService.getCohortAnalytics();
+        assertNotNull(cohort);
+
+        assertEquals(0, cohort.getTotalEnrolled());
+        assertEquals(0, cohort.getEvaluatedCohortSize());
+        assertEquals(0, cohort.getActiveLast7Days());
+        assertEquals(0, cohort.getAtRiskStudents());
+        assertEquals(0, cohort.getInactiveStudents());
+        assertEquals(0.0, cohort.getMeanBaselineKnowledge(), 0.01);
+        assertEquals(0.0, cohort.getMeanCurrentKnowledge(), 0.01);
+        assertEquals(0.0, cohort.getMeanNormalizedGain(), 0.01);
+        assertEquals(0, cohort.getGrowthDistribution().getImprovedCount());
+        assertEquals(0.0, cohort.getGrowthDistribution().getImprovedPercentage(), 0.01);
+        assertEquals(0.0, cohort.getSatisfaction().getAverageRating(), 0.01);
+        assertEquals(0, cohort.getSatisfaction().getTotalReviews());
+        assertNull(cohort.getSatisfaction().getByCategory().get("AI_TUTOR"));
+        assertTrue(cohort.getDataSufficiencyNote().contains("Insufficient diagnostic data"));
+    }
+
+    @Test
+    public void testAdminCohortEndpointWithRealisticData() throws Exception {
+        // Create student 2 (unevaluated, at-risk)
+        User student2 = new User();
+        student2.setEmail("bob2_" + System.currentTimeMillis() + "@edupilot.com");
+        student2.setPassword(passwordEncoder.encode("bobpass123"));
+        student2.setFullName("Bob Student");
+        student2.setRole(User.Role.STUDENT);
+        student2.setCreatedAt(LocalDateTime.now().minusDays(20));
+        student2 = userRepository.save(student2);
+
+        String aliceId = studentUser.getId();
+        String bobId = student2.getId();
+
+        // 1. Alice setup: Authentic baseline (40%), current knowledge (80%), active 1 hour ago, 5-star AI_TUTOR review
+        studentService.onboardStudent(
+                aliceId, "CSE", 2, List.of("Data Structures & Algorithms"),
+                List.of("Software Engineer"), 4.0, 8.5, 7.5, 4.0, 30, "Visual"
+        );
+        AssessmentResult diagnosticAlice = new AssessmentResult();
+        diagnosticAlice.setUserId(aliceId);
+        diagnosticAlice.setSubjectName("Data Structures & Algorithms");
+        diagnosticAlice.setTotalQuestions(10);
+        diagnosticAlice.setCorrectAnswers(4);
+        diagnosticAlice.setScore(40);
+        diagnosticAlice.setPercentage(40.0);
+        diagnosticAlice.setCreatedAt(LocalDateTime.now().minusDays(2));
+        diagnosticAlice.setTopicBreakdown(Map.of(
+                "Arrays", Map.of("correct", 2, "total", 5, "percentage", 40.0),
+                "Trees", Map.of("correct", 2, "total", 5, "percentage", 40.0)
+        ));
+        assessmentResultRepository.save(diagnosticAlice);
+
+        ConceptMastery cm1 = new ConceptMastery();
+        cm1.setUserId(aliceId);
+        cm1.setSubjectName("Data Structures & Algorithms");
+        cm1.setTopic("Arrays");
+        cm1.setConceptName("Arrays");
+        cm1.setAccuracy(80.0);
+        cm1.setMasteryScore(80.0);
+        cm1.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        cm1.setLastAssessedAt(LocalDateTime.now());
+        conceptMasteryRepository.save(cm1);
+
+        ConceptMastery cm2 = new ConceptMastery();
+        cm2.setUserId(aliceId);
+        cm2.setSubjectName("Data Structures & Algorithms");
+        cm2.setTopic("Trees");
+        cm2.setConceptName("Trees");
+        cm2.setAccuracy(80.0);
+        cm2.setMasteryScore(80.0);
+        cm2.setStatus(ConceptMastery.ConceptStatus.STRONG);
+        cm2.setLastAssessedAt(LocalDateTime.now());
+        conceptMasteryRepository.save(cm2);
+
+        QuizSession qsAlice = new QuizSession();
+        qsAlice.setUserId(aliceId);
+        qsAlice.setSubjectName("Data Structures & Algorithms");
+        qsAlice.setTotalQuestions(5);
+        qsAlice.setCorrectCount(4);
+        qsAlice.setStatus(QuizSession.Status.COMPLETED);
+        qsAlice.setLastAnswerTime(LocalDateTime.now().minusHours(1));
+        quizSessionRepository.save(qsAlice);
+
+        satisfactionRepository.save(new StudentSatisfaction(aliceId, 5, StudentSatisfaction.FeedbackType.AI_TUTOR, "Great AI tutor"));
+
+        // 2. Bob setup: at-risk activity (10 days ago), satisfaction review (10 days ago)
+        QuizSession qsBob = new QuizSession();
+        qsBob.setUserId(bobId);
+        qsBob.setSubjectName("Data Structures & Algorithms");
+        qsBob.setTotalQuestions(5);
+        qsBob.setCorrectCount(3);
+        qsBob.setStatus(QuizSession.Status.COMPLETED);
+        qsBob.setLastAnswerTime(LocalDateTime.now().minusDays(10));
+        quizSessionRepository.save(qsBob);
+
+        StudentSatisfaction satBob = new StudentSatisfaction(bobId, 4, StudentSatisfaction.FeedbackType.RECOMMENDATION, "Good recommendations");
+        satBob.setTimestamp(LocalDateTime.now().minusDays(10));
+        satisfactionRepository.save(satBob);
+
+        // Perform HTTP GET /api/admin/analytics/cohort as ADMIN
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/cohort")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String json = result.getResponse().getContentAsString();
+        AdminCohortAnalyticsDTO dto = objectMapper.readValue(json, AdminCohortAnalyticsDTO.class);
+
+        assertNotNull(dto);
+        assertEquals(2, dto.getTotalEnrolled(), "Total enrolled must be 2");
+        assertEquals(1, dto.getEvaluatedCohortSize(), "Evaluated cohort must be 1");
+        assertEquals(1, dto.getActiveLast7Days(), "Active last 7 days must be 1");
+        assertEquals(1, dto.getAtRiskStudents(), "At risk must be 1");
+        assertEquals(0, dto.getInactiveStudents(), "Inactive must be 0");
+
+        assertEquals(40.0, dto.getMeanBaselineKnowledge(), 0.5);
+        assertEquals(80.0, dto.getMeanCurrentKnowledge(), 0.5);
+        assertEquals(0.67, dto.getMeanNormalizedGain(), 0.05);
+
+        assertNotNull(dto.getGrowthDistribution());
+        assertEquals(1, dto.getGrowthDistribution().getImprovedCount());
+        assertEquals(100.0, dto.getGrowthDistribution().getImprovedPercentage(), 0.1);
+        assertEquals(0, dto.getGrowthDistribution().getUnchangedCount());
+        assertEquals(0.0, dto.getGrowthDistribution().getUnchangedPercentage(), 0.1);
+        assertEquals(0, dto.getGrowthDistribution().getDeclinedCount());
+        assertEquals(0.0, dto.getGrowthDistribution().getDeclinedPercentage(), 0.1);
+
+        assertNotNull(dto.getSatisfaction());
+        assertEquals(4.5, dto.getSatisfaction().getAverageRating(), 0.1);
+        assertEquals(2, dto.getSatisfaction().getTotalReviews());
+        assertEquals(5.0, dto.getSatisfaction().getByCategory().get("AI_TUTOR"), 0.1);
+        assertEquals(4.0, dto.getSatisfaction().getByCategory().get("RECOMMENDATION"), 0.1);
+        assertNull(dto.getSatisfaction().getByCategory().get("LEARNING_ACTIVITY"));
+
+        assertEquals("Based on 1 student(s) with verified diagnostic baselines.", dto.getDataSufficiencyNote());
     }
 }
