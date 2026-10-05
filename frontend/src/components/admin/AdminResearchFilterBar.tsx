@@ -237,7 +237,7 @@ export const AdminResearchFilterBar: React.FC<AdminResearchFilterBarProps> = ({
       {/* Filter Inputs Grid */}
       <form onSubmit={handleApply} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          
+
           {/* 1. Start Date */}
           <div className="space-y-1.5">
             <label className="text-[11px] font-bold text-secondary-theme flex items-center gap-1.5">
