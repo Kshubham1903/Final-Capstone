@@ -53,10 +53,11 @@ import {
   AdminResearchAnalyticsFilters
 } from "../../../services/api";
 import { AdminResearchFilterBar } from "../../../components/admin/AdminResearchFilterBar";
+import { AdminCohortComparisonView } from "../../../components/admin/AdminCohortComparisonView";
 
 export default function ResearchAnalyticsPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"cohort" | "trends" | "subjects" | "directory">("cohort");
+  const [activeTab, setActiveTab] = useState<"cohort" | "trends" | "subjects" | "directory" | "compare">("cohort");
 
   // Filter State
   const [filters, setFilters] = useState<AdminResearchAnalyticsFilters>({});
@@ -321,48 +322,63 @@ export default function ResearchAnalyticsPage() {
                   </span>
                 )}
               </button>
+              <button
+                onClick={() => setActiveTab("compare")}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === "compare"
+                    ? "bg-purple-600 text-white shadow-lg shadow-purple-500/20"
+                    : "text-secondary-theme hover:text-main-theme"
+                }`}
+              >
+                <Layers className="h-3.5 w-3.5" />
+                <span>Cohort Comparison</span>
+              </button>
             </div>
 
-            <button
-              onClick={() => {
-                if (activeTab === "cohort") loadCohortAnalytics(filters);
-                else if (activeTab === "trends") loadResearchTrends(filters);
-                else if (activeTab === "subjects") loadSubjectAnalytics(filters);
-                else loadStudentDirectory(filters);
-              }}
-              disabled={
-                activeTab === "cohort" ? cohortLoading :
-                activeTab === "trends" ? trendsLoading :
-                activeTab === "subjects" ? subjectsLoading :
-                directoryLoading
-              }
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-main-theme transition-all cursor-pointer w-fit"
-            >
-              <RefreshCw className={`h-4 w-4 text-purple-theme ${(
-                activeTab === "cohort" ? cohortLoading :
-                activeTab === "trends" ? trendsLoading :
-                activeTab === "subjects" ? subjectsLoading :
-                directoryLoading
-              ) ? "animate-spin" : ""}`} />
-              <span>{(
-                activeTab === "cohort" ? cohortLoading :
-                activeTab === "trends" ? trendsLoading :
-                activeTab === "subjects" ? subjectsLoading :
-                directoryLoading
-              ) ? "Refreshing..." : "Refresh"}</span>
-            </button>
+            {activeTab !== "compare" && (
+              <button
+                onClick={() => {
+                  if (activeTab === "cohort") loadCohortAnalytics(filters);
+                  else if (activeTab === "trends") loadResearchTrends(filters);
+                  else if (activeTab === "subjects") loadSubjectAnalytics(filters);
+                  else if (activeTab === "directory") loadStudentDirectory(filters);
+                }}
+                disabled={
+                  activeTab === "cohort" ? cohortLoading :
+                  activeTab === "trends" ? trendsLoading :
+                  activeTab === "subjects" ? subjectsLoading :
+                  directoryLoading
+                }
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-main-theme transition-all cursor-pointer w-fit"
+              >
+                <RefreshCw className={`h-4 w-4 text-purple-theme ${(
+                  activeTab === "cohort" ? cohortLoading :
+                  activeTab === "trends" ? trendsLoading :
+                  activeTab === "subjects" ? subjectsLoading :
+                  directoryLoading
+                ) ? "animate-spin" : ""}`} />
+                <span>{(
+                  activeTab === "cohort" ? cohortLoading :
+                  activeTab === "trends" ? trendsLoading :
+                  activeTab === "subjects" ? subjectsLoading :
+                  directoryLoading
+                ) ? "Refreshing..." : "Refresh"}</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* REUSABLE RESEARCH FILTER BAR */}
-        <AdminResearchFilterBar
-          filters={filters}
-          onApplyFilters={handleApplyFilters}
-          onClearFilters={handleClearFilters}
-          isLoading={isFilterApplying || cohortLoading || trendsLoading || subjectsLoading || directoryLoading}
-          availableBranches={allAvailableBranches}
-          availableSubjects={allAvailableSubjects}
-        />
+        {/* REUSABLE RESEARCH FILTER BAR (for Single Cohort Views) */}
+        {activeTab !== "compare" && (
+          <AdminResearchFilterBar
+            filters={filters}
+            onApplyFilters={handleApplyFilters}
+            onClearFilters={handleClearFilters}
+            isLoading={isFilterApplying || cohortLoading || trendsLoading || subjectsLoading || directoryLoading}
+            availableBranches={allAvailableBranches}
+            availableSubjects={allAvailableSubjects}
+          />
+        )}
 
         {/* TAB 1: COHORT ANALYTICS */}
         {activeTab === "cohort" && (
@@ -1681,6 +1697,14 @@ export default function ResearchAnalyticsPage() {
               </div>
             )}
           </div>
+        )}
+
+        {/* TAB 5: COHORT COMPARISON */}
+        {activeTab === "compare" && (
+          <AdminCohortComparisonView
+            availableBranches={allAvailableBranches}
+            availableSubjects={allAvailableSubjects}
+          />
         )}
 
       </div>

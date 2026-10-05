@@ -3,6 +3,8 @@ package com.edupilot.controller;
 import com.edupilot.dto.AdminAnalyticsFilterCriteria;
 import com.edupilot.dto.AdminAnalyticsOverviewDTO;
 import com.edupilot.dto.AdminCohortAnalyticsDTO;
+import com.edupilot.dto.AdminCohortComparisonDTO;
+import com.edupilot.dto.AdminCohortComparisonRequest;
 import com.edupilot.dto.AdminCohortSubjectAnalyticsDTO;
 import com.edupilot.dto.AdminResearchTrendsDTO;
 import com.edupilot.dto.AdminStudentAnalyticsDTO;
@@ -16,6 +18,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -30,6 +34,16 @@ public class AdminAnalyticsController {
 
     @Autowired
     private AdminAnalyticsService adminAnalyticsService;
+
+    @PostMapping("/compare")
+    public ResponseEntity<AdminCohortComparisonDTO> compareCohorts(@RequestBody AdminCohortComparisonRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Comparison request body is required.");
+        }
+        request.validate();
+        AdminCohortComparisonDTO comparison = adminAnalyticsService.compareCohorts(request);
+        return ResponseEntity.ok(comparison);
+    }
 
     @GetMapping("/overview")
     public ResponseEntity<AdminAnalyticsOverviewDTO> getOverview(@ModelAttribute AdminAnalyticsFilterCriteria criteria) {

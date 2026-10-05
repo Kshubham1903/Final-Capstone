@@ -3,6 +3,8 @@ package com.edupilot.service;
 import com.edupilot.dto.AdminAnalyticsFilterCriteria;
 import com.edupilot.dto.AdminAnalyticsOverviewDTO;
 import com.edupilot.dto.AdminCohortAnalyticsDTO;
+import com.edupilot.dto.AdminCohortComparisonDTO;
+import com.edupilot.dto.AdminCohortComparisonRequest;
 import com.edupilot.dto.AdminCohortSubjectAnalyticsDTO;
 import com.edupilot.dto.AdminCohortSubjectAnalyticsDTO.SubjectResearchSummaryDTO;
 import com.edupilot.dto.AdminResearchTrendsDTO;
@@ -502,6 +504,504 @@ public class AdminAnalyticsService {
                 growthDistribution,
                 satisfaction,
                 dataSufficiencyNote
+        );
+    }
+
+    // ==========================================
+    // 2B. COHORT COMPARISON ANALYTICS
+    // ==========================================
+
+    public AdminCohortComparisonDTO compareCohorts(AdminCohortComparisonRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Comparison request body cannot be null.");
+        }
+        request.validate();
+
+        AdminAnalyticsFilterCriteria criteriaA = request.getCohortA();
+        AdminAnalyticsFilterCriteria criteriaB = request.getCohortB();
+
+        AdminCohortComparisonDTO.CohortMetricsDTO metricsA = calculateCohortMetrics(criteriaA);
+        AdminCohortComparisonDTO.CohortMetricsDTO metricsB = calculateCohortMetrics(criteriaB);
+
+        // Calculate Differences (Cohort A - Cohort B)
+        Integer enrolledDiff = metricsA.getTotalEnrolled() - metricsB.getTotalEnrolled();
+        Integer evaluatedDiff = metricsA.getEvaluatedCohortSize() - metricsB.getEvaluatedCohortSize();
+
+        Double baselineDiffPp = (metricsA.getMeanBaselineKnowledge() != null && metricsB.getMeanBaselineKnowledge() != null)
+                ? round2(metricsA.getMeanBaselineKnowledge() - metricsB.getMeanBaselineKnowledge())
+                : null;
+
+        Double currentDiffPp = (metricsA.getMeanCurrentKnowledge() != null && metricsB.getMeanCurrentKnowledge() != null)
+                ? round2(metricsA.getMeanCurrentKnowledge() - metricsB.getMeanCurrentKnowledge())
+                : null;
+
+        Double gainDiff = (metricsA.getMeanNormalizedGain() != null && metricsB.getMeanNormalizedGain() != null)
+                ? round2(metricsA.getMeanNormalizedGain() - metricsB.getMeanNormalizedGain())
+                : null;
+
+        Double satDiff = (metricsA.getSatisfaction() != null && metricsA.getSatisfaction().getTotalReviews() > 0
+                && metricsB.getSatisfaction() != null && metricsB.getSatisfaction().getTotalReviews() > 0)
+                ? round2(metricsA.getSatisfaction().getAverageRating() - metricsB.getSatisfaction().getAverageRating())
+                : null;
+
+        AdminCohortComparisonDTO.DifferencesDTO differences = new AdminCohortComparisonDTO.DifferencesDTO(
+                enrolledDiff,
+                evaluatedDiff,
+                baselineDiffPp,
+                currentDiffPp,
+                gainDiff,
+                satDiff
+        );
+
+        // Data Sufficiency Warnings
+        List<String> warnings = new ArrayList<>();
+        boolean isComparisonValid = true;
+
+        if (metricsA.getTotalEnrolled() == 0) {
+            warnings.add("Cohort A has 0 enrolled students.");
+            isComparisonValid = false;
+        }
+        if (metricsB.getTotalEnrolled() == 0) {
+            warnings.add("Cohort B has 0 enrolled students.");
+            isComparisonValid = false;
+        }
+
+        if (metricsA.getTotalEnrolled() > 0 && metricsA.getEvaluatedCohortSize() == 0) {
+            warnings.add("Cohort A has no students with authentic diagnostic baselines; learning gain cannot be computed.");
+        }
+        if (metricsB.getTotalEnrolled() > 0 && metricsB.getEvaluatedCohortSize() == 0) {
+            warnings.add("Cohort B has no students with authentic diagnostic baselines; learning gain cannot be computed.");
+        }
+
+        if (metricsA.getEvaluatedCohortSize() > 0 && metricsA.getEvaluatedCohortSize() < 5) {
+            warnings.add("Cohort A has a small evaluated sample size (N < 5); descriptive averages may be unstable.");
+        }
+        if (metricsB.getEvaluatedCohortSize() > 0 && metricsB.getEvaluatedCohortSize() < 5) {
+            warnings.add("Cohort B has a small evaluated sample size (N < 5); descriptive averages may be unstable.");
+        }
+
+        if (metricsA.getEvaluatedCohortSize() >= 5 && metricsB.getEvaluatedCohortSize() >= 5) {
+            int maxN = Math.max(metricsA.getEvaluatedCohortSize(), metricsB.getEvaluatedCohortSize());
+            int minN = Math.min(metricsA.getEvaluatedCohortSize(), metricsB.getEvaluatedCohortSize());
+            if ((double) maxN / minN >= 3.0 || (maxN - minN) >= 20) {
+                warnings.add("Cohorts have substantially unequal sample sizes; comparisons should be interpreted with caution.");
+            }
+        }
+
+        AdminCohortComparisonDTO.DataSufficiencyDTO dataSufficiency = new AdminCohortComparisonDTO.DataSufficiencyDTO(
+                isComparisonValid,
+                warnings
+        );
+
+        String methodologyNote = "Descriptive cohort comparison based on persisted diagnostic assessments and learning activity. Differences may reflect pre-existing cohort characteristics, curriculum differences, missing data, or sample-size differences and should not be interpreted as causal effects.";
+
+        AdminCohortComparisonDTO.CohortDataDTO cohortAData = new AdminCohortComparisonDTO.CohortDataDTO(
+                "Cohort A",
+                criteriaA,
+                metricsA
+        );
+
+        AdminCohortComparisonDTO.CohortDataDTO cohortBData = new AdminCohortComparisonDTO.CohortDataDTO(
+                "Cohort B",
+                criteriaB,
+                metricsB
+        );
+
+        return new AdminCohortComparisonDTO(
+                cohortAData,
+                cohortBData,
+                differences,
+                dataSufficiency,
+                methodologyNote
+        );
+    }
+
+    public AdminCohortComparisonDTO.CohortMetricsDTO calculateCohortMetrics(AdminAnalyticsFilterCriteria criteria) {
+        FilteredStudentContext ctx = resolveFilteredPopulation(criteria);
+        Set<String> studentUserIds = ctx.validStudentIds;
+        int totalEnrolled = studentUserIds.size();
+
+        Map<String, Double> emptyCategoryMap = new LinkedHashMap<>();
+        emptyCategoryMap.put("AI_TUTOR", null);
+        emptyCategoryMap.put("RECOMMENDATION", null);
+        emptyCategoryMap.put("LEARNING_ACTIVITY", null);
+
+        if (totalEnrolled == 0) {
+            return new AdminCohortComparisonDTO.CohortMetricsDTO(
+                    0, 0, 0, 0, 0,
+                    null, null, null,
+                    new AdminCohortAnalyticsDTO.GrowthDistributionDTO(0, 0.0, 0, 0.0, 0, 0.0),
+                    new AdminCohortAnalyticsDTO.SatisfactionDTO(0.0, 0, emptyCategoryMap),
+                    0
+            );
+        }
+
+        // Check if subject-specific filter is requested
+        if (criteria != null && criteria.hasSubjectFilter()) {
+            return calculateSubjectFilteredCohortMetrics(criteria, ctx);
+        }
+
+        // Global cohort calculation
+        int baselineSampleSize = 0;
+        int currentKnowledgeSampleSize = 0;
+        int learningGainSampleSize = 0;
+        int evaluatedCohortSize = 0;
+
+        double sumBaseline = 0.0;
+        double sumCurrent = 0.0;
+        double sumGain = 0.0;
+
+        int improvedCount = 0;
+        int unchangedCount = 0;
+        int declinedCount = 0;
+
+        for (String studentId : studentUserIds) {
+            boolean hasBaseline = Boolean.TRUE.equals(ctx.baselineMap.get(studentId));
+            if (hasBaseline) {
+                try {
+                    StudentGrowthResponseDTO growth = studentGrowthService.calculateStudentGrowth(studentId);
+                    if (growth != null) {
+                        double b = growth.getBaselineKnowledge();
+                        double c = growth.getCurrentKnowledge();
+                        double delta = c - b;
+
+                        if (delta > 0.0001) {
+                            improvedCount++;
+                        } else if (delta < -0.0001) {
+                            declinedCount++;
+                        } else {
+                            unchangedCount++;
+                        }
+
+                        sumBaseline += b;
+                        sumCurrent += c;
+                        baselineSampleSize++;
+                        currentKnowledgeSampleSize++;
+                        evaluatedCohortSize++;
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to calculate growth for student {}: {}", studentId, ex.getMessage());
+                }
+
+                try {
+                    LearningGainResponse gain = learningGainService.calculateStudentLearningGain(studentId);
+                    if (gain != null && gain.getTopics() != null && !gain.getTopics().isEmpty()) {
+                        sumGain += gain.getOverallLearningGain();
+                        learningGainSampleSize++;
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to calculate learning gain for student {}: {}", studentId, ex.getMessage());
+                }
+            } else {
+                // Non-baseline student: check if valid persisted current knowledge exists
+                try {
+                    StudentProfile profile = ctx.profileMap.get(studentId);
+                    String profileId = profile != null ? profile.getId() : null;
+                    List<ConceptMastery> cmList = conceptMasteryRepository.findByUserId(studentId);
+                    if (cmList.isEmpty() && profileId != null) {
+                        cmList = conceptMasteryRepository.findByUserId(profileId);
+                    }
+                    if (!cmList.isEmpty()) {
+                        double sumAcc = 0.0;
+                        int count = 0;
+                        for (ConceptMastery cm : cmList) {
+                            double acc = cm.getAccuracy() > 0 ? cm.getAccuracy() : cm.getMasteryScore();
+                            sumAcc += acc;
+                            count++;
+                        }
+                        if (count > 0) {
+                            sumCurrent += (sumAcc / count);
+                            currentKnowledgeSampleSize++;
+                        }
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to fetch current knowledge for student {}: {}", studentId, ex.getMessage());
+                }
+            }
+        }
+
+        Double meanBaselineKnowledge = baselineSampleSize > 0 ? round2(sumBaseline / baselineSampleSize) : null;
+        Double meanCurrentKnowledge = currentKnowledgeSampleSize > 0 ? round2(sumCurrent / currentKnowledgeSampleSize) : null;
+        Double meanNormalizedGain = learningGainSampleSize > 0 ? round2(sumGain / learningGainSampleSize) : null;
+
+        int growthTotal = improvedCount + unchangedCount + declinedCount;
+        double improvedPercentage = growthTotal > 0 ? round2((improvedCount * 100.0) / growthTotal) : 0.0;
+        double unchangedPercentage = growthTotal > 0 ? round2((unchangedCount * 100.0) / growthTotal) : 0.0;
+        double declinedPercentage = growthTotal > 0 ? round2((declinedCount * 100.0) / growthTotal) : 0.0;
+
+        AdminCohortAnalyticsDTO.GrowthDistributionDTO growthDistribution =
+                new AdminCohortAnalyticsDTO.GrowthDistributionDTO(
+                        improvedCount, improvedPercentage,
+                        unchangedCount, unchangedPercentage,
+                        declinedCount, declinedPercentage
+                );
+
+        // Satisfaction Aggregation
+        List<StudentSatisfaction> allRatings = satisfactionRepository.findAll();
+        double averageRating = 0.0;
+        int totalReviews = 0;
+        Map<String, Double> byCategory = new LinkedHashMap<>();
+        byCategory.put("AI_TUTOR", null);
+        byCategory.put("RECOMMENDATION", null);
+        byCategory.put("LEARNING_ACTIVITY", null);
+
+        double sumRating = 0.0;
+        Map<String, List<Double>> categoryMap = new HashMap<>();
+
+        for (StudentSatisfaction sat : allRatings) {
+            String studentId = resolveStudentId(sat.getStudentId(), null, studentUserIds, ctx.profileToUserMap);
+            if (studentId != null) {
+                if (criteria != null && !criteria.isDateTimeInRange(sat.getTimestamp())) {
+                    continue;
+                }
+                sumRating += sat.getRating();
+                totalReviews++;
+                String cat = sat.getFeedbackType() != null ? sat.getFeedbackType().name() : "LEARNING_ACTIVITY";
+                categoryMap.computeIfAbsent(cat, k -> new ArrayList<>()).add((double) sat.getRating());
+            }
+        }
+
+        if (totalReviews > 0) {
+            averageRating = round2(sumRating / totalReviews);
+            for (String cat : List.of("AI_TUTOR", "RECOMMENDATION", "LEARNING_ACTIVITY")) {
+                List<Double> scores = categoryMap.get(cat);
+                if (scores != null && !scores.isEmpty()) {
+                    double avg = scores.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+                    byCategory.put(cat, round2(avg));
+                }
+            }
+        }
+
+        AdminCohortAnalyticsDTO.SatisfactionDTO satisfaction =
+                new AdminCohortAnalyticsDTO.SatisfactionDTO(
+                        averageRating, totalReviews, byCategory
+                );
+
+        return new AdminCohortComparisonDTO.CohortMetricsDTO(
+                totalEnrolled,
+                evaluatedCohortSize,
+                baselineSampleSize,
+                currentKnowledgeSampleSize,
+                learningGainSampleSize,
+                meanBaselineKnowledge,
+                meanCurrentKnowledge,
+                meanNormalizedGain,
+                growthDistribution,
+                satisfaction,
+                totalReviews
+        );
+    }
+
+    private AdminCohortComparisonDTO.CohortMetricsDTO calculateSubjectFilteredCohortMetrics(
+            AdminAnalyticsFilterCriteria criteria,
+            FilteredStudentContext ctx
+    ) {
+        String filterSubjectCode = criteria.getSubjectCode().trim();
+        Set<String> studentUserIds = ctx.validStudentIds;
+
+        List<AssessmentResult> allAssessments = assessmentResultRepository.findAll();
+        Map<String, List<AssessmentResult>> assessmentsByStudent = new HashMap<>();
+        for (AssessmentResult ar : allAssessments) {
+            String studentId = resolveStudentId(ar.getUserId(), ar.getStudentProfileId(), studentUserIds, ctx.profileToUserMap);
+            if (studentId != null) {
+                assessmentsByStudent.computeIfAbsent(studentId, k -> new ArrayList<>()).add(ar);
+            }
+        }
+
+        Map<String, AssessmentResult> earliestDiagnosticByStudent = new HashMap<>();
+        for (String studentId : studentUserIds) {
+            List<AssessmentResult> sAssessments = assessmentsByStudent.get(studentId);
+            if (sAssessments != null && !sAssessments.isEmpty()) {
+                List<AssessmentResult> sortedAssessments = new ArrayList<>(sAssessments);
+                sortedAssessments.sort(Comparator.comparing(AssessmentResult::getCreatedAt));
+                for (AssessmentResult ar : sortedAssessments) {
+                    if (ar.getTotalQuestions() > 0 || ar.getPercentage() > 0 || ar.getScore() > 0) {
+                        earliestDiagnosticByStudent.put(studentId, ar);
+                        break;
+                    }
+                }
+            }
+        }
+
+        List<ConceptMastery> allConceptMastery = conceptMasteryRepository.findAll();
+        Map<String, List<ConceptMastery>> masteryByStudent = new HashMap<>();
+        for (ConceptMastery cm : allConceptMastery) {
+            String studentId = resolveStudentId(cm.getUserId(), cm.getStudentProfileId(), studentUserIds, ctx.profileToUserMap);
+            if (studentId != null) {
+                masteryByStudent.computeIfAbsent(studentId, k -> new ArrayList<>()).add(cm);
+            }
+        }
+
+        Set<String> enrolledSubjectStudents = new HashSet<>();
+        List<Double> validBaselines = new ArrayList<>();
+        List<Double> validCurrentKnowledge = new ArrayList<>();
+        List<Double> validGains = new ArrayList<>();
+
+        int improvedCount = 0;
+        int unchangedCount = 0;
+        int declinedCount = 0;
+
+        for (String studentId : studentUserIds) {
+            boolean hasSubjectAssociation = false;
+
+            // Check profile enrollment
+            StudentProfile sp = ctx.profileMap.get(studentId);
+            if (sp != null && sp.getSubjects() != null) {
+                for (String subj : sp.getSubjects()) {
+                    if (matchesSubject(null, subj, filterSubjectCode)) {
+                        hasSubjectAssociation = true;
+                        break;
+                    }
+                }
+            }
+
+            // Check authentic subject baseline K0
+            Double studentSubjectK0 = null;
+            AssessmentResult earliestDiag = earliestDiagnosticByStudent.get(studentId);
+            if (earliestDiag != null && matchesSubject(earliestDiag.getSubjectCode(), earliestDiag.getSubjectName(), filterSubjectCode)) {
+                double pct = earliestDiag.getPercentage() > 0 ? earliestDiag.getPercentage() :
+                        (earliestDiag.getScore() > 0 && earliestDiag.getTotalMarks() > 0 ? (earliestDiag.getScore() * 100.0 / earliestDiag.getTotalMarks()) : 0.0);
+                if (pct <= 1.0 && pct > 0) pct *= 100.0;
+                studentSubjectK0 = round2(pct);
+                hasSubjectAssociation = true;
+            }
+
+            // Check current subject knowledge Kt
+            Double studentSubjectKt = null;
+            List<ConceptMastery> studentCms = masteryByStudent.get(studentId);
+            if (studentCms != null && !studentCms.isEmpty()) {
+                List<ConceptMastery> subjCms = studentCms.stream()
+                        .filter(cm -> matchesSubject(cm.getSubjectCode(), cm.getSubjectName(), filterSubjectCode))
+                        .collect(Collectors.toList());
+                if (!subjCms.isEmpty()) {
+                    hasSubjectAssociation = true;
+                    double sumAcc = 0.0;
+                    for (ConceptMastery cm : subjCms) {
+                        double acc = cm.getAccuracy() > 0 ? cm.getAccuracy() : cm.getMasteryScore();
+                        sumAcc += acc;
+                    }
+                    studentSubjectKt = round2(sumAcc / subjCms.size());
+                }
+            }
+
+            // Also check assessments for this subject
+            List<AssessmentResult> sArs = assessmentsByStudent.get(studentId);
+            if (sArs != null) {
+                for (AssessmentResult ar : sArs) {
+                    if (matchesSubject(ar.getSubjectCode(), ar.getSubjectName(), filterSubjectCode)) {
+                        hasSubjectAssociation = true;
+                        break;
+                    }
+                }
+            }
+
+            if (hasSubjectAssociation) {
+                enrolledSubjectStudents.add(studentId);
+            }
+
+            if (studentSubjectK0 != null) {
+                validBaselines.add(studentSubjectK0);
+            }
+            if (studentSubjectKt != null) {
+                validCurrentKnowledge.add(studentSubjectKt);
+            }
+
+            // Gain computed ONLY when BOTH authentic K0 and valid Kt exist
+            if (studentSubjectK0 != null && studentSubjectKt != null) {
+                double delta = studentSubjectKt - studentSubjectK0;
+                if (delta > 0.0001) {
+                    improvedCount++;
+                } else if (delta < -0.0001) {
+                    declinedCount++;
+                } else {
+                    unchangedCount++;
+                }
+                double gain = round2(LearningGainService.computeGain(studentSubjectK0 / 100.0, studentSubjectKt / 100.0));
+                validGains.add(gain);
+            }
+        }
+
+        int totalEnrolled = enrolledSubjectStudents.size();
+        int evaluatedCohortSize = validBaselines.size();
+        int baselineSampleSize = validBaselines.size();
+        int currentKnowledgeSampleSize = validCurrentKnowledge.size();
+        int learningGainSampleSize = validGains.size();
+
+        Double meanBaselineKnowledge = baselineSampleSize > 0
+                ? round2(validBaselines.stream().mapToDouble(Double::doubleValue).average().orElse(0.0))
+                : null;
+        Double meanCurrentKnowledge = currentKnowledgeSampleSize > 0
+                ? round2(validCurrentKnowledge.stream().mapToDouble(Double::doubleValue).average().orElse(0.0))
+                : null;
+        Double meanNormalizedGain = learningGainSampleSize > 0
+                ? round2(validGains.stream().mapToDouble(Double::doubleValue).average().orElse(0.0))
+                : null;
+
+        int growthTotal = improvedCount + unchangedCount + declinedCount;
+        double improvedPercentage = growthTotal > 0 ? round2((improvedCount * 100.0) / growthTotal) : 0.0;
+        double unchangedPercentage = growthTotal > 0 ? round2((unchangedCount * 100.0) / growthTotal) : 0.0;
+        double declinedPercentage = growthTotal > 0 ? round2((declinedCount * 100.0) / growthTotal) : 0.0;
+
+        AdminCohortAnalyticsDTO.GrowthDistributionDTO growthDistribution =
+                new AdminCohortAnalyticsDTO.GrowthDistributionDTO(
+                        improvedCount, improvedPercentage,
+                        unchangedCount, unchangedPercentage,
+                        declinedCount, declinedPercentage
+                );
+
+        // Satisfaction for subject-associated students
+        List<StudentSatisfaction> allRatings = satisfactionRepository.findAll();
+        double averageRating = 0.0;
+        int totalReviews = 0;
+        Map<String, Double> byCategory = new LinkedHashMap<>();
+        byCategory.put("AI_TUTOR", null);
+        byCategory.put("RECOMMENDATION", null);
+        byCategory.put("LEARNING_ACTIVITY", null);
+
+        double sumRating = 0.0;
+        Map<String, List<Double>> categoryMap = new HashMap<>();
+
+        for (StudentSatisfaction sat : allRatings) {
+            String studentId = resolveStudentId(sat.getStudentId(), null, enrolledSubjectStudents, ctx.profileToUserMap);
+            if (studentId != null) {
+                if (criteria != null && !criteria.isDateTimeInRange(sat.getTimestamp())) {
+                    continue;
+                }
+                sumRating += sat.getRating();
+                totalReviews++;
+                String cat = sat.getFeedbackType() != null ? sat.getFeedbackType().name() : "LEARNING_ACTIVITY";
+                categoryMap.computeIfAbsent(cat, k -> new ArrayList<>()).add((double) sat.getRating());
+            }
+        }
+
+        if (totalReviews > 0) {
+            averageRating = round2(sumRating / totalReviews);
+            for (String cat : List.of("AI_TUTOR", "RECOMMENDATION", "LEARNING_ACTIVITY")) {
+                List<Double> scores = categoryMap.get(cat);
+                if (scores != null && !scores.isEmpty()) {
+                    double avg = scores.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+                    byCategory.put(cat, round2(avg));
+                }
+            }
+        }
+
+        AdminCohortAnalyticsDTO.SatisfactionDTO satisfaction =
+                new AdminCohortAnalyticsDTO.SatisfactionDTO(
+                        averageRating, totalReviews, byCategory
+                );
+
+        return new AdminCohortComparisonDTO.CohortMetricsDTO(
+                totalEnrolled,
+                evaluatedCohortSize,
+                baselineSampleSize,
+                currentKnowledgeSampleSize,
+                learningGainSampleSize,
+                meanBaselineKnowledge,
+                meanCurrentKnowledge,
+                meanNormalizedGain,
+                growthDistribution,
+                satisfaction,
+                totalReviews
         );
     }
 

@@ -3,6 +3,8 @@ package com.edupilot.service;
 import com.edupilot.dto.AdminAnalyticsFilterCriteria;
 import com.edupilot.dto.AdminAnalyticsOverviewDTO;
 import com.edupilot.dto.AdminCohortAnalyticsDTO;
+import com.edupilot.dto.AdminCohortComparisonDTO;
+import com.edupilot.dto.AdminCohortComparisonRequest;
 import com.edupilot.dto.AdminCohortSubjectAnalyticsDTO;
 import com.edupilot.dto.AdminCohortSubjectAnalyticsDTO.SubjectResearchSummaryDTO;
 import com.edupilot.dto.AdminResearchTrendsDTO;
@@ -30,6 +32,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -2506,5 +2509,533 @@ public class AdminAnalyticsIntegrationTest {
                 .andReturn();
         List<AdminStudentDirectoryDTO> directory = objectMapper.readValue(studentsRes.getResponse().getContentAsString(), new TypeReference<List<AdminStudentDirectoryDTO>>() {});
         assertNotNull(directory);
+    }
+
+    // =========================================================================
+    // PHASE 2C-3D: DESCRIPTIVE COHORT COMPARISON INTEGRATION TESTS
+    // =========================================================================
+
+    private String createStudentWithProfile(String email, String branch, int semester) {
+        User u = new User();
+        u.setEmail(email);
+        u.setPassword(passwordEncoder.encode("pass123"));
+        u.setFullName("Student " + email);
+        u.setRole(User.Role.STUDENT);
+        u.setCreatedAt(LocalDateTime.now());
+        u = userRepository.save(u);
+
+        StudentProfile profile = new StudentProfile();
+        profile.setUserId(u.getId());
+        profile.setEmail(email);
+        profile.setFullName("Student " + email);
+        profile.setBranch(branch);
+        profile.setSemester(semester);
+        profile.setSubjects(List.of("CS101", "Mathematics"));
+        studentProfileRepository.save(profile);
+
+        return u.getId();
+    }
+
+    private void seedAuthenticBaseline(String userId, String subject, double score) {
+        AssessmentResult ar = new AssessmentResult();
+        ar.setUserId(userId);
+        ar.setSubjectName(subject);
+        ar.setSubjectCode(subject);
+        ar.setScore((int) score);
+        ar.setTotalMarks(100);
+        ar.setPercentage(score);
+        ar.setTotalQuestions(10);
+        ar.setCorrectAnswers((int) (score / 10));
+        ar.setCreatedAt(LocalDateTime.of(2026, 1, 15, 10, 0));
+        ar.setTopicBreakdown(Map.of(
+                "Algorithms", Map.of("correct", (int) (score / 10), "total", 10, "percentage", score)
+        ));
+        assessmentResultRepository.save(ar);
+    }
+
+    private void seedConceptMastery(String userId, String subject, String concept, double score) {
+        ConceptMastery cm = new ConceptMastery();
+        cm.setUserId(userId);
+        cm.setSubjectName(subject);
+        cm.setSubjectCode(subject);
+        cm.setTopic(concept);
+        cm.setConceptName(concept);
+        cm.setAccuracy(score);
+        cm.setMasteryScore(score);
+        cm.setStatus(score >= 70 ? ConceptMastery.ConceptStatus.STRONG : ConceptMastery.ConceptStatus.UNCERTAIN);
+        cm.setLastAssessedAt(LocalDateTime.of(2026, 9, 15, 10, 0));
+        conceptMasteryRepository.save(cm);
+    }
+
+    @Test
+    public void testCompare_AdminAuthorized_Returns200() throws Exception {
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                new AdminAnalyticsFilterCriteria(null, null, "IT", null, null, null, null),
+                null, null
+        );
+
+        mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    public void testCompare_StudentForbidden_Returns403() throws Exception {
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(),
+                new AdminAnalyticsFilterCriteria(),
+                null, null
+        );
+
+        mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + studentToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testCompare_FacultyForbidden_Returns403() throws Exception {
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(),
+                new AdminAnalyticsFilterCriteria(),
+                null, null
+        );
+
+        mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + facultyToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testCompare_Unauthenticated_Returns401() throws Exception {
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(),
+                new AdminAnalyticsFilterCriteria(),
+                null, null
+        );
+
+        mockMvc.perform(post("/api/admin/analytics/compare")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void testCompare_SameCohortComparedWithItself_ZeroDifferences() throws Exception {
+        String studentId = createStudentWithProfile("same@edupilot.com", "CSE", 7);
+        seedAuthenticBaseline(studentId, "CS101", 50.0);
+        seedConceptMastery(studentId, "CS101", "Algorithms", 80.0);
+
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", 7, null, null, null),
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", 7, null, null, null),
+                null, null
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminCohortComparisonDTO comp = objectMapper.readValue(result.getResponse().getContentAsString(), AdminCohortComparisonDTO.class);
+        assertNotNull(comp);
+        assertEquals(0, comp.getDifferences().getTotalEnrolledDiff());
+        assertEquals(0, comp.getDifferences().getEvaluatedCohortSizeDiff());
+        assertEquals(0.0, comp.getDifferences().getBaselineKnowledgeDiffPp(), 0.01);
+        assertEquals(0.0, comp.getDifferences().getCurrentKnowledgeDiffPp(), 0.01);
+        assertNotNull(comp.getMethodologyNote());
+        assertTrue(comp.getMethodologyNote().contains("Descriptive cohort comparison"));
+    }
+
+    @Test
+    public void testCompare_EmptyCohortA_GracefulWarning() throws Exception {
+        createStudentWithProfile("b@edupilot.com", "IT", 7);
+
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(null, null, "NON_EXISTENT", null, null, null, null),
+                new AdminAnalyticsFilterCriteria(null, null, "IT", null, null, null, null),
+                null, null
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminCohortComparisonDTO comp = objectMapper.readValue(result.getResponse().getContentAsString(), AdminCohortComparisonDTO.class);
+        assertNotNull(comp);
+        assertEquals(0, comp.getCohortA().getMetrics().getTotalEnrolled());
+        assertEquals(1, comp.getCohortB().getMetrics().getTotalEnrolled());
+        assertFalse(comp.getDataSufficiency().isComparisonValid());
+        assertTrue(comp.getDataSufficiency().getWarnings().stream().anyMatch(w -> w.contains("Cohort A has 0 enrolled students")));
+    }
+
+    @Test
+    public void testCompare_EmptyCohortB_GracefulWarning() throws Exception {
+        createStudentWithProfile("a@edupilot.com", "CSE", 7);
+
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                new AdminAnalyticsFilterCriteria(null, null, "NON_EXISTENT", null, null, null, null),
+                null, null
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminCohortComparisonDTO comp = objectMapper.readValue(result.getResponse().getContentAsString(), AdminCohortComparisonDTO.class);
+        assertNotNull(comp);
+        assertEquals(1, comp.getCohortA().getMetrics().getTotalEnrolled());
+        assertEquals(0, comp.getCohortB().getMetrics().getTotalEnrolled());
+        assertFalse(comp.getDataSufficiency().isComparisonValid());
+        assertTrue(comp.getDataSufficiency().getWarnings().stream().anyMatch(w -> w.contains("Cohort B has 0 enrolled students")));
+    }
+
+    @Test
+    public void testCompare_NoAuthenticBaseline_GainNullUnavailable() throws Exception {
+        String studentId = createStudentWithProfile("nobaseline@edupilot.com", "CSE", 7);
+        seedConceptMastery(studentId, "CS101", "Algorithms", 75.0);
+
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                null, null
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminCohortComparisonDTO comp = objectMapper.readValue(result.getResponse().getContentAsString(), AdminCohortComparisonDTO.class);
+        assertNotNull(comp);
+        assertEquals(1, comp.getCohortA().getMetrics().getTotalEnrolled());
+        assertEquals(0, comp.getCohortA().getMetrics().getBaselineSampleSize());
+        assertNull(comp.getCohortA().getMetrics().getMeanBaselineKnowledge());
+        assertNull(comp.getCohortA().getMetrics().getMeanNormalizedGain());
+        assertNull(comp.getDifferences().getBaselineKnowledgeDiffPp());
+        assertNull(comp.getDifferences().getNormalizedGainDiff());
+    }
+
+    @Test
+    public void testCompare_MissingKt_ExcludedFromCurrentGainDenominators() throws Exception {
+        String studentId = createStudentWithProfile("nokt@edupilot.com", "CSE", 7);
+        seedAuthenticBaseline(studentId, "CS101", 40.0);
+
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                null, null
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminCohortComparisonDTO comp = objectMapper.readValue(result.getResponse().getContentAsString(), AdminCohortComparisonDTO.class);
+        assertNotNull(comp);
+        assertEquals(1, comp.getCohortA().getMetrics().getTotalEnrolled());
+        assertEquals(1, comp.getCohortA().getMetrics().getBaselineSampleSize());
+        assertEquals(40.0, comp.getCohortA().getMetrics().getMeanBaselineKnowledge(), 0.01);
+    }
+
+    @Test
+    public void testCompare_DifferentBranches_ComputesIndependentPopulations() throws Exception {
+        String sCse = createStudentWithProfile("cse@edupilot.com", "CSE", 7);
+        seedAuthenticBaseline(sCse, "CS101", 40.0);
+        seedConceptMastery(sCse, "CS101", "Algorithms", 80.0);
+
+        String sIt = createStudentWithProfile("it@edupilot.com", "IT", 7);
+        seedAuthenticBaseline(sIt, "CS101", 50.0);
+        seedConceptMastery(sIt, "CS101", "Algorithms", 70.0);
+
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                new AdminAnalyticsFilterCriteria(null, null, "IT", null, null, null, null),
+                null, null
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminCohortComparisonDTO comp = objectMapper.readValue(result.getResponse().getContentAsString(), AdminCohortComparisonDTO.class);
+        assertNotNull(comp);
+        assertEquals(1, comp.getCohortA().getMetrics().getTotalEnrolled());
+        assertEquals(1, comp.getCohortB().getMetrics().getTotalEnrolled());
+        assertEquals(40.0, comp.getCohortA().getMetrics().getMeanBaselineKnowledge(), 0.01);
+        assertEquals(50.0, comp.getCohortB().getMetrics().getMeanBaselineKnowledge(), 0.01);
+        assertEquals(-10.0, comp.getDifferences().getBaselineKnowledgeDiffPp(), 0.01);
+    }
+
+    @Test
+    public void testCompare_DifferentSemesters_ComputesIndependentPopulations() throws Exception {
+        String sSem5 = createStudentWithProfile("sem5@edupilot.com", "CSE", 5);
+        seedAuthenticBaseline(sSem5, "CS101", 30.0);
+
+        String sSem7 = createStudentWithProfile("sem7@edupilot.com", "CSE", 7);
+        seedAuthenticBaseline(sSem7, "CS101", 60.0);
+
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", 5, null, null, null),
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", 7, null, null, null),
+                null, null
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminCohortComparisonDTO comp = objectMapper.readValue(result.getResponse().getContentAsString(), AdminCohortComparisonDTO.class);
+        assertNotNull(comp);
+        assertEquals(1, comp.getCohortA().getMetrics().getTotalEnrolled());
+        assertEquals(1, comp.getCohortB().getMetrics().getTotalEnrolled());
+        assertEquals(30.0, comp.getCohortA().getMetrics().getMeanBaselineKnowledge(), 0.01);
+        assertEquals(60.0, comp.getCohortB().getMetrics().getMeanBaselineKnowledge(), 0.01);
+        assertEquals(-30.0, comp.getDifferences().getBaselineKnowledgeDiffPp(), 0.01);
+    }
+
+    @Test
+    public void testCompare_SubjectFilteredComparison_EvaluatesCanonicalSubject() throws Exception {
+        String s1 = createStudentWithProfile("subj1@edupilot.com", "CSE", 7);
+        seedAuthenticBaseline(s1, "CS101", 45.0);
+        seedConceptMastery(s1, "CS101", "Algorithms", 85.0);
+
+        String s2 = createStudentWithProfile("subj2@edupilot.com", "IT", 7);
+        seedAuthenticBaseline(s2, "CS101", 55.0);
+        seedConceptMastery(s2, "CS101", "Algorithms", 75.0);
+
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, "CS101", null, null),
+                new AdminAnalyticsFilterCriteria(null, null, "IT", null, "CS101", null, null),
+                null, null
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminCohortComparisonDTO comp = objectMapper.readValue(result.getResponse().getContentAsString(), AdminCohortComparisonDTO.class);
+        assertNotNull(comp);
+        assertEquals(1, comp.getCohortA().getMetrics().getTotalEnrolled());
+        assertEquals(1, comp.getCohortB().getMetrics().getTotalEnrolled());
+        assertEquals(45.0, comp.getCohortA().getMetrics().getMeanBaselineKnowledge(), 0.01);
+        assertEquals(55.0, comp.getCohortB().getMetrics().getMeanBaselineKnowledge(), 0.01);
+        assertEquals(-10.0, comp.getDifferences().getBaselineKnowledgeDiffPp(), 0.01);
+    }
+
+    @Test
+    public void testCompare_SharedDateFilter_AppliesSameObservationWindow() throws Exception {
+        String s1 = createStudentWithProfile("date1@edupilot.com", "CSE", 7);
+        seedAuthenticBaseline(s1, "CS101", 40.0);
+
+        // Seed satisfaction inside window
+        StudentSatisfaction sat = new StudentSatisfaction();
+        sat.setStudentId(s1);
+        sat.setRating(5);
+        sat.setFeedbackType(StudentSatisfaction.FeedbackType.AI_TUTOR);
+        sat.setTimestamp(LocalDateTime.of(2026, 8, 15, 12, 0));
+        satisfactionRepository.save(sat);
+
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                LocalDate.of(2026, 8, 1),
+                LocalDate.of(2026, 8, 31)
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminCohortComparisonDTO comp = objectMapper.readValue(result.getResponse().getContentAsString(), AdminCohortComparisonDTO.class);
+        assertNotNull(comp);
+        assertEquals(1, comp.getCohortA().getMetrics().getSatisfaction().getTotalReviews());
+        assertEquals(5.0, comp.getCohortA().getMetrics().getSatisfaction().getAverageRating(), 0.01);
+    }
+
+    @Test
+    public void testCompare_K0RemainsGloballyAnchored_WhenDateExcludesOriginalDiagnostic() throws Exception {
+        String s1 = createStudentWithProfile("globalk0@edupilot.com", "CSE", 7);
+
+        // Earliest diagnostic in January 2026 (K0 = 35.0%)
+        AssessmentResult diag = new AssessmentResult();
+        diag.setUserId(s1);
+        diag.setSubjectName("CS101");
+        diag.setScore(35);
+        diag.setTotalMarks(100);
+        diag.setPercentage(35.0);
+        diag.setTotalQuestions(10);
+        diag.setCorrectAnswers(3);
+        diag.setCreatedAt(LocalDateTime.of(2026, 1, 10, 10, 0));
+        diag.setTopicBreakdown(Map.of(
+                "Algorithms", Map.of("correct", 3, "total", 10, "percentage", 35.0)
+        ));
+        assessmentResultRepository.save(diag);
+
+        // Observation window: July - October 2026
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                LocalDate.of(2026, 7, 1),
+                LocalDate.of(2026, 10, 31)
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminCohortComparisonDTO comp = objectMapper.readValue(result.getResponse().getContentAsString(), AdminCohortComparisonDTO.class);
+        assertNotNull(comp);
+        assertEquals(35.0, comp.getCohortA().getMetrics().getMeanBaselineKnowledge(), 0.01);
+    }
+
+    @Test
+    public void testCompare_InvalidDateRange_Returns400() throws Exception {
+        String invalidDateJson = "{\"cohortA\":{},\"cohortB\":{},\"startDate\":\"2026-10-31\",\"endDate\":\"2026-01-01\"}";
+
+        mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalidDateJson))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testCompare_InvalidCriteria_Returns400() throws Exception {
+        String invalidCriteriaJson = "{\"cohortA\":{\"activityStatus\":\"INVALID_STATUS\"},\"cohortB\":{}}";
+
+        mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalidCriteriaJson))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testCompare_MissingRequestBody_Returns400() throws Exception {
+        mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testCompare_NoSynthetic50PercentBaseline() throws Exception {
+        createStudentWithProfile("nosynth@edupilot.com", "CSE", 7);
+        // Student with no diagnostic assessment
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                null, null
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminCohortComparisonDTO comp = objectMapper.readValue(result.getResponse().getContentAsString(), AdminCohortComparisonDTO.class);
+        assertNotNull(comp);
+        assertNull(comp.getCohortA().getMetrics().getMeanBaselineKnowledge());
+        assertEquals(0, comp.getCohortA().getMetrics().getBaselineSampleSize());
+    }
+
+    @Test
+    public void testCompare_MetricSpecificDenominatorsAreTracked() throws Exception {
+        // Student 1: Has baseline + current knowledge + satisfaction
+        String s1 = createStudentWithProfile("denom1@edupilot.com", "CSE", 7);
+        seedAuthenticBaseline(s1, "CS101", 50.0);
+        seedConceptMastery(s1, "CS101", "Algorithms", 80.0);
+        StudentSatisfaction sat = new StudentSatisfaction();
+        sat.setStudentId(s1);
+        sat.setRating(5);
+        satisfactionRepository.save(sat);
+
+        // Student 2: Only concept mastery (no baseline)
+        String s2 = createStudentWithProfile("denom2@edupilot.com", "CSE", 7);
+        seedConceptMastery(s2, "CS101", "Algorithms", 70.0);
+
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                null, null
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminCohortComparisonDTO comp = objectMapper.readValue(result.getResponse().getContentAsString(), AdminCohortComparisonDTO.class);
+        assertNotNull(comp);
+        assertEquals(2, comp.getCohortA().getMetrics().getTotalEnrolled());
+        assertEquals(1, comp.getCohortA().getMetrics().getBaselineSampleSize());
+        assertEquals(2, comp.getCohortA().getMetrics().getCurrentKnowledgeSampleSize());
+        assertEquals(1, comp.getCohortA().getMetrics().getLearningGainSampleSize());
+        assertEquals(1, comp.getCohortA().getMetrics().getSatisfactionSampleSize());
+    }
+
+    @Test
+    public void testCompare_SmallCohort_ProducesWarningNotSignificanceClaim() throws Exception {
+        String s1 = createStudentWithProfile("small@edupilot.com", "CSE", 7);
+        seedAuthenticBaseline(s1, "CS101", 50.0);
+
+        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                new AdminAnalyticsFilterCriteria(null, null, "CSE", null, null, null, null),
+                null, null
+        );
+
+        MvcResult result = mockMvc.perform(post("/api/admin/analytics/compare")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        AdminCohortComparisonDTO comp = objectMapper.readValue(result.getResponse().getContentAsString(), AdminCohortComparisonDTO.class);
+        assertNotNull(comp);
+        assertTrue(comp.getDataSufficiency().getWarnings().stream().anyMatch(w -> w.contains("small evaluated sample size (N < 5)")));
+        assertTrue(comp.getMethodologyNote().contains("should not be interpreted as causal effects"));
     }
 }

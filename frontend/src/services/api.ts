@@ -2563,3 +2563,88 @@ export async function fetchAdminSubjectAnalytics(filters?: AdminResearchAnalytic
   }
   return null;
 }
+
+export interface AdminCohortComparisonRequest {
+  cohortA: AdminResearchAnalyticsFilters;
+  cohortB: AdminResearchAnalyticsFilters;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface AdminCohortComparisonMetricsDTO {
+  totalEnrolled: number;
+  evaluatedCohortSize: number;
+  baselineSampleSize: number;
+  currentKnowledgeSampleSize: number;
+  learningGainSampleSize: number;
+  meanBaselineKnowledge: number | null;
+  meanCurrentKnowledge: number | null;
+  meanNormalizedGain: number | null;
+  growthDistribution: {
+    improvedCount: number;
+    improvedPercentage: number;
+    unchangedCount: number;
+    unchangedPercentage: number;
+    declinedCount: number;
+    declinedPercentage: number;
+  };
+  satisfaction: {
+    averageRating: number | null;
+    totalReviews: number;
+    byCategory: Record<string, number | null>;
+  };
+  satisfactionSampleSize: number;
+}
+
+export interface AdminCohortComparisonDTO {
+  cohortA: {
+    label: string;
+    criteria: AdminResearchAnalyticsFilters;
+    metrics: AdminCohortComparisonMetricsDTO;
+  };
+  cohortB: {
+    label: string;
+    criteria: AdminResearchAnalyticsFilters;
+    metrics: AdminCohortComparisonMetricsDTO;
+  };
+  differences: {
+    totalEnrolledDiff: number;
+    evaluatedCohortSizeDiff: number;
+    baselineKnowledgeDiffPp: number | null;
+    currentKnowledgeDiffPp: number | null;
+    normalizedGainDiff: number | null;
+    satisfactionDiff: number | null;
+  };
+  dataSufficiency: {
+    isComparisonValid: boolean;
+    warnings: string[];
+  };
+  methodologyNote: string;
+}
+
+export async function compareAdminCohorts(request: AdminCohortComparisonRequest): Promise<AdminCohortComparisonDTO | null> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/compare`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(request)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      if (res.status === 400) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.message || "Invalid comparison criteria. Please check the selected filters.");
+      }
+      handleAuthError(res);
+    } catch (err: any) {
+      if (err.message && err.message.includes("Invalid")) {
+        throw err;
+      }
+      console.warn("Failed to compare admin cohorts:", err);
+    }
+  }
+  return null;
+}
