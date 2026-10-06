@@ -27,16 +27,6 @@ import {
   Minus
 } from "lucide-react";
 import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  CartesianGrid
-} from "recharts";
-import {
   fetchAdminStudentAnalytics,
   AdminStudentAnalyticsDTO
 } from "../../../../../services/api";
@@ -70,19 +60,6 @@ export default function IndividualStudentAnalyticsPage() {
   useEffect(() => {
     loadData();
   }, [userId]);
-
-  const trajectoryChartData = analytics?.trajectory?.map((pt) => {
-    const d = new Date(pt.timestamp);
-    const dateStr = !isNaN(d.getTime())
-      ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" })
-      : pt.timestamp;
-    return {
-      date: dateStr,
-      timestamp: pt.timestamp,
-      knowledge: (pt.overallKnowledgeScore * 100).toFixed(1),
-      engagement: (pt.engagementScore * 100).toFixed(1)
-    };
-  }) || [];
 
   return (
     <Layout>
@@ -305,58 +282,7 @@ export default function IndividualStudentAnalyticsPage() {
               </div>
             </div>
 
-            {/* 3. KNOWLEDGE TRAJECTORY (CHART) */}
-            <div className="glass-panel p-6 rounded-3xl border border-white/5 space-y-4">
-              <div className="flex items-center justify-between border-b border-white/5 pb-3">
-                <div>
-                  <h3 className="text-sm font-extrabold text-main-theme">Empirical Learning Trajectory</h3>
-                  <p className="text-xs text-secondary-theme">Chronological student state snapshot milestones</p>
-                </div>
-              </div>
-
-              {trajectoryChartData.length > 0 ? (
-                <div className="h-64 w-full pt-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={trajectoryChartData} margin={{ top: 10, right: 20, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                      <XAxis dataKey="date" stroke="#71717a" fontSize={11} tickLine={false} />
-                      <YAxis stroke="#71717a" fontSize={11} tickLine={false} domain={[0, 100]} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "#0d0f1e",
-                          borderColor: "rgba(255,255,255,0.1)",
-                          borderRadius: "12px",
-                          fontSize: "12px"
-                        }}
-                      />
-                      <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="knowledge"
-                        name="Knowledge Score (%)"
-                        stroke="#10b981"
-                        strokeWidth={2.5}
-                        dot={{ fill: "#10b981", r: 4 }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="engagement"
-                        name="Engagement Score (%)"
-                        stroke="#6366f1"
-                        strokeWidth={2}
-                        dot={{ fill: "#6366f1", r: 3 }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="py-12 text-center text-xs text-secondary-theme">
-                  No historical trajectory data available.
-                </div>
-              )}
-            </div>
-
-            {/* 4. SUBJECT PERFORMANCE */}
+            {/* 3. SUBJECT PERFORMANCE */}
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <BookOpen className="h-4 w-4 text-purple-theme" />
