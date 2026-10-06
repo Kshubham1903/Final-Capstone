@@ -33,6 +33,9 @@ public class AuthController {
         }
         
         user.setCreatedAt(LocalDateTime.now());
+        if (user.getAccountType() == null) {
+            user.setAccountType(User.AccountType.GENUINE_STUDENT);
+        }
         // Secure BCrypt password hashing before database persistence
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         User saved = userRepository.save(user);

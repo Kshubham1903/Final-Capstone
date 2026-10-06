@@ -128,6 +128,7 @@ public class AdminAnalyticsIntegrationTest {
         studentUser.setPassword(passwordEncoder.encode("studentpass123"));
         studentUser.setFullName("Alice Student");
         studentUser.setRole(User.Role.STUDENT);
+        studentUser.setAccountType(User.AccountType.GENUINE_STUDENT);
         studentUser.setCreatedAt(LocalDateTime.now());
         studentUser = userRepository.save(studentUser);
         studentToken = jwtService.generateToken(studentUser.getId(), studentUser.getEmail(), "STUDENT");
@@ -155,6 +156,62 @@ public class AdminAnalyticsIntegrationTest {
         AdminAnalyticsOverviewDTO dto = objectMapper.readValue(json, AdminAnalyticsOverviewDTO.class);
         assertNotNull(dto);
         assertEquals(1, dto.getTotalStudents(), "Should count exactly the 1 created student user");
+    }
+
+    @Test
+    public void testAdminAnalyticsExcludesTestAutomationAndSyntheticAccounts() throws Exception {
+        // Create test automation account
+        User testAutomationUser = new User();
+        testAutomationUser.setEmail("test_auto_" + System.currentTimeMillis() + "@edupilot.com");
+        testAutomationUser.setPassword(passwordEncoder.encode("pass123"));
+        testAutomationUser.setFullName("Automation Bot");
+        testAutomationUser.setRole(User.Role.STUDENT);
+        testAutomationUser.setAccountType(User.AccountType.TEST_AUTOMATION);
+        testAutomationUser.setCreatedAt(LocalDateTime.now());
+        userRepository.save(testAutomationUser);
+
+        // Create synthetic research seed account
+        User syntheticSeedUser = new User();
+        syntheticSeedUser.setEmail("seed_" + System.currentTimeMillis() + "@edupilot.com");
+        syntheticSeedUser.setPassword(passwordEncoder.encode("pass123"));
+        syntheticSeedUser.setFullName("Synthetic Seed");
+        syntheticSeedUser.setRole(User.Role.STUDENT);
+        syntheticSeedUser.setAccountType(User.AccountType.SYNTHETIC_RESEARCH_SEED);
+        syntheticSeedUser.setCreatedAt(LocalDateTime.now());
+        userRepository.save(syntheticSeedUser);
+
+        // Create unclassified legacy user (accountType is null)
+        User legacyUser = new User();
+        legacyUser.setEmail("legacy_" + System.currentTimeMillis() + "@edupilot.com");
+        legacyUser.setPassword(passwordEncoder.encode("pass123"));
+        legacyUser.setFullName("Legacy User");
+        legacyUser.setRole(User.Role.STUDENT);
+        legacyUser.setAccountType(null);
+        legacyUser.setCreatedAt(LocalDateTime.now());
+        userRepository.save(legacyUser);
+
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/overview")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String json = result.getResponse().getContentAsString();
+        AdminAnalyticsOverviewDTO dto = objectMapper.readValue(json, AdminAnalyticsOverviewDTO.class);
+        assertNotNull(dto);
+        assertEquals(1, dto.getTotalStudents(), "Admin analytics overview must exclude TEST_AUTOMATION, SYNTHETIC_RESEARCH_SEED, and unclassified null accountTypes");
+
+        MvcResult dirResult = mockMvc.perform(get("/api/admin/analytics/students")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String dirJson = dirResult.getResponse().getContentAsString();
+        List<AdminStudentDirectoryDTO> directory = objectMapper.readValue(dirJson, new TypeReference<List<AdminStudentDirectoryDTO>>() {});
+        assertNotNull(directory);
+        assertEquals(1, directory.size(), "Student Directory must contain only GENUINE_STUDENT accounts");
+        assertEquals(studentUser.getId(), directory.get(0).getUserId());
     }
 
     @Test
@@ -325,6 +382,7 @@ public class AdminAnalyticsIntegrationTest {
         student2.setPassword(passwordEncoder.encode("bobpass123"));
         student2.setFullName("Bob Student");
         student2.setRole(User.Role.STUDENT);
+        student2.setAccountType(User.AccountType.GENUINE_STUDENT);
         student2.setCreatedAt(LocalDateTime.now().minusDays(20));
         student2 = userRepository.save(student2);
 
@@ -333,6 +391,7 @@ public class AdminAnalyticsIntegrationTest {
         student3.setPassword(passwordEncoder.encode("charliepass123"));
         student3.setFullName("Charlie Student");
         student3.setRole(User.Role.STUDENT);
+        student3.setAccountType(User.AccountType.GENUINE_STUDENT);
         student3.setCreatedAt(LocalDateTime.now().minusDays(30));
         student3 = userRepository.save(student3);
 
@@ -480,6 +539,7 @@ public class AdminAnalyticsIntegrationTest {
         student2.setPassword(passwordEncoder.encode("bobpass123"));
         student2.setFullName("Bob Student");
         student2.setRole(User.Role.STUDENT);
+        student2.setAccountType(User.AccountType.GENUINE_STUDENT);
         student2.setCreatedAt(LocalDateTime.now().minusDays(20));
         student2 = userRepository.save(student2);
 
@@ -639,6 +699,7 @@ public class AdminAnalyticsIntegrationTest {
         student2.setPassword(passwordEncoder.encode("bobpass123"));
         student2.setFullName("Bob Student");
         student2.setRole(User.Role.STUDENT);
+        student2.setAccountType(User.AccountType.GENUINE_STUDENT);
         student2.setCreatedAt(LocalDateTime.now());
         userRepository.save(student2);
 
@@ -1260,6 +1321,7 @@ public class AdminAnalyticsIntegrationTest {
         student2.setPassword(passwordEncoder.encode("studentpass123"));
         student2.setFullName("Second Student");
         student2.setRole(User.Role.STUDENT);
+        student2.setAccountType(User.AccountType.GENUINE_STUDENT);
         student2 = userRepository.save(student2);
         String studentId2 = student2.getId();
 
@@ -1455,6 +1517,7 @@ public class AdminAnalyticsIntegrationTest {
         student2.setEmail("student2_subj@ritindia.edu");
         student2.setPassword(passwordEncoder.encode("password123"));
         student2.setRole(User.Role.STUDENT);
+        student2.setAccountType(User.AccountType.GENUINE_STUDENT);
         student2 = userRepository.save(student2);
         String s2Id = student2.getId();
 
@@ -1804,6 +1867,7 @@ public class AdminAnalyticsIntegrationTest {
         bob.setPassword(passwordEncoder.encode("bobpass123"));
         bob.setFullName("Bob Student");
         bob.setRole(User.Role.STUDENT);
+        bob.setAccountType(User.AccountType.GENUINE_STUDENT);
         bob.setCreatedAt(LocalDateTime.now());
         bob = userRepository.save(bob);
 
@@ -1848,6 +1912,7 @@ public class AdminAnalyticsIntegrationTest {
         bob.setPassword(passwordEncoder.encode("bobpass123"));
         bob.setFullName("Bob Student");
         bob.setRole(User.Role.STUDENT);
+        bob.setAccountType(User.AccountType.GENUINE_STUDENT);
         bob.setCreatedAt(LocalDateTime.now());
         bob = userRepository.save(bob);
 
@@ -1921,6 +1986,7 @@ public class AdminAnalyticsIntegrationTest {
         bob.setPassword(passwordEncoder.encode("bobpass123"));
         bob.setFullName("Bob NoBaseline");
         bob.setRole(User.Role.STUDENT);
+        bob.setAccountType(User.AccountType.GENUINE_STUDENT);
         bob.setCreatedAt(LocalDateTime.now());
         bob = userRepository.save(bob);
 
@@ -1962,6 +2028,7 @@ public class AdminAnalyticsIntegrationTest {
         bob.setPassword(passwordEncoder.encode("bobpass123"));
         bob.setFullName("Bob AtRisk");
         bob.setRole(User.Role.STUDENT);
+        bob.setAccountType(User.AccountType.GENUINE_STUDENT);
         bob.setCreatedAt(LocalDateTime.now().minusDays(20));
         bob = userRepository.save(bob);
         QuizSession qsBob = new QuizSession();
@@ -1975,6 +2042,7 @@ public class AdminAnalyticsIntegrationTest {
         charlie.setPassword(passwordEncoder.encode("charliepass123"));
         charlie.setFullName("Charlie Inactive");
         charlie.setRole(User.Role.STUDENT);
+        charlie.setAccountType(User.AccountType.GENUINE_STUDENT);
         charlie.setCreatedAt(LocalDateTime.now().minusDays(30));
         charlie = userRepository.save(charlie);
         AssessmentResult arCharlie = new AssessmentResult();
@@ -1988,6 +2056,7 @@ public class AdminAnalyticsIntegrationTest {
         david.setPassword(passwordEncoder.encode("davidpass123"));
         david.setFullName("David NoAct");
         david.setRole(User.Role.STUDENT);
+        david.setAccountType(User.AccountType.GENUINE_STUDENT);
         david.setCreatedAt(LocalDateTime.now());
         david = userRepository.save(david);
 
@@ -2521,6 +2590,7 @@ public class AdminAnalyticsIntegrationTest {
         u.setPassword(passwordEncoder.encode("pass123"));
         u.setFullName("Student " + email);
         u.setRole(User.Role.STUDENT);
+        u.setAccountType(User.AccountType.GENUINE_STUDENT);
         u.setCreatedAt(LocalDateTime.now());
         u = userRepository.save(u);
 
