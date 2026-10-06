@@ -380,34 +380,64 @@ export default function ResearchAnalyticsPage() {
             </div>
 
             {activeTab !== "compare" && (
-              <button
-                onClick={() => {
-                  if (activeTab === "cohort") loadCohortAnalytics(filters);
-                  else if (activeTab === "trends") loadResearchTrends(filters);
-                  else if (activeTab === "subjects") loadSubjectAnalytics(filters);
-                  else if (activeTab === "directory") loadStudentDirectory(filters);
-                }}
-                disabled={
-                  activeTab === "cohort" ? cohortLoading :
-                  activeTab === "trends" ? trendsLoading :
-                  activeTab === "subjects" ? subjectsLoading :
-                  directoryLoading
-                }
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-main-theme transition-all cursor-pointer w-fit"
-              >
-                <RefreshCw className={`h-4 w-4 text-purple-theme ${(
-                  activeTab === "cohort" ? cohortLoading :
-                  activeTab === "trends" ? trendsLoading :
-                  activeTab === "subjects" ? subjectsLoading :
-                  directoryLoading
-                ) ? "animate-spin" : ""}`} />
-                <span>{(
-                  activeTab === "cohort" ? cohortLoading :
-                  activeTab === "trends" ? trendsLoading :
-                  activeTab === "subjects" ? subjectsLoading :
-                  directoryLoading
-                ) ? "Refreshing..." : "Refresh"}</span>
-              </button>
+              <>
+                <button
+                  onClick={handleExportExcel}
+                  disabled={isExportingExcel || isExportingPdf}
+                  className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-xs font-bold text-emerald-300 disabled:opacity-50 transition-all cursor-pointer w-fit"
+                  title="Export filtered data as Excel spreadsheet (.xlsx)"
+                >
+                  {isExportingExcel ? (
+                    <Loader2 className="h-4 w-4 text-emerald-400 animate-spin" />
+                  ) : (
+                    <FileSpreadsheet className="h-4 w-4 text-emerald-400" />
+                  )}
+                  <span>{isExportingExcel ? "Exporting..." : "Export Excel"}</span>
+                </button>
+
+                <button
+                  onClick={handleExportPdf}
+                  disabled={isExportingExcel || isExportingPdf}
+                  className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-xs font-bold text-indigo-300 disabled:opacity-50 transition-all cursor-pointer w-fit"
+                  title="Export research report as PDF document (.pdf)"
+                >
+                  {isExportingPdf ? (
+                    <Loader2 className="h-4 w-4 text-indigo-400 animate-spin" />
+                  ) : (
+                    <FileText className="h-4 w-4 text-indigo-400" />
+                  )}
+                  <span>{isExportingPdf ? "Generating..." : "Export PDF"}</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (activeTab === "cohort") loadCohortAnalytics(filters);
+                    else if (activeTab === "trends") loadResearchTrends(filters);
+                    else if (activeTab === "subjects") loadSubjectAnalytics(filters);
+                    else if (activeTab === "directory") loadStudentDirectory(filters);
+                  }}
+                  disabled={
+                    activeTab === "cohort" ? cohortLoading :
+                    activeTab === "trends" ? trendsLoading :
+                    activeTab === "subjects" ? subjectsLoading :
+                    directoryLoading
+                  }
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-main-theme transition-all cursor-pointer w-fit"
+                >
+                  <RefreshCw className={`h-4 w-4 text-purple-theme ${(
+                    activeTab === "cohort" ? cohortLoading :
+                    activeTab === "trends" ? trendsLoading :
+                    activeTab === "subjects" ? subjectsLoading :
+                    directoryLoading
+                  ) ? "animate-spin" : ""}`} />
+                  <span>{(
+                    activeTab === "cohort" ? cohortLoading :
+                    activeTab === "trends" ? trendsLoading :
+                    activeTab === "subjects" ? subjectsLoading :
+                    directoryLoading
+                  ) ? "Refreshing..." : "Refresh"}</span>
+                </button>
+              </>
             )}
           </div>
         </div>

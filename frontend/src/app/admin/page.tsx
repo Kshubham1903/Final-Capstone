@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import Layout from "../../components/Layout";
 import { 
   Settings, 
@@ -18,11 +19,13 @@ import {
   AlertTriangle,
   BookOpen,
   BarChart2,
-  CheckCircle2
+  CheckCircle2,
+  FlaskConical
 } from "lucide-react";
 import { fetchAdminAnalyticsOverview, AdminAnalyticsOverview } from "../../services/api";
 
 export default function AdminDashboard() {
+  const navigate = useNavigate();
   
   // Real Backend Overview Telemetry State
   const [analytics, setAnalytics] = useState<AdminAnalyticsOverview | null>(null);
@@ -103,14 +106,23 @@ export default function AdminDashboard() {
               Live learning telemetry, cohort growth analytics, system tuning, and user directory management.
             </p>
           </div>
-          <button
-            onClick={loadOverview}
-            disabled={loadingAnalytics}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-main-theme transition-all cursor-pointer w-fit"
-          >
-            <RefreshCw className={`h-4 w-4 text-purple-theme ${loadingAnalytics ? "animate-spin" : ""}`} />
-            <span>{loadingAnalytics ? "Refreshing Live Data..." : "Refresh Telemetry"}</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => navigate("/admin/research-analytics")}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/20 transition-all cursor-pointer w-fit"
+            >
+              <FlaskConical className="h-4 w-4" />
+              <span>Open Research & Analytics Dashboard</span>
+            </button>
+            <button
+              onClick={loadOverview}
+              disabled={loadingAnalytics}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-main-theme transition-all cursor-pointer w-fit"
+            >
+              <RefreshCw className={`h-4 w-4 text-purple-theme ${loadingAnalytics ? "animate-spin" : ""}`} />
+              <span>{loadingAnalytics ? "Refreshing Live Data..." : "Refresh Telemetry"}</span>
+            </button>
+          </div>
         </div>
 
         {styleBlock}
