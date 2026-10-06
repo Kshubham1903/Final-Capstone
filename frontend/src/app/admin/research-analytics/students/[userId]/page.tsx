@@ -91,11 +91,11 @@ export default function IndividualStudentAnalyticsPage() {
         {/* Navigation & Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <button
-            onClick={() => navigate("/admin/research-analytics")}
+            onClick={() => navigate("/admin/student-directory")}
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-main-theme transition-all cursor-pointer w-fit"
           >
             <ArrowLeft className="h-4 w-4" />
-            <span>Back to Research & Analytics</span>
+            <span>Back to Student Directory</span>
           </button>
 
           <button

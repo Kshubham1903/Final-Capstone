@@ -108,11 +108,18 @@ export default function AdminDashboard() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <button
-              onClick={() => navigate("/admin/research-analytics")}
+              onClick={() => navigate("/admin/subject-analytics")}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/20 transition-all cursor-pointer w-fit"
             >
-              <FlaskConical className="h-4 w-4" />
-              <span>Open Research & Analytics Dashboard</span>
+              <BookOpen className="h-4 w-4" />
+              <span>Subject Analytics</span>
+            </button>
+            <button
+              onClick={() => navigate("/admin/student-directory")}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 text-xs font-bold transition-all cursor-pointer w-fit"
+            >
+              <Users className="h-4 w-4" />
+              <span>Student Directory</span>
             </button>
             <button
               onClick={loadOverview}

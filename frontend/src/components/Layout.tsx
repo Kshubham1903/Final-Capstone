@@ -112,8 +112,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     ],
     ADMIN: [
       { name: "System Control", href: "/admin", icon: Settings },
-      { name: "Research & Analytics", href: "/admin/research-analytics", icon: TrendingUp },
-      { name: "All Dashboards", href: "/dashboard", icon: LayoutDashboard },
+      { name: "Subject Analytics", href: "/admin/subject-analytics", icon: BookOpen },
+      { name: "Student Directory", href: "/admin/student-directory", icon: Users },
     ]
   };
 
