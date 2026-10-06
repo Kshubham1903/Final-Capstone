@@ -16,4 +16,5 @@ public interface QuizSessionRepository extends MongoRepository<QuizSession, Stri
     List<QuizSession> findByStudentProfileIdOrderByLastAnswerTimeAsc(String studentProfileId);
     Optional<QuizSession> findFirstByUserIdOrderByLastAnswerTimeDesc(String userId);
     Optional<QuizSession> findFirstByUserIdAndSubjectNameAndStatusOrderByLastAnswerTimeDesc(String userId, String subjectName, QuizSession.Status status);
+    long countByStatus(QuizSession.Status status);
 }

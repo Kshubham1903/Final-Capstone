@@ -89,18 +89,31 @@ public class ConceptRemediationService {
 
         List<String> questionIds = new ArrayList<>();
         List<DashboardTestQuestionDTO> questionDTOs = new ArrayList<>();
+        Map<String, List<Integer>> optionMappings = new HashMap<>();
 
-        for (QuizQuestion q : questions) {
+        // Generate balanced answer position plan across A(0), B(1), C(2), D(3)
+        List<Integer> positionPlan = VerificationOptionRandomizer.buildBalancedAnswerPositionPlan(questions.size());
+
+        for (int i = 0; i < questions.size(); i++) {
+            QuizQuestion q = questions.get(i);
             if (q.getId() != null) {
                 questionIds.add(q.getId());
             }
+
+            int targetCorrectPos = (i < positionPlan.size()) ? positionPlan.get(i) : (i % 4);
+            VerificationOptionRandomizer.RandomizedQuestionResult randomized = VerificationOptionRandomizer.randomizeVerificationOptions(q, targetCorrectPos);
+
+            if (q.getId() != null) {
+                optionMappings.put(q.getId(), randomized.getDisplayedToOriginalMapping());
+            }
+
             questionDTOs.add(new DashboardTestQuestionDTO(
                     q.getId(),
                     q.getSubject(),
                     q.getConcept(),
                     q.getQuestionText(),
-                    q.getOptions(),
-                    q.getCorrectOptionIndex(),
+                    randomized.getDisplayedOptions(),
+                    randomized.getDisplayedCorrectIndex(),
                     q.getConceptualExplanation()
             ));
         }
@@ -111,6 +124,7 @@ public class ConceptRemediationService {
         session.setSubject(subject.trim());
         session.setConcept(concept.trim());
         session.setQuestionIds(questionIds);
+        session.setOptionMappings(optionMappings);
         session.setCreatedAt(LocalDateTime.now());
         session.setCompleted(false);
         session.setModuleType(ModuleType.REMEDIATION);
@@ -152,6 +166,11 @@ public class ConceptRemediationService {
 
         RemediationSession session = remediationSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("Remediation session not found: " + sessionId));
+
+        if (session.isCompleted()) {
+            throw new IllegalStateException("Remediation session already completed: " + sessionId);
+        }
+
         questionIds = session.getQuestionIds();
         subject = session.getSubject() != null ? session.getSubject() : "General";
         concept = session.getConcept() != null ? session.getConcept() : "Core Concept";
@@ -170,15 +189,29 @@ public class ConceptRemediationService {
 
         int totalQuestions = questions.size();
         int correctCount = 0;
+        Set<String> processedQuestionIds = new HashSet<>();
+        Map<String, List<Integer>> optionMappings = session.getOptionMappings();
 
         if (answers != null) {
             for (DashboardTestSubmissionDTO.AnswerEntry ans : answers) {
-                QuizQuestion q = questionMap.get(ans.getQuestionId());
+                if (ans == null || ans.getQuestionId() == null) continue;
+                String qId = ans.getQuestionId().trim();
+
+                // Prevent duplicate grading for the same question within a submission
+                if (processedQuestionIds.contains(qId)) continue;
+                if (questionIds != null && !questionIds.contains(qId)) continue;
+
+                processedQuestionIds.add(qId);
+                QuizQuestion q = questionMap.get(qId);
                 if (q != null) {
                     if (q.getConcept() != null) {
                         concept = q.getConcept();
                     }
-                    if (ans.getSelectedOptionIndex() == q.getCorrectOptionIndex()) {
+                    int displayedSelectedIdx = ans.getSelectedOptionIndex();
+                    List<Integer> mapping = (optionMappings != null) ? optionMappings.get(qId) : null;
+                    int resolvedOriginalIdx = VerificationOptionRandomizer.resolveDisplayedOptionIndex(displayedSelectedIdx, mapping);
+
+                    if (displayedSelectedIdx >= 0 && displayedSelectedIdx < 4 && resolvedOriginalIdx == q.getCorrectOptionIndex()) {
                         correctCount++;
                     }
                 }
@@ -186,7 +219,7 @@ public class ConceptRemediationService {
         }
 
         double percentage = totalQuestions > 0 ? ((double) correctCount / totalQuestions) * 100.0 : 0.0;
-        boolean passed = (correctCount >= 4); // >= 80% required for remediation pass
+        boolean passed = (percentage >= 80.0); // 80% required for remediation/mastery verification pass
 
         session.setCompleted(true);
         session.setCreatedAt(LocalDateTime.now());

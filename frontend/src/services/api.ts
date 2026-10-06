@@ -2123,4 +2123,576 @@ export async function abandonConceptRemediationSession(sessionId: string): Promi
   }
   return null;
 }
-
+
+export interface AdminAnalyticsOverview {
+  totalStudents: number;
+  activeStudentsLast7Days: number;
+  totalAssessmentsCompleted: number;
+  totalQuizzesCompleted: number;
+  cohortAverageBaselineKnowledge: number;
+  cohortAverageCurrentKnowledge: number;
+  cohortAverageLearningGain: number;
+  averageSatisfactionRating: number;
+  atRiskStudentCount: number;
+}
+
+export interface AdminResearchAnalyticsFilters {
+  startDate?: string;
+  endDate?: string;
+  branch?: string;
+  semester?: number;
+  subjectCode?: string;
+  activityStatus?: string;
+  hasAuthenticBaseline?: boolean;
+}
+
+export function buildAnalyticsQueryString(filters?: AdminResearchAnalyticsFilters): string {
+  if (!filters) return "";
+  const params = new URLSearchParams();
+  if (filters.startDate && filters.startDate.trim()) {
+    params.set("startDate", filters.startDate.trim());
+  }
+  if (filters.endDate && filters.endDate.trim()) {
+    params.set("endDate", filters.endDate.trim());
+  }
+  if (filters.branch && filters.branch.trim() && filters.branch.trim().toUpperCase() !== "ALL") {
+    params.set("branch", filters.branch.trim());
+  }
+  if (filters.semester !== undefined && filters.semester !== null && !isNaN(filters.semester)) {
+    params.set("semester", String(filters.semester));
+  }
+  if (filters.subjectCode && filters.subjectCode.trim() && filters.subjectCode.trim().toUpperCase() !== "ALL") {
+    params.set("subjectCode", filters.subjectCode.trim());
+  }
+  if (filters.activityStatus && filters.activityStatus.trim() && filters.activityStatus.trim().toUpperCase() !== "ALL") {
+    params.set("activityStatus", filters.activityStatus.trim());
+  }
+  if (filters.hasAuthenticBaseline !== undefined && filters.hasAuthenticBaseline !== null) {
+    params.set("hasAuthenticBaseline", String(filters.hasAuthenticBaseline));
+  }
+  const str = params.toString();
+  return str ? `?${str}` : "";
+}
+
+export async function fetchAdminAnalyticsOverview(filters?: AdminResearchAnalyticsFilters): Promise<AdminAnalyticsOverview | null> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const q = buildAnalyticsQueryString(filters);
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/overview${q}`, {
+        method: "GET",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      if (res.status === 400) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.message || "Invalid research analytics filter. Please check the selected filters.");
+      }
+      handleAuthError(res);
+    } catch (err: any) {
+      if (err.message && err.message.includes("Invalid")) {
+        throw err;
+      }
+      console.warn("Failed to fetch admin analytics overview:", err);
+    }
+  }
+  return null;
+}
+
+export interface AdminCohortAnalytics {
+  totalEnrolled: number;
+  evaluatedCohortSize: number;
+  activeLast7Days: number;
+  atRiskStudents: number;
+  inactiveStudents: number;
+  meanBaselineKnowledge: number;
+  meanCurrentKnowledge: number;
+  meanNormalizedGain: number;
+  growthDistribution: {
+    improvedCount: number;
+    improvedPercentage: number;
+    unchangedCount: number;
+    unchangedPercentage: number;
+    declinedCount: number;
+    declinedPercentage: number;
+  };
+  satisfaction: {
+    averageRating: number;
+    totalReviews: number;
+    byCategory: {
+      AI_TUTOR: number | null;
+      RECOMMENDATION: number | null;
+      LEARNING_ACTIVITY: number | null;
+    };
+  };
+  dataSufficiencyNote: string;
+}
+
+export async function fetchAdminCohortAnalytics(filters?: AdminResearchAnalyticsFilters): Promise<AdminCohortAnalytics | null> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const q = buildAnalyticsQueryString(filters);
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/cohort${q}`, {
+        method: "GET",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      if (res.status === 400) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.message || "Invalid research analytics filter. Please check the selected filters.");
+      }
+      handleAuthError(res);
+    } catch (err: any) {
+      if (err.message && err.message.includes("Invalid")) {
+        throw err;
+      }
+      console.warn("Failed to fetch admin cohort analytics:", err);
+    }
+  }
+  return null;
+}
+
+export interface AdminStudentDirectoryDTO {
+  userId: string;
+  fullName: string;
+  email: string;
+  branch: string | null;
+  semester: number | null;
+  activityStatus: "ACTIVE" | "AT_RISK" | "INACTIVE" | "NO_ACTIVITY" | string;
+  hasAuthenticBaseline: boolean;
+  baselineKnowledge: number | null;
+  currentKnowledge: number | null;
+  growthPp: number | null;
+}
+
+export async function fetchAdminStudentDirectory(filters?: AdminResearchAnalyticsFilters): Promise<AdminStudentDirectoryDTO[]> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const q = buildAnalyticsQueryString(filters);
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/students${q}`, {
+        method: "GET",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      if (res.status === 400) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.message || "Invalid research analytics filter. Please check the selected filters.");
+      }
+      handleAuthError(res);
+    } catch (err: any) {
+      if (err.message && err.message.includes("Invalid")) {
+        throw err;
+      }
+      console.warn("Failed to fetch admin student directory:", err);
+    }
+  }
+  return [];
+}
+
+export interface AdminStudentAnalyticsDTO {
+  student: {
+    userId: string;
+    fullName: string;
+    email: string;
+    branch: string | null;
+    semester: number | null;
+    institution: string | null;
+    degree: string | null;
+    careerGoals: string | null;
+    learningStyle: string | null;
+    enrolledSubjects: string[];
+  };
+  knowledge: {
+    hasAuthenticBaseline: boolean;
+    baselineKnowledge: number | null;
+    currentKnowledge: number | null;
+    growthPp: number | null;
+    normalizedLearningGain: number | null;
+  };
+  assessmentSummary: {
+    totalAssessments: number;
+    completedAssessments: number;
+    baselineAssessmentDate: string | null;
+    latestAssessmentDate: string | null;
+    latestAssessmentScore: number | null;
+    latestAssessmentPercentage: number | null;
+  };
+  assessmentHistory: Array<{
+    id: string;
+    sessionId: string;
+    subjectCode: string;
+    subjectName: string;
+    moduleType: string;
+    status: string;
+    score: number;
+    totalMarks: number;
+    percentage: number;
+    accuracy: number;
+    masteryLevel: string;
+    totalQuestions: number;
+    correctAnswers: number;
+    incorrectAnswers: number;
+    skippedQuestions: number;
+    topicBreakdown: Record<string, any> | null;
+    createdAt: string;
+  }>;
+  quizSummary: {
+    totalCompletedQuizzes: number;
+    totalQuestions: number;
+    totalCorrect: number;
+    accuracy: number;
+  };
+  quizHistory: Array<{
+    id: string;
+    subjectCode: string;
+    subjectName: string;
+    moduleType: string;
+    isVerificationQuiz: boolean;
+    targetConcept: string;
+    totalQuestions: number;
+    correctCount: number;
+    incorrectCount: number;
+    accuracy: number;
+    status: string;
+    startTime: string;
+    lastAnswerTime: string;
+  }>;
+  subjectPerformance: Array<{
+    subjectCode: string;
+    subjectName: string;
+    baselineScore: number | null;
+    currentScore: number | null;
+    growthPp: number | null;
+    normalizedGain: number | null;
+    totalConcepts: number;
+    weakConcepts: number;
+    roadmapProgressPercentage: number | null;
+  }>;
+  conceptMastery: Array<{
+    id: string;
+    subjectCode: string;
+    subjectName: string;
+    topic: string;
+    conceptName: string;
+    masteryLevel: string;
+    status: string;
+    accuracy: number;
+    confidenceScore: number;
+    attemptCount: number;
+    correctCount: number;
+    wrongCount: number;
+    masteryScore: number;
+    lastAssessedAt: string;
+  }>;
+  activity: {
+    status: "ACTIVE" | "AT_RISK" | "INACTIVE" | "NO_ACTIVITY" | string;
+    lastActivityAt: string | null;
+    daysSinceLastActivity: number | null;
+    totalStudySessions: number;
+    totalStudyMinutes: number;
+  };
+  satisfaction: {
+    averageRating: number | null;
+    totalReviews: number;
+    latestRating: number | null;
+    byCategory: Record<string, number | null>;
+    reviews: Array<{
+      rating: number;
+      feedbackType: string;
+      comment: string;
+      timestamp: string;
+    }>;
+  };
+  remediation: {
+    totalSessions: number;
+    completedSessions: number;
+    activeSessions: number;
+    sessions: Array<{
+      id: string;
+      subject: string;
+      concept: string;
+      moduleType: string;
+      completed: boolean;
+      createdAt: string;
+    }>;
+  };
+  trajectory: Array<{
+    timestamp: string;
+    overallKnowledgeScore: number;
+    engagementScore: number;
+    topicMastery: Record<string, number>;
+  }>;
+}
+
+export async function fetchAdminStudentAnalytics(userId: string): Promise<AdminStudentAnalyticsDTO | null> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/students/${encodeURIComponent(userId)}`, {
+        method: "GET",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      handleAuthError(res);
+    } catch (err) {
+      console.warn("Failed to fetch admin individual student analytics:", err);
+    }
+  }
+  return null;
+}
+
+export interface AdminTrendPointDTO {
+  date: string;
+  timestamp: string;
+  meanAssessmentScore: number | null;
+  meanKnowledgeScore: number | null;
+  meanQuizAccuracy: number | null;
+  meanSnapshotKnowledgeScore: number | null;
+  meanEngagementScore: number | null;
+  observationCount: number;
+  studentCount: number;
+  assessmentCount: number;
+  quizCount: number;
+  snapshotCount: number;
+}
+
+export interface AdminResearchTrendsDTO {
+  totalObservations: number;
+  totalAssessments: number;
+  totalQuizzes: number;
+  totalSnapshots: number;
+  uniqueStudentsCount: number;
+  evaluatedStudentsWithBaseline: number;
+  earliestObservationDate: string | null;
+  latestObservationDate: string | null;
+  dataSufficiencyNote: string;
+  observations: AdminTrendPointDTO[];
+}
+
+export async function fetchAdminResearchTrends(filters?: AdminResearchAnalyticsFilters): Promise<AdminResearchTrendsDTO | null> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const q = buildAnalyticsQueryString(filters);
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/trends${q}`, {
+        method: "GET",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      if (res.status === 400) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.message || "Invalid research analytics filter. Please check the selected filters.");
+      }
+      handleAuthError(res);
+    } catch (err: any) {
+      if (err.message && err.message.includes("Invalid")) {
+        throw err;
+      }
+      console.warn("Failed to fetch admin research trends:", err);
+    }
+  }
+  return null;
+}
+
+export interface SubjectResearchSummaryDTO {
+  subjectCode: string;
+  subjectName: string;
+  studentsRepresented: number;
+  studentsWithObservedKnowledge: number;
+  studentsWithAuthenticBaseline: number;
+  meanBaselineKnowledge: number | null;
+  meanCurrentKnowledge: number | null;
+  meanGrowthPp: number | null;
+  meanNormalizedGain: number | null;
+  conceptCount: number;
+  weakConceptCount: number;
+  masteryDistribution: Record<string, number>;
+  quizSessionsCount: number;
+  totalQuizQuestions: number;
+  correctQuizAnswers: number;
+  meanQuizAccuracy: number | null;
+  studentsWithRoadmap: number;
+  totalRoadmapTopics: number;
+  completedRoadmapTopics: number;
+  roadmapCompletionPercentage: number | null;
+}
+
+export interface AdminCohortSubjectAnalyticsDTO {
+  totalSubjectsCount: number;
+  totalEnrolledStudents: number;
+  evaluatedStudentsWithBaseline: number;
+  dataSufficiencyNote: string;
+  subjects: SubjectResearchSummaryDTO[];
+}
+
+export async function fetchAdminSubjectAnalytics(filters?: AdminResearchAnalyticsFilters): Promise<AdminCohortSubjectAnalyticsDTO | null> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const q = buildAnalyticsQueryString(filters);
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/subjects${q}`, {
+        method: "GET",
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      if (res.status === 400) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.message || "Invalid research analytics filter. Please check the selected filters.");
+      }
+      handleAuthError(res);
+    } catch (err: any) {
+      if (err.message && err.message.includes("Invalid")) {
+        throw err;
+      }
+      console.warn("Failed to fetch admin subject analytics:", err);
+    }
+  }
+  return null;
+}
+
+export interface AdminCohortComparisonRequest {
+  cohortA: AdminResearchAnalyticsFilters;
+  cohortB: AdminResearchAnalyticsFilters;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface AdminCohortComparisonMetricsDTO {
+  totalEnrolled: number;
+  evaluatedCohortSize: number;
+  baselineSampleSize: number;
+  currentKnowledgeSampleSize: number;
+  learningGainSampleSize: number;
+  meanBaselineKnowledge: number | null;
+  meanCurrentKnowledge: number | null;
+  meanNormalizedGain: number | null;
+  growthDistribution: {
+    improvedCount: number;
+    improvedPercentage: number;
+    unchangedCount: number;
+    unchangedPercentage: number;
+    declinedCount: number;
+    declinedPercentage: number;
+  };
+  satisfaction: {
+    averageRating: number | null;
+    totalReviews: number;
+    byCategory: Record<string, number | null>;
+  };
+  satisfactionSampleSize: number;
+}
+
+export interface AdminCohortComparisonDTO {
+  cohortA: {
+    label: string;
+    criteria: AdminResearchAnalyticsFilters;
+    metrics: AdminCohortComparisonMetricsDTO;
+  };
+  cohortB: {
+    label: string;
+    criteria: AdminResearchAnalyticsFilters;
+    metrics: AdminCohortComparisonMetricsDTO;
+  };
+  differences: {
+    totalEnrolledDiff: number;
+    evaluatedCohortSizeDiff: number;
+    baselineKnowledgeDiffPp: number | null;
+    currentKnowledgeDiffPp: number | null;
+    normalizedGainDiff: number | null;
+    satisfactionDiff: number | null;
+  };
+  dataSufficiency: {
+    isComparisonValid: boolean;
+    warnings: string[];
+  };
+  methodologyNote: string;
+}
+
+export async function compareAdminCohorts(request: AdminCohortComparisonRequest): Promise<AdminCohortComparisonDTO | null> {
+  const online = await checkBackendConnection();
+  if (online) {
+    try {
+      const res = await fetch(`${getBackendUrl()}/api/admin/analytics/compare`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(request)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+      if (res.status === 400) {
+        const errBody = await res.json().catch(() => null);
+        throw new Error(errBody?.message || "Invalid comparison criteria. Please check the selected filters.");
+      }
+      handleAuthError(res);
+    } catch (err: any) {
+      if (err.message && err.message.includes("Invalid")) {
+        throw err;
+      }
+      console.warn("Failed to compare admin cohorts:", err);
+    }
+  }
+  return null;
+}
+
+export async function exportAdminResearchAnalyticsExcel(filters?: AdminResearchAnalyticsFilters): Promise<Blob> {
+  const q = buildAnalyticsQueryString(filters);
+  const res = await fetch(`${getBackendUrl()}/api/admin/analytics/export/excel${q}`, {
+    method: "GET",
+    headers: getAuthHeaders()
+  });
+  if (!res.ok) {
+    if (res.status === 400) {
+      const errBody = await res.json().catch(() => null);
+      throw new Error(errBody?.message || "Invalid research analytics filter. Please check the selected filters.");
+    }
+    handleAuthError(res);
+    throw new Error(`Excel export failed with status ${res.status}`);
+  }
+  return await res.blob();
+}
+
+export async function exportAdminResearchAnalyticsPdf(filters?: AdminResearchAnalyticsFilters): Promise<Blob> {
+  const q = buildAnalyticsQueryString(filters);
+  const res = await fetch(`${getBackendUrl()}/api/admin/analytics/export/pdf${q}`, {
+    method: "GET",
+    headers: getAuthHeaders()
+  });
+  if (!res.ok) {
+    if (res.status === 400) {
+      const errBody = await res.json().catch(() => null);
+      throw new Error(errBody?.message || "Invalid research analytics filter. Please check the selected filters.");
+    }
+    handleAuthError(res);
+    throw new Error(`PDF export failed with status ${res.status}`);
+  }
+  return await res.blob();
+}
+
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.style.display = "none";
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }, 100);
+}

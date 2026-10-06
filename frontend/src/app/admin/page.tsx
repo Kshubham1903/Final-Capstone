@@ -1,258 +1,375 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import Layout from "../../components/Layout";
-import { 
-  Settings, 
-  Users, 
-  Database, 
-  Cpu, 
-  Activity, 
-  Search, 
-  Trash2, 
-  Check, 
-  RefreshCw, 
-  ShieldAlert, 
-  Terminal 
+import {
+  Settings,
+  Users,
+  Database,
+  Cpu,
+  Activity,
+  RefreshCw,
+  ShieldAlert,
+  GraduationCap,
+  TrendingUp,
+  BookOpen,
+  CheckCircle2,
+  AlertTriangle,
+  ArrowRight,
+  UserCheck,
+  UserX
 } from "lucide-react";
+import { fetchAdminAnalyticsOverview, AdminAnalyticsOverview } from "../../services/api";
 
 export default function AdminDashboard() {
-  
-  // System Configurations
-  const [cacheTtl, setCacheTtl] = useState(3600);
-  const [maxDbConns, setMaxDbConns] = useState(50);
-  const [aiTimeout, setAiTimeout] = useState(2500);
+  const navigate = useNavigate();
 
-  // User List State (starts empty, populated from real user registrations)
-  const [users, setUsers] = useState<Array<{ id: string; name: string; email: string; role: string; status: string }>>([]);
+  // Overview Telemetry State
+  const [analytics, setAnalytics] = useState<AdminAnalyticsOverview | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [logs, setLogs] = useState([
-    "System Boot: MongoDB cluster connected. (200ms)",
-    "System Cache: Redis instances loaded in cluster 6379.",
-    "AI Service: Handshake verified with FastAPI endpoint /api/ai/predict.",
-    "Security Filter: Filtered request headers and initialized JWT validators."
-  ]);
-
-  const handleRoleChange = (userId: string, newRole: string) => {
-    setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
-    setLogs(prev => [`User Management: Modified role of user ID: ${userId} to ${newRole}.`, ...prev.slice(0, 5)]);
-  };
-
-  const handleDeleteUser = (userId: string) => {
-    if (confirm("Are you sure you want to delete this user profile?")) {
-      setUsers(users.filter(u => u.id !== userId));
-      setLogs(prev => [`User Management: Purged user profile ID: ${userId} from database.`, ...prev.slice(0, 5)]);
+  const loadOverview = async () => {
+    setLoadingAnalytics(true);
+    setAnalyticsError(null);
+    try {
+      const data = await fetchAdminAnalyticsOverview();
+      if (data) {
+        setAnalytics(data);
+      } else {
+        setAnalyticsError("Unable to retrieve overview metrics. Please ensure you are logged in as an ADMIN.");
+      }
+    } catch (err) {
+      setAnalyticsError("Network error while connecting to Admin overview endpoint.");
+    } finally {
+      setLoadingAnalytics(false);
     }
   };
 
-  const handleBroadcast = () => {
-    alert("ðŸ“¢ System Broadcast: Dispatched notifications to all active students!");
-    setLogs(prev => ["Alert Broadcast: Dispatched global streak reminder notifications.", ...prev.slice(0, 5)]);
-  };
+  useEffect(() => {
+    loadOverview();
+  }, []);
 
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    u.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const totalStudents = analytics?.totalStudents ?? 0;
+  const activeStudents = analytics?.activeStudentsLast7Days ?? 0;
+  const atRiskStudents = analytics?.atRiskStudentCount ?? 0;
+  const inactiveStudents = Math.max(0, totalStudents - activeStudents - atRiskStudents);
 
   return (
     <Layout>
-      <div className="space-y-8">
+      <div className="space-y-8 max-w-7xl mx-auto pb-10">
         
-        {/* Title */}
-        <div>
-          <h1 className="text-3xl font-extrabold text-main-theme flex items-center gap-2">
-            <Settings className="h-8 w-8 text-purple-theme animate-spin-slow" />
-            <span>Admin Control Panel</span>
-          </h1>
-          <p className="text-secondary-theme text-sm mt-1">
-            Oversee user databases, calibrate caching parameters, inspect live microservice connection logs, and dispatch global notifications.
-          </p>
-        </div>
-
-        {styleBlock}
-
-        {/* Global Cluster Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
-            <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Database Status</span>
-            <div className="text-xl font-bold text-emerald-theme flex items-center gap-1.5 pt-1">
-              <Database className="h-5 w-5" />
-              <span>MongoDB Online</span>
-            </div>
-            <p className="text-[10px] text-secondary-theme">5 active collections persisting profiles.</p>
+        {/* Header & Quick Action Bar */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-extrabold text-main-theme flex items-center gap-2.5">
+              <Settings className="h-8 w-8 text-purple-theme" />
+              <span>Admin Control Panel</span>
+            </h1>
+            <p className="text-secondary-theme text-sm mt-1">
+              System health status, student enrollment metrics, and learning activity overview.
+            </p>
           </div>
 
-          <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
-            <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Cache Layer</span>
-            <div className="text-xl font-bold text-emerald-theme flex items-center gap-1.5 pt-1">
-              <RefreshCw className="h-5 w-5 animate-spin-slow" />
-              <span>Redis Cluster Live</span>
-            </div>
-            <p className="text-[10px] text-secondary-theme">Hitting 92.5% cache read rates.</p>
-          </div>
-
-          <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
-            <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">AI Service Sync</span>
-            <div className="text-xl font-bold text-cyan-theme flex items-center gap-1.5 pt-1">
-              <Cpu className="h-5 w-5" />
-              <span>Uvicorn 8000 OK</span>
-            </div>
-            <p className="text-[10px] text-secondary-theme">Average response latency: 120ms.</p>
-          </div>
-
-          <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
-            <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">Total User Count</span>
-            <div className="text-2xl font-black text-purple-theme">{users.length} Users</div>
-            <p className="text-[10px] text-secondary-theme">Students & Faculty registers.</p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={loadOverview}
+              disabled={loadingAnalytics}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-main-theme transition-all cursor-pointer w-fit"
+            >
+              <RefreshCw className={`h-4 w-4 text-purple-theme ${loadingAnalytics ? "animate-spin" : ""}`} />
+              <span>{loadingAnalytics ? "Refreshing..." : "Refresh Dashboard"}</span>
+            </button>
           </div>
         </div>
 
-        {/* Main Grid Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* User management List (2/3 width) */}
-          <div className="glass-panel p-6 rounded-2xl border border-white/5 lg:col-span-2 space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-white/5 pb-3">
-              <h3 className="text-sm font-extrabold tracking-wide">User Registration Database</h3>
-              
-              {/* Search Bar */}
-              <div className="relative">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-secondary-theme" />
-                <input
-                  type="text"
-                  placeholder="Search email or name..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="py-1.5 pl-9 pr-4 w-52 rounded-lg glass-input text-xs"
-                />
-              </div>
+        {/* Analytics Error Notification */}
+        {analyticsError && (
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-theme text-xs flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <ShieldAlert className="h-5 w-5 shrink-0" />
+              <span>{analyticsError}</span>
             </div>
+            <button
+              onClick={loadOverview}
+              className="px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs cursor-pointer"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
-            {/* User Directory list */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-white/5 text-secondary-theme font-extrabold">
-                    <th className="pb-3">Name</th>
-                    <th className="pb-3 px-2">Email</th>
-                    <th className="pb-3 px-2">Access Role</th>
-                    <th className="pb-3 pl-2 text-right">Settings</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 font-semibold">
-                  {filteredUsers.map((user) => (
-                    <tr key={user.id} className="hover:bg-white/3 transition-colors">
-                      <td className="py-3 font-bold text-main-theme">{user.name}</td>
-                      <td className="py-3 px-2 text-secondary-theme">{user.email}</td>
-                      <td className="py-3 px-2">
-                        <select
-                          value={user.role}
-                          onChange={(e) => handleRoleChange(user.id, e.target.value)}
-                          className="p-1 rounded-md glass-input text-[10px] focus:bg-[#0d0f1e]"
-                        >
-                          <option className="bg-[#0d0f1e]" value="STUDENT">STUDENT</option>
-                          <option className="bg-[#0d0f1e]" value="FACULTY">FACULTY</option>
-                          <option className="bg-[#0d0f1e]" value="ADMIN">ADMIN</option>
-                        </select>
-                      </td>
-                      <td className="py-3 pl-2 text-right">
-                        <button
-                          onClick={() => handleDeleteUser(user.id)}
-                          className="p-1 text-secondary-theme hover:text-red-400 transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {/* Loading Skeleton */}
+        {loadingAnalytics && !analytics && (
+          <div className="space-y-6 animate-pulse">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="glass-panel p-6 rounded-2xl border border-white/5 h-28 bg-white/5" />
+              ))}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="glass-panel p-5 rounded-2xl border border-white/5 h-28 bg-white/5" />
+              ))}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="glass-panel p-5 rounded-2xl border border-white/5 h-28 bg-white/5" />
+              ))}
             </div>
           </div>
+        )}
 
-          {/* Right Column: Configurations and Logs */}
-          <div className="space-y-6">
-            
-            {/* Tuning settings */}
-            <div className="glass-panel p-6 rounded-2xl border border-white/5 space-y-4">
-              <h3 className="text-sm font-extrabold tracking-wide border-b border-white/5 pb-3">System Tuning</h3>
-              
-              {/* Cache slider */}
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs">
-                  <span className="text-secondary-theme">Redis Cache TTL</span>
-                  <span className="text-purple-theme font-bold">{cacheTtl}s</span>
-                </div>
-                <input
-                  type="range"
-                  min="60"
-                  max="7200"
-                  step="60"
-                  value={cacheTtl}
-                  onChange={(e) => setCacheTtl(Number(e.target.value))}
-                  className="w-full accent-purple-500 bg-white/10 rounded-lg appearance-none h-1"
-                />
+        {analytics && (
+          <>
+            {/* SECTION 1 — SYSTEM STATUS */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 text-purple-theme" />
+                <h2 className="text-xs uppercase font-extrabold tracking-wider text-secondary-theme">
+                  System Health & Infrastructure
+                </h2>
               </div>
 
-              {/* DB connections slider */}
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs">
-                  <span className="text-secondary-theme">Max DB Pool Connections</span>
-                  <span className="text-purple-theme font-bold">{maxDbConns} pools</span>
-                </div>
-                <input
-                  type="range"
-                  min="10"
-                  max="200"
-                  step="5"
-                  value={maxDbConns}
-                  onChange={(e) => setMaxDbConns(Number(e.target.value))}
-                  className="w-full accent-purple-500 bg-white/10 rounded-lg appearance-none h-1"
-                />
-              </div>
-
-              <button
-                onClick={handleBroadcast}
-                className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-500/15 cursor-pointer"
-              >
-                Send Global Alert Notifications
-              </button>
-            </div>
-
-            {/* Live Logs console */}
-            <div className="glass-panel p-6 rounded-2xl border border-white/5 space-y-4">
-              <div className="flex items-center gap-2 border-b border-white/5 pb-3">
-                <Terminal className="h-5 w-5 text-cyan-theme" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-main-theme">Live Console Tracer</h3>
-              </div>
-
-              <div className="space-y-2.5">
-                {logs.map((log, index) => (
-                  <div key={index} className="text-[10px] font-mono text-secondary-theme leading-normal break-all">
-                    &gt; {log}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Database Status */}
+                <div className="glass-panel p-6 rounded-2xl border border-white/5 space-y-2">
+                  <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">
+                    Database Status
+                  </span>
+                  <div className="text-xl font-bold text-emerald-400 flex items-center gap-2 pt-0.5">
+                    <Database className="h-5 w-5" />
+                    <span>MongoDB Online</span>
                   </div>
-                ))}
+                  <p className="text-xs text-secondary-theme">Primary database operational and healthy.</p>
+                </div>
+
+                {/* AI Service Status */}
+                <div className="glass-panel p-6 rounded-2xl border border-white/5 space-y-2">
+                  <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">
+                    AI Service Status
+                  </span>
+                  <div className="text-xl font-bold text-cyan-400 flex items-center gap-2 pt-0.5">
+                    <Cpu className="h-5 w-5" />
+                    <span>AI Engine Connected</span>
+                  </div>
+                  <p className="text-xs text-secondary-theme">FastAPI diagnostic and quiz services active.</p>
+                </div>
+
+                {/* Enrolled Students Overview */}
+                <div className="glass-panel p-6 rounded-2xl border border-white/5 space-y-2">
+                  <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">
+                    Total Enrolled Students
+                  </span>
+                  <div className="text-2xl font-black text-purple-theme pt-0.5">
+                    {totalStudents} Students
+                  </div>
+                  <p className="text-xs text-secondary-theme">Authenticated student accounts on the platform.</p>
+                </div>
               </div>
             </div>
 
-          </div>
+            {/* SECTION 2 — STUDENT OVERVIEW */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-purple-theme" />
+                <h2 className="text-xs uppercase font-extrabold tracking-wider text-secondary-theme">
+                  Student Enrollment & Status
+                </h2>
+              </div>
 
-        </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {/* Total Students */}
+                <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">
+                      Total Students
+                    </span>
+                    <Users className="h-4 w-4 text-purple-400" />
+                  </div>
+                  <div className="text-2xl font-black text-main-theme">
+                    {totalStudents}
+                  </div>
+                  <p className="text-[10px] text-secondary-theme">Total registered learners.</p>
+                </div>
+
+                {/* Active Students */}
+                <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">
+                      Active Students
+                    </span>
+                    <UserCheck className="h-4 w-4 text-emerald-400" />
+                  </div>
+                  <div className="text-2xl font-black text-emerald-400">
+                    {activeStudents}
+                  </div>
+                  <p className="text-[10px] text-secondary-theme">Active in the last 7 days.</p>
+                </div>
+
+                {/* At-Risk Students */}
+                <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">
+                      At-Risk Students
+                    </span>
+                    <AlertTriangle className="h-4 w-4 text-amber-400" />
+                  </div>
+                  <div className="text-2xl font-black text-amber-400">
+                    {atRiskStudents}
+                  </div>
+                  <p className="text-[10px] text-secondary-theme">Inactive &gt; 7 days / low activity.</p>
+                </div>
+
+                {/* Inactive Students */}
+                <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">
+                      Inactive Students
+                    </span>
+                    <UserX className="h-4 w-4 text-rose-400" />
+                  </div>
+                  <div className="text-2xl font-black text-secondary-theme">
+                    {inactiveStudents}
+                  </div>
+                  <p className="text-[10px] text-secondary-theme">No recent learning activity.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 3 — LEARNING OVERVIEW */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-purple-theme" />
+                <h2 className="text-xs uppercase font-extrabold tracking-wider text-secondary-theme">
+                  Overall Learning Activity
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {/* Assessments Completed */}
+                <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">
+                      Assessments Completed
+                    </span>
+                    <BookOpen className="h-4 w-4 text-purple-400" />
+                  </div>
+                  <div className="text-2xl font-black text-purple-theme">
+                    {analytics.totalAssessmentsCompleted}
+                  </div>
+                  <p className="text-[10px] text-secondary-theme">Diagnostic & baseline evaluations.</p>
+                </div>
+
+                {/* Quizzes Completed */}
+                <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">
+                      Quizzes Completed
+                    </span>
+                    <GraduationCap className="h-4 w-4 text-cyan-400" />
+                  </div>
+                  <div className="text-2xl font-black text-cyan-theme">
+                    {analytics.totalQuizzesCompleted}
+                  </div>
+                  <p className="text-[10px] text-secondary-theme">Adaptive & verification quizzes.</p>
+                </div>
+
+                {/* Average Current Knowledge */}
+                <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">
+                      Average Current Knowledge
+                    </span>
+                    <TrendingUp className="h-4 w-4 text-emerald-400" />
+                  </div>
+                  <div className="text-2xl font-black text-emerald-400">
+                    {analytics.cohortAverageCurrentKnowledge.toFixed(1)}%
+                  </div>
+                  <p className="text-[10px] text-secondary-theme">Current student mastery average.</p>
+                </div>
+
+                {/* Average Learning Gain */}
+                <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-secondary-theme uppercase font-extrabold tracking-wider">
+                      Average Learning Gain
+                    </span>
+                    <CheckCircle2 className="h-4 w-4 text-indigo-400" />
+                  </div>
+                  <div className="text-2xl font-black text-indigo-300">
+                    {analytics.cohortAverageLearningGain >= 0 ? "+" : ""}
+                    {analytics.cohortAverageLearningGain.toFixed(2)}
+                  </div>
+                  <p className="text-[10px] text-secondary-theme">Observed knowledge gain index.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* QUICK ACTIONS & MODULE ACCESS */}
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center gap-2">
+                <Settings className="h-4 w-4 text-purple-theme" />
+                <h2 className="text-xs uppercase font-extrabold tracking-wider text-secondary-theme">
+                  Admin Analytics Modules
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Subject Analytics Link Card */}
+                <div
+                  onClick={() => navigate("/admin/subject-analytics")}
+                  className="glass-panel p-6 rounded-3xl border border-white/5 hover:border-purple-500/30 transition-all duration-300 cursor-pointer group flex flex-col justify-between space-y-4"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="h-10 w-10 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                        <BookOpen className="h-5 w-5" />
+                      </div>
+                      <span className="text-xs font-bold text-purple-400 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                        <span>Open Module</span>
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </span>
+                    </div>
+                    <h3 className="text-base font-extrabold text-main-theme">Subject Analytics</h3>
+                    <p className="text-xs text-secondary-theme">
+                      View subject-wise learning performance, knowledge growth, concept mastery distribution, and weak concept breakdown.
+                    </p>
+                  </div>
+                  <div className="pt-2 border-t border-white/5 text-[11px] text-purple-300 font-medium">
+                    Curriculum metrics & subject growth &rarr;
+                  </div>
+                </div>
+
+                {/* Student Directory Link Card */}
+                <div
+                  onClick={() => navigate("/admin/student-directory")}
+                  className="glass-panel p-6 rounded-3xl border border-white/5 hover:border-cyan-500/30 transition-all duration-300 cursor-pointer group flex flex-col justify-between space-y-4"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="h-10 w-10 rounded-xl bg-cyan-600/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                        <Users className="h-5 w-5" />
+                      </div>
+                      <span className="text-xs font-bold text-cyan-400 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                        <span>Open Module</span>
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </span>
+                    </div>
+                    <h3 className="text-base font-extrabold text-main-theme">Student Directory</h3>
+                    <p className="text-xs text-secondary-theme">
+                      Browse enrolled students, search by branch or email, inspect diagnostic baselines, and access individual student learning analysis.
+                    </p>
+                  </div>
+                  <div className="pt-2 border-t border-white/5 text-[11px] text-cyan-300 font-medium">
+                    Student accounts & individual profiles &rarr;
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
       </div>
     </Layout>
   );
 }
-
-const styleBlock = (
-  <style>{`
-    .animate-spin-slow {
-      animation: spin 8s linear infinite;
-    }
-    @keyframes spin {
-      100% {
-        transform: rotate(360deg);
-      }
-    }
-  `}</style>
-);

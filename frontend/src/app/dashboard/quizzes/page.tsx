@@ -69,7 +69,7 @@ export default function Quizzes() {
   const [recommendations, setRecommendations] = useState<any[]>([]);
 
   // Diagnostic log
-  const [diagnosticLog, setDiagnosticLog] = useState<{ difficulty: string; correct: boolean; reason: string }[]>([]);
+  const [diagnosticLog, setDiagnosticLog] = useState<{ difficulty: string; correct: boolean; reason: string; questionText?: string; concept?: string }[]>([]);
 
   // 1-by-1 Assessment Engine State
   const [assessmentStage, setAssessmentStage] = useState<"INITIAL" | "ADAPTIVE">("INITIAL");
@@ -537,6 +537,7 @@ export default function Quizzes() {
     setIsExhausted(false);
     setSelectedOption(null);
     setIsAnswered(false);
+    setQuestionFeedback(null);
     setSecondsSpent(0);
     setDiagnosticLog([]);
 
@@ -821,7 +822,7 @@ export default function Quizzes() {
 
         if (isVerificationMode && remediationSessionId) {
           // Verification quiz answers are collected and graded on final submission via submitConceptRemediation
-          const targetIdx = questionFeedback?.correctOptionIndex ?? activeQuestion?.correctOptionIndex ?? 0;
+          const targetIdx = activeQuestion?.correctOptionIndex ?? 0;
           const isCorrect = selectedOption === targetIdx;
           if (isCorrect) setCorrectAnswers(prev => prev + 1);
 
@@ -955,6 +956,7 @@ export default function Quizzes() {
 
       setSelectedOption(null);
       setIsAnswered(false);
+      setQuestionFeedback(null);
       setSecondsSpent(0);
     }
   };
@@ -1275,37 +1277,44 @@ export default function Quizzes() {
 
               {/* Option Selection List */}
               <div className="space-y-3">
-                {activeQuestion.options.map((option: string, idx: number) => {
+                {activeQuestion.options.map((rawOption: string, idx: number) => {
+                  const option = rawOption.replace(/^(?:(?:Option|Choice)\s+[A-D][:.]?\s*|[A-D][.:)]\s*)/i, "").trim();
                   const isSelected = selectedOption === idx;
-                  const targetCorrectIdx = questionFeedback?.correctOptionIndex ?? activeQuestion?.correctOptionIndex ?? 0;
-
+                  const targetCorrectIdx = isVerificationMode
+                    ? (activeQuestion?.correctOptionIndex ?? 0)
+                    : (questionFeedback?.correctOptionIndex ?? activeQuestion?.correctOptionIndex ?? 0);
                   const isOptionCorrect = idx === targetCorrectIdx;
+                  const letter = String.fromCharCode(65 + idx);
 
-                  let cardStyle = "bg-white/5 border-white/5 text-main-theme hover:bg-white/10";
+                  let cardStyle = "bg-white/5 border-white/5 text-main-theme hover:bg-white/10 hover:border-purple-500/30";
+                  let letterStyle = "bg-white/10 text-secondary-theme border-white/10";
                   let badgeLabel = null;
 
                   if (isAnswered) {
                     if (isOptionCorrect) {
                       cardStyle = "bg-emerald-500/10 border-emerald-500/50 text-emerald-400 font-bold shadow-[0_0_15px_rgba(16,185,129,0.15)]";
+                      letterStyle = "bg-emerald-500/20 text-emerald-400 border-emerald-500/40";
                       badgeLabel = (
                         <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-500/20 px-2.5 py-0.5 rounded-md border border-emerald-500/30">
                           <Check className="h-3.5 w-3.5" />
-                          <span>Correct Answer</span>
+                          <span>Correct</span>
                         </span>
                       );
                     } else if (isSelected) {
                       cardStyle = "bg-red-500/10 border-red-500/50 text-red-400 font-bold shadow-[0_0_15px_rgba(239,68,68,0.15)]";
+                      letterStyle = "bg-red-500/20 text-red-400 border-red-500/40";
                       badgeLabel = (
                         <span className="flex items-center gap-1 text-[11px] font-bold text-red-400 bg-red-500/20 px-2.5 py-0.5 rounded-md border border-red-500/30">
                           <X className="h-3.5 w-3.5" />
-                          <span>Your Answer</span>
+                          <span>Your Selection</span>
                         </span>
                       );
                     } else {
-                      cardStyle = "bg-white/3 border-white/5 opacity-50 text-secondary-theme";
+                      cardStyle = "bg-white/3 border-white/5 opacity-40 text-secondary-theme";
                     }
                   } else if (isSelected) {
-                    cardStyle = "bg-purple-600/20 border-purple-500/50 text-purple-theme font-bold";
+                    cardStyle = "bg-purple-600/20 border-purple-500/60 text-purple-theme font-bold shadow-[0_0_15px_rgba(168,85,247,0.15)]";
+                    letterStyle = "bg-purple-500/30 text-purple-300 border-purple-500/50";
                   }
 
                   return (
@@ -1313,9 +1322,14 @@ export default function Quizzes() {
                       key={idx}
                       disabled={isAnswered}
                       onClick={() => setSelectedOption(idx)}
-                      className={`w-full p-4 rounded-xl border text-xs font-semibold text-left transition-all flex items-center justify-between gap-3 ${cardStyle}`}
+                      className={`w-full p-4 rounded-xl border text-xs font-semibold text-left transition-all flex items-center justify-between gap-3 cursor-pointer disabled:cursor-default ${cardStyle}`}
                     >
-                      <span className="flex-1">{option}</span>
+                      <div className="flex items-center gap-3 flex-1">
+                        <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs border flex-shrink-0 transition-all ${letterStyle}`}>
+                          {letter}
+                        </span>
+                        <span className="flex-1 leading-relaxed">{option}</span>
+                      </div>
                       {badgeLabel}
                     </button>
                   );
@@ -1324,16 +1338,16 @@ export default function Quizzes() {
 
               {/* Conceptual Review Explanation */}
               {isAnswered && (
-                <div className={`p-4 rounded-xl text-xs space-y-2 border ${(questionFeedback?.isCorrect ?? (selectedOption === activeQuestion?.correctOptionIndex))
+                <div className={`p-4 rounded-xl text-xs space-y-2 border ${(isVerificationMode ? (selectedOption === (activeQuestion?.correctOptionIndex ?? 0)) : (questionFeedback?.isCorrect ?? (selectedOption === activeQuestion?.correctOptionIndex)))
                   ? "bg-emerald-500/5 border-emerald-500/20"
                   : "bg-red-500/5 border-red-500/20"
                   }`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 font-bold">
-                      {(questionFeedback?.isCorrect ?? (selectedOption === activeQuestion?.correctOptionIndex)) ? (
+                      {(isVerificationMode ? (selectedOption === (activeQuestion?.correctOptionIndex ?? 0)) : (questionFeedback?.isCorrect ?? (selectedOption === activeQuestion?.correctOptionIndex))) ? (
                         <span className="text-emerald-400 flex items-center gap-1.5">
                           <CheckCircle2 className="h-4 w-4" />
-                          <span>Correct!</span>
+                          <span>Correct! Well done.</span>
                         </span>
                       ) : (
                         <span className="text-red-400 flex items-center gap-1.5">
@@ -1341,8 +1355,8 @@ export default function Quizzes() {
                           <span>
                             Incorrect. Correct Answer:{" "}
                             <strong>
-                              Option {String.fromCharCode(65 + (questionFeedback?.correctOptionIndex ?? activeQuestion?.correctOptionIndex ?? 0))}: {" "}
-                              {activeQuestion.options[questionFeedback?.correctOptionIndex ?? activeQuestion?.correctOptionIndex ?? 0]}
+                              Option {String.fromCharCode(65 + (isVerificationMode ? (activeQuestion?.correctOptionIndex ?? 0) : (questionFeedback?.correctOptionIndex ?? activeQuestion?.correctOptionIndex ?? 0)))}: {" "}
+                              {activeQuestion.options[isVerificationMode ? (activeQuestion?.correctOptionIndex ?? 0) : (questionFeedback?.correctOptionIndex ?? activeQuestion?.correctOptionIndex ?? 0)]?.replace(/^(?:(?:Option|Choice)\s+[A-D][:.]?\s*|[A-D][.:)]\s*)/i, "").trim()}
                             </strong>
                           </span>
                         </span>
@@ -1412,7 +1426,7 @@ export default function Quizzes() {
                         <span>
                           {(diagnosticSessionId || adaptiveSessionId)
                             ? (questionFeedback?.completed ? "Complete Profile Update" : "Next Question")
-                            : (questionCount + 1 >= quizQuestions.length ? "Complete Profile Update" : "Next Question")
+                            : (questionCount + 1 >= (quizQuestions.length > 0 ? quizQuestions.length : 10) ? "Complete Verification" : "Next Question")
                           }
                         </span>
                         <ArrowRight className="h-4 w-4" />
@@ -1433,7 +1447,7 @@ export default function Quizzes() {
               <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                 {diagnosticLog.length === 0 ? (
                   <p className="text-[10px] text-secondary-theme text-center py-4 leading-relaxed">
-                    Submit answers to monitor real-time difficulty adaptation triggers across all 10 questions.
+                    Submit answers to monitor real-time difficulty adaptation triggers across all {quizQuestions.length > 0 ? quizQuestions.length : maxQuestions} questions.
                   </p>
                 ) : (
                   diagnosticLog.map((log, index) => (
@@ -1472,7 +1486,7 @@ export default function Quizzes() {
               <h2 className={`text-2xl font-bold tracking-wider ${isVerificationMode && !remediationResult?.passed ? "text-amber-400" : "text-gradient-purple"
                 }`}>
                 {isVerificationMode
-                  ? (remediationResult?.passed ? "Concept Successfully Remediated!" : "Remediation Test Complete")
+                  ? (remediationResult?.passed ? "Mastery Verification Complete" : "Mastery Verification Finished")
                   : "Assessment Complete"}
               </h2>
               <p className="text-base font-bold text-main-theme">
@@ -1485,29 +1499,41 @@ export default function Quizzes() {
               studentId={profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") || "" : "")}
               topic={displayTargetConcept || activeSubject || "Assessment"}
               score={remediationResult?.correctCount !== undefined ? remediationResult.correctCount : (lastEvaluationResult?.correctAnswers !== undefined ? lastEvaluationResult.correctAnswers : correctAnswers)}
-              totalQuestions={remediationResult?.totalQuestions !== undefined ? remediationResult.totalQuestions : (lastEvaluationResult?.totalQuestions !== undefined ? lastEvaluationResult.totalQuestions : (quizQuestions.length > 0 ? quizQuestions.length : 25))}
+              totalQuestions={remediationResult?.totalQuestions !== undefined ? remediationResult.totalQuestions : (lastEvaluationResult?.totalQuestions !== undefined ? lastEvaluationResult.totalQuestions : (quizQuestions.length > 0 ? quizQuestions.length : 10))}
               percentage={remediationResult?.percentage !== undefined ? remediationResult.percentage : (lastEvaluationResult?.percentage !== undefined ? lastEvaluationResult.percentage : lastEvaluationResult?.accuracy)}
               customFeedback={isVerificationMode && remediationResult?.message ? remediationResult.message : undefined}
             />
 
-            {/* Diagnostic Indicators */}
-            <div className="grid grid-cols-2 gap-4 pt-2">
-              <div className="p-4 bg-white/5 rounded-xl border border-white/5">
-                <span className="text-[10px] text-secondary-theme block uppercase">Status Result</span>
-                <span className={`text-lg font-bold ${isVerificationMode ? (remediationResult?.passed ? "text-emerald-400" : "text-amber-400") : "text-purple-theme"}`}>
-                  {isVerificationMode 
-                    ? (remediationResult?.passed ? "REMEDIATED" : "PRACTICE NEEDED") 
+            {/* 4-Card Mastery Statistics Breakdown */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+              <div className="p-4 bg-white/5 rounded-xl border border-white/5 text-center">
+                <span className="text-[10px] text-secondary-theme block uppercase font-bold tracking-wider">Concept Status</span>
+                <span className={`text-sm font-bold block mt-1 ${isVerificationMode ? (remediationResult?.passed ? "text-emerald-400" : "text-amber-400") : "text-purple-theme"}`}>
+                  {isVerificationMode
+                    ? (remediationResult?.passed ? "MASTERED" : "NEEDS PRACTICE")
                     : (lastEvaluationResult?.masteryLevel || "COMPLETED")}
                 </span>
               </div>
-              <div className="p-4 bg-white/5 rounded-xl border border-white/5">
-                <span className="text-[10px] text-secondary-theme block uppercase">Accuracy Rate</span>
-                <span className="text-lg font-bold text-cyan-theme">
+              <div className="p-4 bg-white/5 rounded-xl border border-white/5 text-center">
+                <span className="text-[10px] text-secondary-theme block uppercase font-bold tracking-wider">Correct Answers</span>
+                <span className="text-sm font-bold text-emerald-400 block mt-1">
+                  {remediationResult?.correctCount !== undefined ? remediationResult.correctCount : correctAnswers} / {remediationResult?.totalQuestions !== undefined ? remediationResult.totalQuestions : (quizQuestions.length > 0 ? quizQuestions.length : 10)}
+                </span>
+              </div>
+              <div className="p-4 bg-white/5 rounded-xl border border-white/5 text-center">
+                <span className="text-[10px] text-secondary-theme block uppercase font-bold tracking-wider">Accuracy</span>
+                <span className="text-sm font-bold text-cyan-theme block mt-1">
                   {remediationResult?.percentage !== undefined 
                     ? `${Math.round(remediationResult.percentage)}%` 
                     : (lastEvaluationResult?.percentage !== undefined || lastEvaluationResult?.accuracy !== undefined
                       ? `${Math.round(lastEvaluationResult.percentage ?? lastEvaluationResult.accuracy)}%`
-                      : `${Math.round(Math.min(100, Math.max(0, (correctAnswers / (quizQuestions.length > 0 ? quizQuestions.length : 25)) * 100)))}%`)}
+                      : `${Math.round(Math.min(100, Math.max(0, (correctAnswers / (quizQuestions.length > 0 ? quizQuestions.length : 10)) * 100)))}%`)}
+                </span>
+              </div>
+              <div className="p-4 bg-white/5 rounded-xl border border-white/5 text-center">
+                <span className="text-[10px] text-secondary-theme block uppercase font-bold tracking-wider">Time Spent</span>
+                <span className="text-sm font-bold text-purple-300 block mt-1">
+                  {Math.floor(secondsSpent / 60)}m {secondsSpent % 60}s
                 </span>
               </div>
             </div>
@@ -1516,7 +1542,7 @@ export default function Quizzes() {
             <div className="space-y-4 text-left pt-4 border-t border-white/10">
               <h3 className="text-sm font-bold text-main-theme uppercase tracking-wider flex items-center gap-2">
                 <BrainCircuit className="h-4 w-4 text-purple-theme" />
-                <span>Session Results Breakdown</span>
+                <span>Session Question Review</span>
               </h3>
 
               <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
@@ -1528,18 +1554,27 @@ export default function Quizzes() {
                         {item.correct ? "CORRECT" : "INCORRECT"}
                       </span>
                     </div>
+                    <p className="text-xs font-medium text-slate-200">{item.questionText}</p>
                     <p className="text-xs text-secondary-theme leading-relaxed">{item.reason}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            <a
-              href="/dashboard"
-              className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-500/20 inline-block cursor-pointer"
-            >
-              Return to Dashboard
-            </a>
+            <div className="flex gap-4 justify-center pt-2">
+              <a
+                href="/dashboard"
+                className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-500/20 inline-block cursor-pointer transition-all"
+              >
+                Return to Dashboard
+              </a>
+              <a
+                href="/dashboard/roadmap"
+                className="px-6 py-3 bg-white/10 hover:bg-white/15 text-white text-xs font-bold rounded-xl border border-white/10 inline-block cursor-pointer transition-all"
+              >
+                View Subject Roadmap
+              </a>
+            </div>
           </div>
         )}
 

@@ -336,24 +336,42 @@ public class QuizGenerationService {
             System.err.println("[generateForConcept] Error applying fallback questions: " + ex.getMessage());
         }
 
-        // 4. Guaranteed Safety Fallback: Generate synthetic concept questions if both Groq API and DB pools are exhausted
+        // 4. Guaranteed Safety Fallback: Generate diverse synthetic concept questions if both Groq API and DB pools are exhausted
         if (result.size() < targetCount) {
             int missingCount = targetCount - result.size();
+            String[] dimensionTemplates = new String[] {
+                    "What is the primary architectural property or operational definition of %s in %s?",
+                    "What is the computational time complexity or efficiency trade-off associated with %s?",
+                    "How does memory layout and pointer structure impact the performance of %s?",
+                    "Under which practical scenario or edge case is %s most suitably applied?",
+                    "Which statement correctly differentiates %s from related alternatives in %s?"
+            };
+
             for (int i = 1; i <= missingCount; i++) {
                 int qNum = result.size() + 1;
+                int templateIdx = (qNum - 1) % dimensionTemplates.length;
+                int targetCorrectIndex = (qNum - 1) % 4;
+                String qText = String.format("Question %d: " + dimensionTemplates[templateIdx], qNum, concept, subject);
+
+                List<String> options = new ArrayList<>();
+                for (int optIdx = 0; optIdx < 4; optIdx++) {
+                    if (optIdx == targetCorrectIndex) {
+                        options.add(concept + " canonical correct principle for dimension " + (templateIdx + 1));
+                    } else {
+                        options.add(concept + " plausible distractor " + (char)('A' + optIdx) + " regarding " + subject);
+                    }
+                }
+
+                String explanation = "Option " + (char)('A' + targetCorrectIndex) + " correctly describes the canonical conceptual behavior of " + concept + " in " + subject + ".";
+
                 QuizQuestion syntheticQ = QuizQuestion.builder()
                         .subject(subject)
                         .concept(concept)
                         .difficulty(difficulty)
-                        .questionText("Question " + qNum + ": What is a key conceptual property of " + concept + " in " + subject + "?")
-                        .options(List.of(
-                                "Option A: " + concept + " fundamental concept definition " + qNum,
-                                "Option B: Alternative property of " + concept,
-                                "Option C: Incorrect assumption regarding " + concept,
-                                "Option D: Unrelated operation in " + subject
-                        ))
-                        .correctOptionIndex(0)
-                        .conceptualExplanation("Option A is correct because it directly defines the fundamental property of " + concept + ".")
+                        .questionText(qText)
+                        .options(options)
+                        .correctOptionIndex(targetCorrectIndex)
+                        .conceptualExplanation(explanation)
                         .moduleSource(ModuleType.REMEDIATION)
                         .build();
                 syntheticQ.setQuestionSource("REMEDIATION_FALLBACK");
@@ -367,26 +385,24 @@ public class QuizGenerationService {
     }
 
     private List<QuizQuestion> generateBatchForConceptViaGroq(String subject, String concept, QuizQuestion.Difficulty difficulty, int count, Map<String, Object> context) {
-        String systemPrompt = "You are an expert academic question generator for " + subject + ".\n" +
+        String systemPrompt = "You are an expert academic assessment generator for " + subject + ".\n" +
                 "Output ONLY a valid JSON object. Strict double quotes ONLY. Do NOT use markdown fences or commentary.\n" +
-                "Output MUST contain a top-level key \"questions\" with an array of EXACTLY " + count + " question objects.";
+                "Output MUST contain a top-level key \"questions\" with an array of EXACTLY " + count + " high-quality question objects.";
 
         StringBuilder userPrompt = new StringBuilder();
         userPrompt.append("Generate ").append(count)
                 .append(" distinct multiple-choice questions for concept \"").append(concept)
                 .append("\" (Subject: \"").append(subject).append("\") at ").append(difficulty.name()).append(" difficulty.\n\n")
-                .append("DIVERSITY REQUIREMENT:\n")
-                .append("Each of the ").append(count).append(" questions MUST assess a DIFFERENT aspect or knowledge point of ").append(concept)
-                .append(". Do NOT generate multiple questions testing the same operation or complexity relationship.\n\n")
-                .append("Sub-aspects to cover across questions:\n")
-                .append("- Memory allocation & layout (contiguous blocks vs non-contiguous nodes)\n")
-                .append("- Random access indexing complexity (O(1) offset vs O(n) traversal)\n")
-                .append("- Head insertion complexity (O(1) pointer updates vs O(n) array shifting)\n")
-                .append("- List reversal & iterative pointer manipulation\n")
-                .append("- Memory overhead per element (data payload vs pointer references)\n")
-                .append("- CPU cache locality & memory prefetching\n")
-                .append("- Dynamic array resizing & amortized cost\n")
-                .append("- Practical use-case trade-offs\n\n");
+                .append("DIVERSITY & ASSESSMENT INTEGRITY REQUIREMENTS:\n")
+                .append("1. Each question MUST assess a DIFFERENT sub-aspect or conceptual angle of ").append(concept).append(".\n")
+                .append("2. Sub-aspects to assess across questions:\n")
+                .append("   - Core mechanics and structural definition\n")
+                .append("   - Runtime & memory complexity trade-offs\n")
+                .append("   - Pointer manipulation / state mutation / edge cases\n")
+                .append("   - Cache locality, memory overhead, or low-level layout\n")
+                .append("   - Practical trade-offs and architectural selection criteria\n")
+                .append("3. Plausible Distractors: Every distractor MUST be plausible and conceptually meaningful (no joke options).\n")
+                .append("4. Balanced Correct Index: Distribute correctOptionIndex naturally across 0, 1, 2, and 3 across the generated set.\n\n");
 
         List<String> excludeTexts = context != null ? (List<String>) context.get("excludeQuestions") : null;
         if (excludeTexts != null && !excludeTexts.isEmpty()) {
@@ -405,16 +421,16 @@ public class QuizGenerationService {
                 .append("  \"questions\": [\n")
                 .append("    {\n")
                 .append("      \"concept\": \"").append(concept.replace("\"", "'")).append("\",\n")
-                .append("      \"questionText\": \"Clear question text\",\n")
-                .append("      \"options\": [\"Option A\", \"Option B\", \"Option C\", \"Option D\"],\n")
-                .append("      \"correctOptionIndex\": 0,\n")
-                .append("      \"conceptualExplanation\": \"Brief explanation of why option A is correct\"\n")
+                .append("      \"questionText\": \"Clear conceptual question text?\",\n")
+                .append("      \"options\": [\"Option 0 text\", \"Option 1 text\", \"Option 2 text\", \"Option 3 text\"],\n")
+                .append("      \"correctOptionIndex\": 1,\n")
+                .append("      \"conceptualExplanation\": \"Detailed explanation of why the correct option is conceptually valid.\"\n")
                 .append("    }\n")
                 .append("  ]\n")
                 .append("}");
 
         Map<String, Object> reqContext = context != null ? new HashMap<>(context) : new HashMap<>();
-        reqContext.put("maxTokens", 750);
+        reqContext.put("maxTokens", Math.max(2000, count * 220));
 
         int maxRetries = 3;
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
