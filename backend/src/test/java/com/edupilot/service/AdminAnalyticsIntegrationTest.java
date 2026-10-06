@@ -3038,4 +3038,312 @@ public class AdminAnalyticsIntegrationTest {
         assertTrue(comp.getDataSufficiency().getWarnings().stream().anyMatch(w -> w.contains("small evaluated sample size (N < 5)")));
         assertTrue(comp.getMethodologyNote().contains("should not be interpreted as causal effects"));
     }
+
+    // =========================================================================
+    // EXPORT INTEGRATION TESTS (PHASE 2C-4)
+    // =========================================================================
+
+    @Test
+    public void testExportExcel_Admin_ReturnsOkAndValidXlsxWorkbook() throws Exception {
+        String s1 = createStudentWithProfile("excel_export1@edupilot.com", "CSE", 3);
+        seedAuthenticBaseline(s1, "CS101", 60.0);
+        seedConceptMastery(s1, "CS101", "Trees", 80.0);
+
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/export/excel")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        byte[] content = result.getResponse().getContentAsByteArray();
+        assertNotNull(content);
+        assertTrue(content.length > 0);
+
+        String contentType = result.getResponse().getContentType();
+        assertNotNull(contentType);
+        assertTrue(contentType.contains("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+
+        String disposition = result.getResponse().getHeader("Content-Disposition");
+        assertNotNull(disposition);
+        assertTrue(disposition.contains("attachment"));
+        assertTrue(disposition.contains(".xlsx"));
+
+        // Verify workbook structure via Apache POI
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(content))) {
+            assertEquals(5, wb.getNumberOfSheets());
+            assertNotNull(wb.getSheet("Research Summary"));
+            assertNotNull(wb.getSheet("Student Analytics"));
+            assertNotNull(wb.getSheet("Subject Analytics"));
+            assertNotNull(wb.getSheet("Assessment History"));
+            assertNotNull(wb.getSheet("Quiz Analytics"));
+        }
+    }
+
+    @Test
+    public void testExportPdf_Admin_ReturnsOkAndValidPdfDocument() throws Exception {
+        String s1 = createStudentWithProfile("pdf_export1@edupilot.com", "CSE", 3);
+        seedAuthenticBaseline(s1, "CS101", 65.0);
+
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/export/pdf")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        byte[] content = result.getResponse().getContentAsByteArray();
+        assertNotNull(content);
+        assertTrue(content.length > 0);
+
+        String contentType = result.getResponse().getContentType();
+        assertNotNull(contentType);
+        assertTrue(contentType.contains("application/pdf"));
+
+        String disposition = result.getResponse().getHeader("Content-Disposition");
+        assertNotNull(disposition);
+        assertTrue(disposition.contains("attachment"));
+        assertTrue(disposition.contains(".pdf"));
+
+        // Verify PDF magic header bytes "%PDF"
+        String pdfHeader = new String(content, 0, Math.min(content.length, 5));
+        assertTrue(pdfHeader.startsWith("%PDF"), "PDF file must start with %PDF magic header");
+    }
+
+    @Test
+    public void testExport_Unauthenticated_ReturnsUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/export/excel"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/admin/analytics/export/pdf"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void testExport_Student_ReturnsForbidden() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/export/excel")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/admin/analytics/export/pdf")
+                        .header("Authorization", "Bearer " + studentToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testExport_Faculty_ReturnsForbidden() throws Exception {
+        mockMvc.perform(get("/api/admin/analytics/export/excel")
+                        .header("Authorization", "Bearer " + facultyToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/admin/analytics/export/pdf")
+                        .header("Authorization", "Bearer " + facultyToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    public void testExport_InvalidFilter_ReturnsBadRequest() throws Exception {
+        // startDate > endDate on excel export
+        mockMvc.perform(get("/api/admin/analytics/export/excel")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("startDate", "2026-03-01")
+                        .param("endDate", "2026-01-01"))
+                .andExpect(status().isBadRequest());
+
+        // startDate > endDate on pdf export
+        mockMvc.perform(get("/api/admin/analytics/export/pdf")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("startDate", "2026-03-01")
+                        .param("endDate", "2026-01-01"))
+                .andExpect(status().isBadRequest());
+
+        // invalid activity status on excel export
+        mockMvc.perform(get("/api/admin/analytics/export/excel")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("activityStatus", "NOT_A_VALID_STATUS"))
+                .andExpect(status().isBadRequest());
+
+        // invalid activity status on pdf export
+        mockMvc.perform(get("/api/admin/analytics/export/pdf")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("activityStatus", "NOT_A_VALID_STATUS"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void testExportExcel_FilteredPopulation_RespectsBranchAndDate() throws Exception {
+        String sCse = createStudentWithProfile("cse_export@edupilot.com", "CSE", 3);
+        seedAuthenticBaseline(sCse, "CS101", 70.0);
+
+        String sIt = createStudentWithProfile("it_export@edupilot.com", "IT", 3);
+        seedAuthenticBaseline(sIt, "IT101", 60.0);
+
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/export/excel")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("branch", "CSE"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        byte[] content = result.getResponse().getContentAsByteArray();
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(content))) {
+            org.apache.poi.ss.usermodel.Sheet studentSheet = wb.getSheet("Student Analytics");
+            assertNotNull(studentSheet);
+
+            boolean foundCse = false;
+            boolean foundIt = false;
+            for (int r = 1; r <= studentSheet.getLastRowNum(); r++) {
+                org.apache.poi.ss.usermodel.Row row = studentSheet.getRow(r);
+                if (row != null) {
+                    String email = row.getCell(2) != null ? row.getCell(2).getStringCellValue() : "";
+                    if ("cse_export@edupilot.com".equals(email)) foundCse = true;
+                    if ("it_export@edupilot.com".equals(email)) foundIt = true;
+                }
+            }
+            assertTrue(foundCse, "Filtered CSE student must be present in export");
+            assertFalse(foundIt, "IT student must not be included when filtered by branch=CSE");
+        }
+    }
+
+    @Test
+    public void testExportExcel_ResearchIntegrity_MissingBaselineStaysMissing() throws Exception {
+        String sNoBaseline = createStudentWithProfile("no_k0@edupilot.com", "MECH", 2);
+        // Student only has current mastery but NO diagnostic
+        seedConceptMastery(sNoBaseline, "MECH101", "Thermodynamics", 85.0);
+
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/export/excel")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("branch", "MECH"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        byte[] content = result.getResponse().getContentAsByteArray();
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(content))) {
+            org.apache.poi.ss.usermodel.Sheet studentSheet = wb.getSheet("Student Analytics");
+            assertNotNull(studentSheet);
+
+            boolean verified = false;
+            for (int r = 1; r <= studentSheet.getLastRowNum(); r++) {
+                org.apache.poi.ss.usermodel.Row row = studentSheet.getRow(r);
+                if (row != null && "no_k0@edupilot.com".equals(row.getCell(2).getStringCellValue())) {
+                    String k0Val = row.getCell(5).getStringCellValue();
+                    String gainVal = row.getCell(8).getStringCellValue();
+                    assertEquals("N/A", k0Val, "Missing K0 must remain N/A instead of being fabricated as 50%");
+                    assertEquals("N/A", gainVal, "Missing gain must remain N/A instead of being fabricated as 0");
+                    verified = true;
+                }
+            }
+            assertTrue(verified);
+        }
+    }
+
+    @Test
+    public void testExportExcel_ValidZeroValuesPreserved() throws Exception {
+        String sZero = createStudentWithProfile("zero_k0@edupilot.com", "CSE", 1);
+        // Student has authentic diagnostic with 0.0% score
+        seedAuthenticBaseline(sZero, "CS100", 0.0);
+        seedConceptMastery(sZero, "CS100", "Intro", 0.0);
+
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/export/excel")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("branch", "CSE"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        byte[] content = result.getResponse().getContentAsByteArray();
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(content))) {
+            org.apache.poi.ss.usermodel.Sheet studentSheet = wb.getSheet("Student Analytics");
+            assertNotNull(studentSheet);
+
+            boolean verified = false;
+            for (int r = 1; r <= studentSheet.getLastRowNum(); r++) {
+                org.apache.poi.ss.usermodel.Row row = studentSheet.getRow(r);
+                if (row != null && "zero_k0@edupilot.com".equals(row.getCell(2).getStringCellValue())) {
+                    // Cell 5 is K0 (numeric 0.0)
+                    assertEquals(0.0, row.getCell(5).getNumericCellValue(), 0.001, "Observed 0.0 K0 must remain numeric 0.0, not N/A");
+                    // Cell 6 is Kt (numeric 0.0)
+                    assertEquals(0.0, row.getCell(6).getNumericCellValue(), 0.001, "Observed 0.0 Kt must remain numeric 0.0, not N/A");
+                    // Cell 7 is Growth (numeric 0.0)
+                    assertEquals(0.0, row.getCell(7).getNumericCellValue(), 0.001, "Observed 0.0 Growth must remain numeric 0.0, not N/A");
+                    // Cell 8 is Gain (numeric 0.0)
+                    assertEquals(0.0, row.getCell(8).getNumericCellValue(), 0.001, "Observed 0.0 Gain must remain numeric 0.0, not N/A");
+                    verified = true;
+                }
+            }
+            assertTrue(verified);
+        }
+    }
+
+    @Test
+    public void testExport_ExactSubjectCodeMatching_NoSubstringOverlap() throws Exception {
+        String sDbms = createStudentWithProfile("dbms_std@edupilot.com", "IT", 2);
+        seedAuthenticBaseline(sDbms, "DBMS", 75.0);
+
+        String sRdbms = createStudentWithProfile("rdbms_std@edupilot.com", "IT", 2);
+        seedAuthenticBaseline(sRdbms, "RDBMS", 85.0);
+
+        // Export with subjectCode = DBMS
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/export/excel")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("subjectCode", "DBMS"))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        byte[] content = result.getResponse().getContentAsByteArray();
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(content))) {
+            org.apache.poi.ss.usermodel.Sheet historySheet = wb.getSheet("Assessment History");
+            assertNotNull(historySheet);
+
+            boolean foundDbms = false;
+            boolean foundRdbms = false;
+            for (int r = 1; r <= historySheet.getLastRowNum(); r++) {
+                org.apache.poi.ss.usermodel.Row row = historySheet.getRow(r);
+                if (row != null) {
+                    String subCode = row.getCell(3) != null ? row.getCell(3).getStringCellValue() : "";
+                    if ("DBMS".equalsIgnoreCase(subCode)) foundDbms = true;
+                    if ("RDBMS".equalsIgnoreCase(subCode)) foundRdbms = true;
+                }
+            }
+            assertTrue(foundDbms, "Exact subjectCode DBMS must be matched");
+            assertFalse(foundRdbms, "Substring matching must NOT include RDBMS when filtered by DBMS");
+        }
+    }
+
+    @Test
+    public void testExportPdf_NoGarbledCharactersOrMojibake() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/export/pdf")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        byte[] content = result.getResponse().getContentAsByteArray();
+        String pdfString = new String(content, java.nio.charset.StandardCharsets.ISO_8859_1);
+
+        assertFalse(pdfString.contains("â€”"), "PDF content must not contain UTF-8 mojibake em-dash");
+        assertFalse(pdfString.contains("â€¢"), "PDF content must not contain UTF-8 mojibake bullet");
+    }
+
+    @Test
+    public void testExportExcel_MeanDifferenceLabeling() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/admin/analytics/export/excel")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        byte[] content = result.getResponse().getContentAsByteArray();
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(content))) {
+            org.apache.poi.ss.usermodel.Sheet summarySheet = wb.getSheet("Research Summary");
+            assertNotNull(summarySheet);
+
+            boolean foundMeanDiffLabel = false;
+            for (int r = 0; r <= summarySheet.getLastRowNum(); r++) {
+                org.apache.poi.ss.usermodel.Row row = summarySheet.getRow(r);
+                if (row != null && row.getCell(0) != null) {
+                    String label = row.getCell(0).getStringCellValue();
+                    if ("Mean Knowledge Difference (Kt - K0)".equals(label)) {
+                        foundMeanDiffLabel = true;
+                        String note = row.getCell(3).getStringCellValue();
+                        assertTrue(note.contains("Difference between cohort mean current knowledge and cohort mean baseline knowledge"),
+                                "Note must clearly state difference between cohort means and potential sample size differences");
+                    }
+                }
+            }
+            assertTrue(foundMeanDiffLabel, "Summary sheet must have metric labeled 'Mean Knowledge Difference (Kt - K0)'");
+        }
+    }
 }

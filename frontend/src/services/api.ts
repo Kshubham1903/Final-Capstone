@@ -2648,3 +2648,51 @@ export async function compareAdminCohorts(request: AdminCohortComparisonRequest)
   }
   return null;
 }
+
+export async function exportAdminResearchAnalyticsExcel(filters?: AdminResearchAnalyticsFilters): Promise<Blob> {
+  const q = buildAnalyticsQueryString(filters);
+  const res = await fetch(`${getBackendUrl()}/api/admin/analytics/export/excel${q}`, {
+    method: "GET",
+    headers: getAuthHeaders()
+  });
+  if (!res.ok) {
+    if (res.status === 400) {
+      const errBody = await res.json().catch(() => null);
+      throw new Error(errBody?.message || "Invalid research analytics filter. Please check the selected filters.");
+    }
+    handleAuthError(res);
+    throw new Error(`Excel export failed with status ${res.status}`);
+  }
+  return await res.blob();
+}
+
+export async function exportAdminResearchAnalyticsPdf(filters?: AdminResearchAnalyticsFilters): Promise<Blob> {
+  const q = buildAnalyticsQueryString(filters);
+  const res = await fetch(`${getBackendUrl()}/api/admin/analytics/export/pdf${q}`, {
+    method: "GET",
+    headers: getAuthHeaders()
+  });
+  if (!res.ok) {
+    if (res.status === 400) {
+      const errBody = await res.json().catch(() => null);
+      throw new Error(errBody?.message || "Invalid research analytics filter. Please check the selected filters.");
+    }
+    handleAuthError(res);
+    throw new Error(`PDF export failed with status ${res.status}`);
+  }
+  return await res.blob();
+}
+
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.style.display = "none";
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }, 100);
+}

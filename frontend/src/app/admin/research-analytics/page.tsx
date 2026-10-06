@@ -25,7 +25,11 @@ import {
   ChevronRight,
   GraduationCap,
   Calendar,
-  Layers
+  Layers,
+  FileSpreadsheet,
+  FileText,
+  Loader2,
+  Download
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -50,7 +54,10 @@ import {
   AdminResearchTrendsDTO,
   AdminCohortSubjectAnalyticsDTO,
   SubjectResearchSummaryDTO,
-  AdminResearchAnalyticsFilters
+  AdminResearchAnalyticsFilters,
+  exportAdminResearchAnalyticsExcel,
+  exportAdminResearchAnalyticsPdf,
+  downloadBlob
 } from "../../../services/api";
 import { AdminResearchFilterBar } from "../../../components/admin/AdminResearchFilterBar";
 import { AdminCohortComparisonView } from "../../../components/admin/AdminCohortComparisonView";
@@ -62,6 +69,43 @@ export default function ResearchAnalyticsPage() {
   // Filter State
   const [filters, setFilters] = useState<AdminResearchAnalyticsFilters>({});
   const [isFilterApplying, setIsFilterApplying] = useState(false);
+
+  // Export State
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  const handleExportExcel = async () => {
+    if (isExportingExcel || isExportingPdf) return;
+    setIsExportingExcel(true);
+    setExportError(null);
+    try {
+      const blob = await exportAdminResearchAnalyticsExcel(filters);
+      const dateStr = new Date().toISOString().split("T")[0];
+      downloadBlob(blob, `edupilot-research-analytics-${dateStr}.xlsx`);
+    } catch (err: any) {
+      console.error("Excel export error:", err);
+      setExportError(err?.message || "Failed to generate Excel export. Please try again.");
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (isExportingExcel || isExportingPdf) return;
+    setIsExportingPdf(true);
+    setExportError(null);
+    try {
+      const blob = await exportAdminResearchAnalyticsPdf(filters);
+      const dateStr = new Date().toISOString().split("T")[0];
+      downloadBlob(blob, `edupilot-research-analytics-${dateStr}.pdf`);
+    } catch (err: any) {
+      console.error("PDF export error:", err);
+      setExportError(err?.message || "Failed to generate PDF export. Please try again.");
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
 
   // Persistent Reference Lists for Filter Selectors (Unfiltered)
   const [allAvailableBranches, setAllAvailableBranches] = useState<string[]>([]);
@@ -367,6 +411,22 @@ export default function ResearchAnalyticsPage() {
             )}
           </div>
         </div>
+
+        {/* Export Error Notification */}
+        {exportError && (
+          <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-300 flex items-center justify-between gap-3 text-sm">
+            <div className="flex items-center gap-3">
+              <ShieldAlert className="h-5 w-5 shrink-0 text-rose-400" />
+              <span>{exportError}</span>
+            </div>
+            <button
+              onClick={() => setExportError(null)}
+              className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold transition-colors cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* REUSABLE RESEARCH FILTER BAR (for Single Cohort Views) */}
         {activeTab !== "compare" && (

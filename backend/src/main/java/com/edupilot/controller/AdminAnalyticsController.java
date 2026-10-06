@@ -9,9 +9,12 @@ import com.edupilot.dto.AdminCohortSubjectAnalyticsDTO;
 import com.edupilot.dto.AdminResearchTrendsDTO;
 import com.edupilot.dto.AdminStudentAnalyticsDTO;
 import com.edupilot.dto.AdminStudentDirectoryDTO;
+import com.edupilot.service.AdminAnalyticsExportService;
 import com.edupilot.service.AdminAnalyticsService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -24,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +38,37 @@ public class AdminAnalyticsController {
 
     @Autowired
     private AdminAnalyticsService adminAnalyticsService;
+
+    @Autowired
+    private AdminAnalyticsExportService adminAnalyticsExportService;
+
+    @GetMapping("/export/excel")
+    public ResponseEntity<byte[]> exportExcel(@ModelAttribute AdminAnalyticsFilterCriteria criteria) {
+        if (criteria == null) {
+            criteria = new AdminAnalyticsFilterCriteria();
+        }
+        criteria.validate();
+        byte[] excelBytes = adminAnalyticsExportService.generateExcelExport(criteria);
+        String filename = "edupilot-research-analytics-" + LocalDate.now() + ".xlsx";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(excelBytes);
+    }
+
+    @GetMapping("/export/pdf")
+    public ResponseEntity<byte[]> exportPdf(@ModelAttribute AdminAnalyticsFilterCriteria criteria) {
+        if (criteria == null) {
+            criteria = new AdminAnalyticsFilterCriteria();
+        }
+        criteria.validate();
+        byte[] pdfBytes = adminAnalyticsExportService.generatePdfExport(criteria);
+        String filename = "edupilot-research-analytics-" + LocalDate.now() + ".pdf";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdfBytes);
+    }
 
     @PostMapping("/compare")
     public ResponseEntity<AdminCohortComparisonDTO> compareCohorts(@RequestBody AdminCohortComparisonRequest request) {
