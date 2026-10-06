@@ -13,6 +13,7 @@ public class User {
     private String password;
     private String fullName;
     private Role role; // STUDENT, FACULTY, ADMIN
+    private AccountType accountType; // GENUINE_STUDENT, TEST_AUTOMATION, SYNTHETIC_RESEARCH_SEED
     private LocalDateTime createdAt;
     
     public enum Role {
@@ -21,15 +22,26 @@ public class User {
         ADMIN
     }
 
+    public enum AccountType {
+        GENUINE_STUDENT,
+        TEST_AUTOMATION,
+        SYNTHETIC_RESEARCH_SEED
+    }
+
     public User() {
     }
 
     public User(String id, String email, String password, String fullName, Role role, LocalDateTime createdAt) {
+        this(id, email, password, fullName, role, null, createdAt);
+    }
+
+    public User(String id, String email, String password, String fullName, Role role, AccountType accountType, LocalDateTime createdAt) {
         this.id = id;
         this.email = email;
         this.password = password;
         this.fullName = fullName;
         this.role = role;
+        this.accountType = accountType;
         this.createdAt = createdAt;
     }
 
@@ -73,6 +85,14 @@ public class User {
         this.role = role;
     }
 
+    public AccountType getAccountType() {
+        return accountType;
+    }
+
+    public void setAccountType(AccountType accountType) {
+        this.accountType = accountType;
+    }
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
@@ -91,6 +111,7 @@ public class User {
         private String password;
         private String fullName;
         private Role role;
+        private AccountType accountType;
         private LocalDateTime createdAt;
 
         public UserBuilder id(String id) {
@@ -118,13 +139,18 @@ public class User {
             return this;
         }
 
+        public UserBuilder accountType(AccountType accountType) {
+            this.accountType = accountType;
+            return this;
+        }
+
         public UserBuilder createdAt(LocalDateTime createdAt) {
             this.createdAt = createdAt;
             return this;
         }
 
         public User build() {
-            return new User(id, email, password, fullName, role, createdAt);
+            return new User(id, email, password, fullName, role, accountType, createdAt);
         }
     }
 }

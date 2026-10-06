@@ -119,6 +119,11 @@ public class AdminAnalyticsService {
                 continue;
             }
 
+            // Provenance Filter: Admin analytics include ONLY genuine student accounts
+            if (u.getAccountType() != User.AccountType.GENUINE_STUDENT) {
+                continue;
+            }
+
             ctx.userMap.put(userId, u);
             StudentProfile profile = profilesByUserId.get(userId);
             if (profile == null && u.getEmail() != null) {
@@ -1145,8 +1150,8 @@ public class AdminAnalyticsService {
         }
 
         User user = userOpt.get();
-        if (user.getRole() != User.Role.STUDENT) {
-            throw new IllegalArgumentException("User with ID " + rawUserId + " is not a STUDENT.");
+        if (user.getRole() != User.Role.STUDENT || user.getAccountType() != User.AccountType.GENUINE_STUDENT) {
+            throw new IllegalArgumentException("Student not found for ID: " + rawUserId);
         }
 
         canonicalUserId = user.getId();

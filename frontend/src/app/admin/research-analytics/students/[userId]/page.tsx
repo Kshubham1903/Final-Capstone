@@ -14,16 +14,12 @@ import {
   CheckCircle2,
   AlertTriangle,
   Clock,
-  Star,
-  Activity,
   Layers,
   Award,
   Calendar,
   BarChart2,
   FileText,
   HelpCircle,
-  Wrench,
-  Info,
   Minus
 } from "lucide-react";
 import {
@@ -565,99 +561,6 @@ export default function IndividualStudentAnalyticsPage() {
                   No concept mastery records recorded.
                 </div>
               )}
-            </div>
-
-            {/* 8. ACTIVITY, SATISFACTION & REMEDIATION (3-COLUMN GRID) */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
-              {/* Learning Activity */}
-              <div className="glass-panel p-6 rounded-3xl border border-white/5 space-y-4">
-                <h3 className="text-sm font-extrabold text-main-theme flex items-center gap-2 border-b border-white/5 pb-3">
-                  <Activity className="h-4 w-4 text-emerald-400" />
-                  <span>Learning Activity</span>
-                </h3>
-                <div className="space-y-3 text-xs">
-                  <div className="flex justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                    <span className="text-secondary-theme">Total Study Sessions:</span>
-                    <span className="font-bold text-main-theme">{analytics.activity.totalStudySessions}</span>
-                  </div>
-                  <div className="flex justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                    <span className="text-secondary-theme">Total Study Minutes:</span>
-                    <span className="font-bold text-purple-400">{analytics.activity.totalStudyMinutes} mins</span>
-                  </div>
-                  <div className="flex justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                    <span className="text-secondary-theme">Days Since Activity:</span>
-                    <span className="font-bold text-main-theme">
-                      {analytics.activity.daysSinceLastActivity != null ? `${analytics.activity.daysSinceLastActivity} days` : "No activity"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Student Satisfaction */}
-              <div className="glass-panel p-6 rounded-3xl border border-white/5 space-y-4">
-                <h3 className="text-sm font-extrabold text-main-theme flex items-center gap-2 border-b border-white/5 pb-3">
-                  <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
-                  <span>Satisfaction & Feedback</span>
-                </h3>
-                {analytics.satisfaction.totalReviews > 0 ? (
-                  <div className="space-y-3 text-xs">
-                    <div className="flex justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                      <span className="text-secondary-theme">Average Rating:</span>
-                      <span className="font-bold text-amber-theme flex items-center gap-1">
-                        <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                        {analytics.satisfaction.averageRating?.toFixed(1)} / 5.0
-                      </span>
-                    </div>
-                    <div className="flex justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                      <span className="text-secondary-theme">Total Reviews:</span>
-                      <span className="font-bold text-main-theme">{analytics.satisfaction.totalReviews}</span>
-                    </div>
-                    {analytics.satisfaction.reviews.length > 0 && (
-                      <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 space-y-1">
-                        <span className="text-[10px] text-secondary-theme uppercase font-bold">Latest Comment:</span>
-                        <p className="text-xs text-main-theme italic">"{analytics.satisfaction.reviews[0].comment}"</p>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="py-6 text-center text-xs text-secondary-theme">No satisfaction data available.</p>
-                )}
-              </div>
-
-              {/* Remediation Sessions */}
-              <div className="glass-panel p-6 rounded-3xl border border-white/5 space-y-4">
-                <h3 className="text-sm font-extrabold text-main-theme flex items-center gap-2 border-b border-white/5 pb-3">
-                  <Wrench className="h-4 w-4 text-cyan-400" />
-                  <span>Remediation Sessions</span>
-                </h3>
-                <div className="space-y-3 text-xs">
-                  <div className="flex justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                    <span className="text-secondary-theme">Total Sessions:</span>
-                    <span className="font-bold text-main-theme">{analytics.remediation.totalSessions}</span>
-                  </div>
-                  <div className="flex justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                    <span className="text-secondary-theme">Completed:</span>
-                    <span className="font-bold text-emerald-400">{analytics.remediation.completedSessions}</span>
-                  </div>
-                  <div className="flex justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
-                    <span className="text-secondary-theme">Active / In-Progress:</span>
-                    <span className="font-bold text-amber-400">{analytics.remediation.activeSessions}</span>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-
-            {/* 9. RESEARCH INTEGRITY FOOTER */}
-            <div className="glass-panel p-5 rounded-2xl border border-indigo-500/20 bg-indigo-500/5 flex items-start gap-3 text-xs">
-              <Info className="h-5 w-5 text-indigo-400 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold text-indigo-300">Observed Empirical Application Data Only:</span>
-                <p className="text-secondary-theme mt-0.5">
-                  All knowledge scores, gains, and diagnostic benchmarks represent authentic student assessment and platform interaction records. No speculative CGPA predictions, AI retention conclusions, or synthetic baselines are applied.
-                </p>
-              </div>
             </div>
           </>
         )}
