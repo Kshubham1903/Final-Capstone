@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
 import Layout from "../../../components/Layout";
 import AssessmentFeedbackCard from "../../../components/dashboard/AssessmentFeedbackCard";
 import {
@@ -75,7 +76,7 @@ export default function Quizzes() {
   const [assessmentStage, setAssessmentStage] = useState<"INITIAL" | "ADAPTIVE">("INITIAL");
   const [diagnosticSessionId, setDiagnosticSessionId] = useState<string | null>(null);
   const [adaptiveSessionId, setAdaptiveSessionId] = useState<string | null>(null);
-  const [maxQuestions, setMaxQuestions] = useState<number>(10);
+  const [maxQuestions, setMaxQuestions] = useState<number>(25);
   const [submittingAnswer, setSubmittingAnswer] = useState<boolean>(false);
   const [questionFeedback, setQuestionFeedback] = useState<any | null>(null);
   const [groqError, setGroqError] = useState<string | null>(null);
@@ -344,7 +345,7 @@ export default function Quizzes() {
       setActiveQuestion(normalizedQ);
       setCurrentDiff((normalizedQ.difficulty as "EASY" | "MEDIUM" | "HARD") || "MEDIUM");
       setQuestionCount(prev => prev + 1);
-      setMaxQuestions(res.totalQuestions || 10);
+      setMaxQuestions(res.totalQuestions || 25);
       setSelectedOption(null);
       setIsAnswered(false);
       setSecondsSpent(0);
@@ -466,7 +467,7 @@ export default function Quizzes() {
       setActiveQuestion(res.question);
       setCurrentDiff((res.question.difficulty as "EASY" | "MEDIUM" | "HARD") || "MEDIUM");
       setQuestionCount(prev => prev + 1);
-      setMaxQuestions(res.totalQuestions || 10);
+      setMaxQuestions(res.totalQuestions || 25);
       setSelectedOption(null);
       setIsAnswered(false);
       setSecondsSpent(0);
@@ -1499,7 +1500,7 @@ export default function Quizzes() {
               studentId={profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") || "" : "")}
               topic={displayTargetConcept || activeSubject || "Assessment"}
               score={remediationResult?.correctCount !== undefined ? remediationResult.correctCount : (lastEvaluationResult?.correctAnswers !== undefined ? lastEvaluationResult.correctAnswers : correctAnswers)}
-              totalQuestions={remediationResult?.totalQuestions !== undefined ? remediationResult.totalQuestions : (lastEvaluationResult?.totalQuestions !== undefined ? lastEvaluationResult.totalQuestions : (quizQuestions.length > 0 ? quizQuestions.length : 10))}
+              totalQuestions={remediationResult?.totalQuestions !== undefined ? remediationResult.totalQuestions : (lastEvaluationResult?.totalQuestions !== undefined ? lastEvaluationResult.totalQuestions : (quizQuestions.length > 0 ? quizQuestions.length : 25))}
               percentage={remediationResult?.percentage !== undefined ? remediationResult.percentage : (lastEvaluationResult?.percentage !== undefined ? lastEvaluationResult.percentage : lastEvaluationResult?.accuracy)}
               customFeedback={isVerificationMode && remediationResult?.message ? remediationResult.message : undefined}
             />
@@ -1517,7 +1518,7 @@ export default function Quizzes() {
               <div className="p-4 bg-white/5 rounded-xl border border-white/5 text-center">
                 <span className="text-[10px] text-secondary-theme block uppercase font-bold tracking-wider">Correct Answers</span>
                 <span className="text-sm font-bold text-emerald-400 block mt-1">
-                  {remediationResult?.correctCount !== undefined ? remediationResult.correctCount : correctAnswers} / {remediationResult?.totalQuestions !== undefined ? remediationResult.totalQuestions : (quizQuestions.length > 0 ? quizQuestions.length : 10)}
+                  {remediationResult?.correctCount !== undefined ? remediationResult.correctCount : correctAnswers} / {remediationResult?.totalQuestions !== undefined ? remediationResult.totalQuestions : (quizQuestions.length > 0 ? quizQuestions.length : 25)}
                 </span>
               </div>
               <div className="p-4 bg-white/5 rounded-xl border border-white/5 text-center">
@@ -1527,7 +1528,7 @@ export default function Quizzes() {
                     ? `${Math.round(remediationResult.percentage)}%` 
                     : (lastEvaluationResult?.percentage !== undefined || lastEvaluationResult?.accuracy !== undefined
                       ? `${Math.round(lastEvaluationResult.percentage ?? lastEvaluationResult.accuracy)}%`
-                      : `${Math.round(Math.min(100, Math.max(0, (correctAnswers / (quizQuestions.length > 0 ? quizQuestions.length : 10)) * 100)))}%`)}
+                      : `${Math.round(Math.min(100, Math.max(0, (correctAnswers / (quizQuestions.length > 0 ? quizQuestions.length : 25)) * 100)))}%`)}
                 </span>
               </div>
               <div className="p-4 bg-white/5 rounded-xl border border-white/5 text-center">
@@ -1562,18 +1563,18 @@ export default function Quizzes() {
             </div>
 
             <div className="flex gap-4 justify-center pt-2">
-              <a
-                href="/dashboard"
+              <Link
+                to="/dashboard"
                 className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-500/20 inline-block cursor-pointer transition-all"
               >
                 Return to Dashboard
-              </a>
-              <a
-                href="/dashboard/roadmap"
+              </Link>
+              <Link
+                to="/dashboard/subjects"
                 className="px-6 py-3 bg-white/10 hover:bg-white/15 text-white text-xs font-bold rounded-xl border border-white/10 inline-block cursor-pointer transition-all"
               >
                 View Subject Roadmap
-              </a>
+              </Link>
             </div>
           </div>
         )}

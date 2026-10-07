@@ -7,7 +7,7 @@ import {
   ExternalLink 
 } from "lucide-react";
 import Layout from "../../components/Layout";
-import { StudentProfile } from "../../services/mockData";
+import { StudentProfile, getStoredStudentProfile } from "../../services/mockData";
 import { fetchProfile, getRecommendations, checkBackendConnection } from "../../services/api";
 
 // Reusable Modular Dashboard Components
@@ -91,30 +91,38 @@ export default function StudentDashboard() {
   }
 
   const getFirstName = () => {
-    let fullName = "";
-    if (typeof window !== "undefined") {
-      try {
-        const userStr = localStorage.getItem("edupilot_user");
-        if (userStr) {
-          const userObj = JSON.parse(userStr);
-          if (userObj && typeof userObj.fullName === "string" && userObj.fullName.trim() !== "") {
-            fullName = userObj.fullName;
+    let fullName = profile?.fullName;
+
+    if (!fullName || !fullName.trim()) {
+      if (typeof window !== "undefined") {
+        const storedProfile = getStoredStudentProfile();
+        if (storedProfile?.fullName && storedProfile.fullName.trim()) {
+          fullName = storedProfile.fullName;
+        } else {
+          try {
+            const userStr = localStorage.getItem("edupilot_user");
+            if (userStr) {
+              const userObj = JSON.parse(userStr);
+              if (userObj && typeof userObj.fullName === "string" && userObj.fullName.trim() !== "") {
+                fullName = userObj.fullName;
+              }
+            }
+          } catch (err) {
+            console.warn("Failed to parse edupilot_user from localStorage:", err);
+          }
+          if (!fullName) {
+            fullName = localStorage.getItem("edupilot_user_name") || "";
           }
         }
-      } catch (err) {
-        console.warn("Failed to parse edupilot_user from localStorage:", err);
       }
     }
 
-    if (!fullName && profile && typeof profile.fullName === "string" && profile.fullName.trim() !== "") {
-      fullName = profile.fullName;
-    }
-
-    if (!fullName) {
+    if (!fullName || !fullName.trim()) {
       fullName = "Student";
     }
 
-    return fullName.split(" ")[0] || fullName;
+    const first = fullName.trim().split(" ")[0];
+    return first || fullName.trim();
   };
 
   const firstName = getFirstName();

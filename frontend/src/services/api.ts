@@ -231,7 +231,9 @@ export async function fetchProfile(userId: string): Promise<StudentProfile> {
         headers: getAuthHeaders()
       });
       if (res.ok) {
-        return await res.json();
+        const profile = await res.json();
+        saveStudentProfile(profile);
+        return profile;
       }
     } catch (err) {
       console.warn("Error fetching profile from backend, falling back to local:", err);

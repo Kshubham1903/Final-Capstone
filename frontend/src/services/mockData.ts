@@ -127,6 +127,17 @@ export function getStoredStudentProfile(): StudentProfile {
 export function saveStudentProfile(profile: StudentProfile) {
   if (typeof window !== "undefined") {
     localStorage.setItem("edupilot_student_profile", JSON.stringify(profile));
+    if (profile.fullName && profile.fullName.trim()) {
+      localStorage.setItem("edupilot_user_name", profile.fullName);
+      try {
+        const userStr = localStorage.getItem("edupilot_user");
+        if (userStr) {
+          const userObj = JSON.parse(userStr);
+          userObj.fullName = profile.fullName;
+          localStorage.setItem("edupilot_user", JSON.stringify(userObj));
+        }
+      } catch (_) {}
+    }
   }
 }
 

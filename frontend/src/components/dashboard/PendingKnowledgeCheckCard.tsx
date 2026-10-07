@@ -106,23 +106,23 @@ export const PendingKnowledgeCheckCard: React.FC<PendingKnowledgeCheckCardProps>
   return (
     <>
       {/* Compact Dashboard Card */}
-      <div className="p-4 rounded-xl border border-indigo-500/20 bg-gradient-to-r from-indigo-950/40 via-purple-950/30 to-slate-900/60 backdrop-blur-md shadow-lg transition-all hover:border-indigo-500/40">
+      <div className="glass-panel p-4 rounded-xl border border-indigo-500/20 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-transparent shadow-lg transition-all hover:border-indigo-500/40">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 mt-0.5">
+            <div className="p-2.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-purple-theme mt-0.5">
               <Award className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
+                <span className="text-xs font-semibold uppercase tracking-wider text-purple-theme bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
                   {pendingCheck?.subject || result?.subject || "Knowledge Check"}
                 </span>
-                <span className="text-xs text-slate-400 font-medium">5 Questions</span>
+                <span className="text-xs text-secondary-theme font-medium">5 Questions</span>
               </div>
-              <h4 className="text-sm font-semibold text-slate-100 mt-1">
+              <h4 className="text-sm font-semibold text-main-theme mt-1">
                 {result ? "Knowledge Check Completed" : "Knowledge Check Available"}
               </h4>
-              <p className="text-xs text-slate-300 mt-0.5">
+              <p className="text-xs text-secondary-theme mt-0.5">
                 {result
                   ? result.message || `Observed knowledge change: ${result.observedGain >= 0 ? "+" : ""}${result.observedGain} pp`
                   : `5 questions • Measure your current understanding on ${pendingCheck?.concept}`}
@@ -132,7 +132,7 @@ export const PendingKnowledgeCheckCard: React.FC<PendingKnowledgeCheckCardProps>
 
           <div className="flex items-center gap-2 self-end sm:self-center">
             {result ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-theme text-xs font-medium">
                 <CheckCircle className="w-3.5 h-3.5" />
                 Completed
               </span>
@@ -163,24 +163,24 @@ export const PendingKnowledgeCheckCard: React.FC<PendingKnowledgeCheckCardProps>
       {modalOpen && activeSession && (
         <div
           onClick={handleAbandon}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-6 my-8"
+            className="glass-panel bg-[var(--glass-hover-bg)] relative w-full max-w-2xl rounded-2xl p-6 shadow-2xl space-y-6 my-8 text-main-theme"
           >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-4">
               <div>
-                <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wider">
+                <span className="text-xs font-semibold text-purple-theme uppercase tracking-wider">
                   {activeSession.subject} Verification Check
                 </span>
-                <h3 className="text-lg font-bold text-white mt-0.5">
+                <h3 className="text-lg font-bold text-main-theme mt-0.5">
                   Concept: {activeSession.concept}
                 </h3>
               </div>
               <button
                 onClick={handleAbandon}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                className="p-1.5 rounded-lg text-secondary-theme hover:text-main-theme hover:bg-black/5 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -188,7 +188,7 @@ export const PendingKnowledgeCheckCard: React.FC<PendingKnowledgeCheckCardProps>
 
             {!result ? (
               <>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-secondary-theme">
                   Answer the following 5 questions to record your observed knowledge change.
                 </p>
 
@@ -197,12 +197,12 @@ export const PendingKnowledgeCheckCard: React.FC<PendingKnowledgeCheckCardProps>
                     const qId = q.id || q.questionId;
                     const selectedIdx = userAnswers[qId];
                     return (
-                      <div key={qId || idx} className="p-4 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-3">
+                      <div key={qId || idx} className="p-4 rounded-xl bg-[var(--card-nested-bg)] border border-[var(--glass-border)] space-y-3 shadow-sm">
                         <div className="flex items-start gap-2">
-                          <span className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 font-semibold text-xs flex items-center justify-center">
+                          <span className="flex-shrink-0 w-6 h-6 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-theme font-semibold text-xs flex items-center justify-center">
                             {idx + 1}
                           </span>
-                          <h4 className="text-sm font-medium text-slate-200">
+                          <h4 className="text-sm font-medium text-main-theme">
                             {q.questionText}
                           </h4>
                         </div>
@@ -216,11 +216,11 @@ export const PendingKnowledgeCheckCard: React.FC<PendingKnowledgeCheckCardProps>
                                 onClick={() => handleSelectOption(qId, optIdx)}
                                 className={`text-left p-3 rounded-lg text-xs transition-all border ${
                                   isSelected
-                                    ? "bg-indigo-600/20 border-indigo-500 text-white font-medium"
-                                    : "bg-slate-900/80 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-800/50"
+                                    ? "bg-[var(--sidebar-active-bg)] border-2 border-[var(--accent-purple)] text-main-theme font-semibold shadow-sm"
+                                    : "bg-[var(--option-bg)] border-[var(--glass-border)] text-main-theme hover:border-[var(--accent-purple)] hover:bg-[var(--option-hover-bg)]"
                                 }`}
                               >
-                                <span className="font-bold mr-2 text-slate-400">
+                                <span className={`font-bold mr-2 ${isSelected ? "text-purple-theme" : "text-secondary-theme"}`}>
                                   {String.fromCharCode(65 + optIdx)}.
                                 </span>
                                 {opt}
@@ -233,10 +233,10 @@ export const PendingKnowledgeCheckCard: React.FC<PendingKnowledgeCheckCardProps>
                   })}
                 </div>
 
-                <div className="flex items-center justify-between border-t border-slate-800 pt-4">
+                <div className="flex items-center justify-between border-t border-[var(--glass-border)] pt-4">
                   <button
                     onClick={handleAbandon}
-                    className="px-4 py-2 text-xs text-slate-400 hover:text-white transition-colors"
+                    className="px-4 py-2 text-xs text-secondary-theme hover:text-main-theme transition-colors font-medium"
                   >
                     Cancel / Abandon
                   </button>
@@ -261,23 +261,23 @@ export const PendingKnowledgeCheckCard: React.FC<PendingKnowledgeCheckCardProps>
               </>
             ) : (
               <div className="text-center py-6 space-y-4">
-                <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto">
+                <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-theme flex items-center justify-center mx-auto">
                   <CheckCircle className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">Knowledge Check Completed</h3>
-                  <p className="text-xs text-slate-400 mt-1">
+                  <h3 className="text-lg font-bold text-main-theme">Knowledge Check Completed</h3>
+                  <p className="text-xs text-secondary-theme mt-1">
                     {result.message || `Observed knowledge change: ${result.observedGain >= 0 ? "+" : ""}${result.observedGain} pp`}
                   </p>
                 </div>
-                <div className="grid grid-cols-2 gap-4 max-w-sm mx-auto p-4 rounded-xl bg-slate-950/60 border border-slate-800 text-left">
+                <div className="grid grid-cols-2 gap-4 max-w-sm mx-auto p-4 rounded-xl bg-[var(--card-nested-bg)] border border-[var(--glass-border)] text-left">
                   <div>
-                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Previous Knowledge</span>
-                    <span className="text-sm font-bold text-slate-200">{result.previousKnowledge} %</span>
+                    <span className="text-[10px] text-secondary-theme uppercase tracking-wider block">Previous Knowledge</span>
+                    <span className="text-sm font-bold text-main-theme">{result.previousKnowledge} %</span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Current Knowledge</span>
-                    <span className="text-sm font-bold text-indigo-400">{result.currentKnowledge} %</span>
+                    <span className="text-[10px] text-secondary-theme uppercase tracking-wider block">Current Knowledge</span>
+                    <span className="text-sm font-bold text-purple-theme">{result.currentKnowledge} %</span>
                   </div>
                 </div>
                 <button
@@ -285,7 +285,7 @@ export const PendingKnowledgeCheckCard: React.FC<PendingKnowledgeCheckCardProps>
                     setModalOpen(false);
                     setActiveSession(null);
                   }}
-                  className="px-6 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition-colors"
+                  className="px-6 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors shadow-md"
                 >
                   Close Window
                 </button>

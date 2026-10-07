@@ -53,7 +53,7 @@ export default function AssessmentRunner({
   const [adaptiveSessionId, setAdaptiveSessionId] = useState<string | null>(null);
   const [adaptiveQuestion, setAdaptiveQuestion] = useState<any>(null);
   const [adaptiveQuestionNumber, setAdaptiveQuestionNumber] = useState(1);
-  const [adaptiveMaxQuestions, setAdaptiveMaxQuestions] = useState(10);
+  const [adaptiveMaxQuestions, setAdaptiveMaxQuestions] = useState(25);
   const [adaptiveSelectedOption, setAdaptiveSelectedOption] = useState<number | null>(null);
   const [adaptiveSubmitting, setAdaptiveSubmitting] = useState(false);
   const [adaptiveFeedback, setAdaptiveFeedback] = useState<any>(null);
@@ -162,7 +162,7 @@ export default function AssessmentRunner({
             };
             setAdaptiveQuestion(normalized);
             setAdaptiveQuestionNumber(nextRes.questionNumber || 1);
-            setAdaptiveMaxQuestions(nextRes.totalQuestions || 10);
+            setAdaptiveMaxQuestions(nextRes.totalQuestions || 25);
             setAdaptiveSelectedOption(null);
             setAdaptiveFeedback(null);
             setAdaptiveStartTime(Date.now());
@@ -381,7 +381,7 @@ export default function AssessmentRunner({
         setNextQuestionError(null);
         setAdaptiveQuestion(normalizedNextQ);
         setAdaptiveQuestionNumber(prev => prev + 1);
-        setAdaptiveMaxQuestions(nextRes.totalQuestions || 10);
+        setAdaptiveMaxQuestions(nextRes.totalQuestions || 25);
         setAdaptiveSelectedOption(null);
         setAdaptiveFeedback(null);
         setAdaptiveStartTime(Date.now());
@@ -427,7 +427,7 @@ export default function AssessmentRunner({
       });
       if (startRes && startRes.adaptiveSessionId) {
         setAdaptiveSessionId(startRes.adaptiveSessionId);
-        setAdaptiveMaxQuestions(startRes.totalQuestions || 10);
+        setAdaptiveMaxQuestions(startRes.totalQuestions || 25);
         if (startRes.completed) {
           setStep("ADAPTIVE_RESULT");
           setStartingAdaptive(false);
@@ -519,7 +519,7 @@ export default function AssessmentRunner({
 
         setAdaptiveQuestion(nextRes.question);
         setAdaptiveQuestionNumber(prev => prev + 1);
-        setAdaptiveMaxQuestions(nextRes.totalQuestions || 10);
+        setAdaptiveMaxQuestions(nextRes.totalQuestions || 25);
         setAdaptiveSelectedOption(null);
         setAdaptiveFeedback(null);
         setAdaptiveStartTime(Date.now());

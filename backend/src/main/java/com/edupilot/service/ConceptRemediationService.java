@@ -48,7 +48,6 @@ public class ConceptRemediationService {
     @Autowired
     private SubjectRepository subjectRepository;
 
-
     public Map<String, Object> startRemediationTest(String studentId, String subject, String concept) {
         if (studentId == null || studentId.trim().isEmpty()) {
             throw new IllegalArgumentException("studentId is required");
@@ -62,7 +61,8 @@ public class ConceptRemediationService {
 
         StudentProfile profile = studentService.findOrCreateProfile(studentId);
 
-        // Fetch question IDs from completed previous sessions for this student, subject, and concept
+        // Fetch question IDs from completed previous sessions for this student,
+        // subject, and concept
         Set<String> usedQuestionIds = new HashSet<>();
         try {
             List<RemediationSession> pastSessions = remediationSessionRepository
@@ -78,14 +78,14 @@ public class ConceptRemediationService {
             System.err.println("[startRemediationTest] Error querying past completed sessions: " + ex.getMessage());
         }
 
-        // 1. Generate 10 concept-targeted questions via QuizGenerationService (tagged as REMEDIATION)
+        // 1. Generate 10 concept-targeted questions via QuizGenerationService (tagged
+        // as REMEDIATION)
         List<QuizQuestion> questions = quizGenerationService.generateForConcept(
-                subject.trim(), 
-                concept.trim(), 
-                QuizQuestion.Difficulty.MEDIUM, 
+                subject.trim(),
+                concept.trim(),
+                QuizQuestion.Difficulty.MEDIUM,
                 10,
-                usedQuestionIds
-        );
+                usedQuestionIds);
 
         List<String> questionIds = new ArrayList<>();
         List<DashboardTestQuestionDTO> questionDTOs = new ArrayList<>();
@@ -101,7 +101,8 @@ public class ConceptRemediationService {
             }
 
             int targetCorrectPos = (i < positionPlan.size()) ? positionPlan.get(i) : (i % 4);
-            VerificationOptionRandomizer.RandomizedQuestionResult randomized = VerificationOptionRandomizer.randomizeVerificationOptions(q, targetCorrectPos);
+            VerificationOptionRandomizer.RandomizedQuestionResult randomized = VerificationOptionRandomizer
+                    .randomizeVerificationOptions(q, targetCorrectPos);
 
             if (q.getId() != null) {
                 optionMappings.put(q.getId(), randomized.getDisplayedToOriginalMapping());
@@ -114,11 +115,11 @@ public class ConceptRemediationService {
                     q.getQuestionText(),
                     randomized.getDisplayedOptions(),
                     randomized.getDisplayedCorrectIndex(),
-                    q.getConceptualExplanation()
-            ));
+                    q.getConceptualExplanation()));
         }
 
-        // 2. Persist remediation session in dedicated remediation_sessions MongoDB collection
+        // 2. Persist remediation session in dedicated remediation_sessions MongoDB
+        // collection
         RemediationSession session = new RemediationSession();
         session.setStudentId(studentId);
         session.setSubject(subject.trim());
@@ -154,7 +155,8 @@ public class ConceptRemediationService {
         return res;
     }
 
-    public Map<String, Object> submitRemediationTest(String studentId, String sessionId, List<DashboardTestSubmissionDTO.AnswerEntry> answers) {
+    public Map<String, Object> submitRemediationTest(String studentId, String sessionId,
+            List<DashboardTestSubmissionDTO.AnswerEntry> answers) {
         if (sessionId == null || sessionId.trim().isEmpty()) {
             throw new IllegalArgumentException("sessionId is required");
         }
@@ -178,8 +180,8 @@ public class ConceptRemediationService {
             effectiveStudentId = session.getStudentId();
         }
 
-        List<QuizQuestion> questions = (questionIds != null && !questionIds.isEmpty()) 
-                ? questionRepository.findAllById(questionIds) 
+        List<QuizQuestion> questions = (questionIds != null && !questionIds.isEmpty())
+                ? questionRepository.findAllById(questionIds)
                 : new ArrayList<>();
 
         Map<String, QuizQuestion> questionMap = new HashMap<>();
@@ -194,12 +196,15 @@ public class ConceptRemediationService {
 
         if (answers != null) {
             for (DashboardTestSubmissionDTO.AnswerEntry ans : answers) {
-                if (ans == null || ans.getQuestionId() == null) continue;
+                if (ans == null || ans.getQuestionId() == null)
+                    continue;
                 String qId = ans.getQuestionId().trim();
 
                 // Prevent duplicate grading for the same question within a submission
-                if (processedQuestionIds.contains(qId)) continue;
-                if (questionIds != null && !questionIds.contains(qId)) continue;
+                if (processedQuestionIds.contains(qId))
+                    continue;
+                if (questionIds != null && !questionIds.contains(qId))
+                    continue;
 
                 processedQuestionIds.add(qId);
                 QuizQuestion q = questionMap.get(qId);
@@ -209,9 +214,11 @@ public class ConceptRemediationService {
                     }
                     int displayedSelectedIdx = ans.getSelectedOptionIndex();
                     List<Integer> mapping = (optionMappings != null) ? optionMappings.get(qId) : null;
-                    int resolvedOriginalIdx = VerificationOptionRandomizer.resolveDisplayedOptionIndex(displayedSelectedIdx, mapping);
+                    int resolvedOriginalIdx = VerificationOptionRandomizer
+                            .resolveDisplayedOptionIndex(displayedSelectedIdx, mapping);
 
-                    if (displayedSelectedIdx >= 0 && displayedSelectedIdx < 4 && resolvedOriginalIdx == q.getCorrectOptionIndex()) {
+                    if (displayedSelectedIdx >= 0 && displayedSelectedIdx < 4
+                            && resolvedOriginalIdx == q.getCorrectOptionIndex()) {
                         correctCount++;
                     }
                 }
@@ -230,12 +237,15 @@ public class ConceptRemediationService {
 
         // Track previous knowledge for observational growth computation
         double previousKnowledge = 50.0;
-        Optional<ConceptMastery> existingCmOpt = conceptMasteryRepository.findByUserIdAndConceptName(canonicalUserId, concept);
+        Optional<ConceptMastery> existingCmOpt = conceptMasteryRepository.findByUserIdAndConceptName(canonicalUserId,
+                concept);
         if (existingCmOpt.isPresent()) {
-            previousKnowledge = existingCmOpt.get().getAccuracy() > 0 ? existingCmOpt.get().getAccuracy() : existingCmOpt.get().getMasteryScore();
+            previousKnowledge = existingCmOpt.get().getAccuracy() > 0 ? existingCmOpt.get().getAccuracy()
+                    : existingCmOpt.get().getMasteryScore();
         }
 
-        // 1. Persist QuizSession ONLY if this session is a Knowledge Check verification assessment
+        // 1. Persist QuizSession ONLY if this session is a Knowledge Check verification
+        // assessment
         if (session.getModuleType() == ModuleType.VERIFICATION) {
             QuizSession quizSession = new QuizSession();
             quizSession.setUserId(canonicalUserId);
@@ -252,12 +262,13 @@ public class ConceptRemediationService {
             quizSessionRepository.save(quizSession);
         }
 
-
         if (passed) {
             // Mark corresponding active/verification-pending recommendations as COMPLETED
-            List<Recommendation> recs = recommendationRepository.findByUserIdAndStatus(canonicalUserId, Recommendation.Status.ACTIVE);
-            recs.addAll(recommendationRepository.findByUserIdAndStatus(canonicalUserId, Recommendation.Status.VERIFICATION_PENDING));
-            
+            List<Recommendation> recs = recommendationRepository.findByUserIdAndStatus(canonicalUserId,
+                    Recommendation.Status.ACTIVE);
+            recs.addAll(recommendationRepository.findByUserIdAndStatus(canonicalUserId,
+                    Recommendation.Status.VERIFICATION_PENDING));
+
             for (Recommendation r : recs) {
                 if (r.getConceptName() != null && isConceptMatch(r.getConceptName(), concept)) {
                     r.setStatus(Recommendation.Status.COMPLETED);
@@ -292,8 +303,9 @@ public class ConceptRemediationService {
         cm.setMasteryLevel(passed ? ConceptMastery.MasteryLevel.MASTER : ConceptMastery.MasteryLevel.INTERMEDIATE);
         cm.setAccuracy(newAccuracy);
         cm.setConfidenceScore(passed ? 100.0 : 70.0);
-        
-        // CONFIRMED ISSUE 1: Explicitly set ConceptStatus based on score >= 70 threshold
+
+        // CONFIRMED ISSUE 1: Explicitly set ConceptStatus based on score >= 70
+        // threshold
         if (newAccuracy >= 70.0) {
             cm.setStatus(ConceptMastery.ConceptStatus.STRONG);
         } else {
@@ -314,7 +326,7 @@ public class ConceptRemediationService {
         // Recalculate active roadmap topic states using existing RoadmapService
         try {
             if (roadmapService != null) {
-                String resolvedSubjectCode = (subjectRepository != null) 
+                String resolvedSubjectCode = (subjectRepository != null)
                         ? subjectRepository.findBySubjectName(finalSubject)
                                 .map(Subject::getSubjectCode)
                                 .orElseGet(() -> resolveSubjectCodeFallback(finalSubject))
@@ -332,7 +344,8 @@ public class ConceptRemediationService {
             System.err.println("[ConceptRemediationService] Learning plan refresh note: " + e.getMessage());
         }
 
-        double observedGain = BigDecimal.valueOf(newAccuracy - previousKnowledge).setScale(1, RoundingMode.HALF_UP).doubleValue();
+        double observedGain = BigDecimal.valueOf(newAccuracy - previousKnowledge).setScale(1, RoundingMode.HALF_UP)
+                .doubleValue();
 
         Map<String, Object> response = new HashMap<>();
         response.put("sessionId", sessionId);
@@ -352,10 +365,13 @@ public class ConceptRemediationService {
 
     /**
      * Dynamic Reassessment Eligibility Engine.
-     * Evaluates if student is eligible for a 5-question Knowledge Check based on genuine completed learning activities.
+     * Evaluates if student is eligible for a 5-question Knowledge Check based on
+     * genuine completed learning activities.
      * Lifecycle Rule:
-     * 1. Candidates are identified by completed learning activities (remediation sessions) or weak concepts (<70%).
-     * 2. Eligibility REQUIRES a completed learning activity AFTER the previous completed Knowledge Check for that concept.
+     * 1. Candidates are identified by completed learning activities (remediation
+     * sessions) or weak concepts (<70%).
+     * 2. Eligibility REQUIRES a completed learning activity AFTER the previous
+     * completed Knowledge Check for that concept.
      * 3. A completed Knowledge Check consumes current eligibility.
      * 4. A new learning activity restores eligibility.
      * 5. Abandoned Knowledge Checks do NOT consume eligibility.
@@ -375,7 +391,8 @@ public class ConceptRemediationService {
         String targetSubject = (subject != null && !subject.isBlank()) ? subject : "Data Structures & Algorithms";
 
         // 1. Gather candidate concepts in priority order
-        List<RemediationSession> remSessions = remediationSessionRepository.findByStudentIdOrderByCreatedAtDesc(canonicalUserId);
+        List<RemediationSession> remSessions = remediationSessionRepository
+                .findByStudentIdOrderByCreatedAtDesc(canonicalUserId);
         if (remSessions.isEmpty() && !studentId.equals(canonicalUserId)) {
             remSessions = remediationSessionRepository.findByStudentIdOrderByCreatedAtDesc(studentId);
         }
@@ -398,8 +415,10 @@ public class ConceptRemediationService {
         for (ConceptMastery cm : cms) {
             String cmSubject = cm.getSubjectName() != null ? cm.getSubjectName() : "Data Structures & Algorithms";
             if (isConceptMatch(cmSubject, targetSubject)) {
-                if (cm.getAttemptCount() > 0 && (cm.getStatus() == ConceptMastery.ConceptStatus.WEAK || cm.getAccuracy() < 70.0)) {
-                    String conceptName = cm.getTopic() != null && !cm.getTopic().isBlank() ? cm.getTopic() : cm.getConceptName();
+                if (cm.getAttemptCount() > 0
+                        && (cm.getStatus() == ConceptMastery.ConceptStatus.WEAK || cm.getAccuracy() < 70.0)) {
+                    String conceptName = cm.getTopic() != null && !cm.getTopic().isBlank() ? cm.getTopic()
+                            : cm.getConceptName();
                     if (conceptName != null && !candidateConcepts.contains(conceptName)) {
                         candidateConcepts.add(conceptName);
                     }
@@ -416,7 +435,8 @@ public class ConceptRemediationService {
 
         // 3. Evaluate each candidate concept for valid unconsumed eligibility
         for (String candidateConcept : candidateConcepts) {
-            // Find timestamp of the LATEST completed verification quiz for this exact concept
+            // Find timestamp of the LATEST completed verification quiz for this exact
+            // concept
             LocalDateTime latestQuizTime = null;
             for (QuizSession qs : allUserQuizzes) {
                 if (qs.isVerificationQuiz() && qs.getStatus() == QuizSession.Status.COMPLETED) {
@@ -430,12 +450,15 @@ public class ConceptRemediationService {
                 }
             }
 
-            // Find timestamp of the LATEST completed learning activity for this concept (excluding verification quizzes)
+            // Find timestamp of the LATEST completed learning activity for this concept
+            // (excluding verification quizzes)
             LocalDateTime latestActivityTime = null;
             for (RemediationSession rs : remSessions) {
-                if (rs.getModuleType() != ModuleType.VERIFICATION && rs.isCompleted() && rs.getConcept() != null && isConceptMatch(rs.getConcept(), candidateConcept)) {
+                if (rs.getModuleType() != ModuleType.VERIFICATION && rs.isCompleted() && rs.getConcept() != null
+                        && isConceptMatch(rs.getConcept(), candidateConcept)) {
                     if (rs.getSubject() == null || isConceptMatch(rs.getSubject(), targetSubject)) {
-                        LocalDateTime actTime = rs.getCreatedAt() != null ? rs.getCreatedAt() : LocalDateTime.now().minusHours(1);
+                        LocalDateTime actTime = rs.getCreatedAt() != null ? rs.getCreatedAt()
+                                : LocalDateTime.now().minusHours(1);
                         if (latestActivityTime == null || actTime.isAfter(latestActivityTime)) {
                             latestActivityTime = actTime;
                         }
@@ -444,11 +467,14 @@ public class ConceptRemediationService {
             }
 
             // Eligibility Condition:
-            // A. If NO verification quiz has ever been completed for this concept AND a qualifying learning activity or concept mastery attempt exists -> ELIGIBLE
-            // B. If a verification quiz WAS completed at latestQuizTime AND a new completed learning activity occurred AFTER latestQuizTime -> ELIGIBLE
+            // A. If NO verification quiz has ever been completed for this concept AND a
+            // qualifying learning activity or concept mastery attempt exists -> ELIGIBLE
+            // B. If a verification quiz WAS completed at latestQuizTime AND a new completed
+            // learning activity occurred AFTER latestQuizTime -> ELIGIBLE
             boolean isEligible = false;
             if (latestQuizTime == null) {
-                // First-time eligibility: requires completed learning activity or concept mastery record
+                // First-time eligibility: requires completed learning activity or concept
+                // mastery record
                 if (latestActivityTime != null) {
                     isEligible = true;
                 } else {
@@ -462,7 +488,8 @@ public class ConceptRemediationService {
                     }
                 }
             } else {
-                // Secondary Knowledge Check: REQUIRES a new completed learning activity after latestQuizTime
+                // Secondary Knowledge Check: REQUIRES a new completed learning activity after
+                // latestQuizTime
                 if (latestActivityTime != null && latestActivityTime.isAfter(latestQuizTime)) {
                     isEligible = true;
                 }
@@ -474,7 +501,8 @@ public class ConceptRemediationService {
                 result.put("subject", targetSubject);
                 result.put("concept", candidateConcept);
                 result.put("questionCount", 5);
-                result.put("description", "You've completed learning on " + candidateConcept + ". Take a quick 5-question check to measure your current understanding.");
+                result.put("description", "You've completed learning on " + candidateConcept
+                        + ". Take a quick 5-question check to measure your current understanding.");
                 return result;
             }
         }
@@ -487,7 +515,8 @@ public class ConceptRemediationService {
     }
 
     private boolean isConceptMatch(String c1, String c2) {
-        if (c1 == null || c2 == null) return false;
+        if (c1 == null || c2 == null)
+            return false;
         String clean1 = c1.trim().toLowerCase();
         String clean2 = c2.trim().toLowerCase();
         return clean1.equals(clean2) || clean1.contains(clean2) || clean2.contains(clean1);
@@ -508,12 +537,17 @@ public class ConceptRemediationService {
     }
 
     private String resolveSubjectCodeFallback(String rawSubject) {
-        if (rawSubject == null || rawSubject.isBlank()) return "CS301";
+        if (rawSubject == null || rawSubject.isBlank())
+            return "CS301";
         String s = rawSubject.trim().toLowerCase();
-        if (s.contains("database") || s.contains("dbms")) return "CS302";
-        if (s.contains("java") || s.contains("oop")) return "CS303";
-        if (s.contains("network") || s.contains("cn")) return "CS304";
-        if (s.contains("operating") || s.contains("os")) return "CS401";
+        if (s.contains("database") || s.contains("dbms"))
+            return "CS302";
+        if (s.contains("java") || s.contains("oop"))
+            return "CS303";
+        if (s.contains("network") || s.contains("cn"))
+            return "CS304";
+        if (s.contains("operating") || s.contains("os"))
+            return "CS401";
         return "CS301";
     }
 }

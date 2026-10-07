@@ -18,6 +18,11 @@
   --accent-amber: #fbbf24;
   --accent-pink: #f472b6;
   --sidebar-active-bg: rgba(139, 92, 246, 0.2);
+
+  /* Theme surface elements */
+  --card-nested-bg: rgba(13, 17, 30, 0.5);
+  --option-bg: rgba(20, 26, 46, 0.6);
+  --option-hover-bg: rgba(139, 92, 246, 0.1);
 }
 
 .light {
@@ -38,6 +43,11 @@
   --accent-amber: #b45309;
   --accent-pink: #be185d;
   --sidebar-active-bg: rgba(109, 40, 217, 0.1);
+
+  /* Theme surface elements */
+  --card-nested-bg: rgba(241, 245, 249, 0.7);
+  --option-bg: #ffffff;
+  --option-hover-bg: rgba(109, 40, 217, 0.06);
 }
 
 body {
@@ -133,6 +143,14 @@ select, option {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(139, 92, 246, 0.6);
+}
+
+.light ::-webkit-scrollbar-thumb {
+  background: rgba(109, 40, 217, 0.25);
+}
+
+.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(109, 40, 217, 0.45);
 }
 
 /* Custom animations and utility classes */
