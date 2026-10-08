@@ -38,11 +38,15 @@ export default function OnboardingGuard({ children }: { children: React.ReactNod
     );
   }
 
-  // If student onboarding is incomplete and user tries to access protected dashboard routes, redirect to onboarding
+  // If user is unauthenticated (no session identity), redirect to login/landing page
   const userId = localStorage.getItem("edupilot_user_id") || "";
-  const role = localStorage.getItem("edupilot_role") || "STUDENT";
+  if (!userId) {
+    return <Navigate to="/" replace />;
+  }
 
-  if (userId && role === "STUDENT" && !isCompleted && location.pathname !== "/onboarding") {
+  // If student onboarding is incomplete and user tries to access protected dashboard routes, redirect to onboarding
+  const role = localStorage.getItem("edupilot_role") || "STUDENT";
+  if (role === "STUDENT" && !isCompleted && location.pathname !== "/onboarding") {
     return <Navigate to="/onboarding" replace />;
   }
 

@@ -1,6 +1,7 @@
 package com.edupilot.service;
 
 import com.edupilot.dto.*;
+import com.edupilot.exception.GroqKeyRequiredException;
 import com.edupilot.model.*;
 import com.edupilot.repository.*;
 import jakarta.annotation.PostConstruct;
@@ -188,7 +189,16 @@ public class AssessmentService {
         QuizQuestion q1;
         try {
             q1 = quizGenerationService.generateSingleDiagnosticQuestion(subjectName, q1Spec, genContext, 1, totalQuestions);
+        } catch (GroqKeyRequiredException groqEx) {
+            System.err.println("[AssessmentService] Groq key required for diagnostic start: " + groqEx.getMessage());
+            throw groqEx;
         } catch (Exception ex) {
+            if (ex.getCause() instanceof GroqKeyRequiredException) {
+                throw (GroqKeyRequiredException) ex.getCause();
+            }
+            if (ex.getMessage() != null && ex.getMessage().contains("Personal Groq API key is required")) {
+                throw new GroqKeyRequiredException("Personal Groq API Key is required to generate this assessment.", ex);
+            }
             System.err.println("[AssessmentService] Groq diagnostic Q1 generation failed: " + ex.getMessage());
             throw new IllegalStateException("Diagnostic question generation failed: " + ex.getMessage(), ex);
         }

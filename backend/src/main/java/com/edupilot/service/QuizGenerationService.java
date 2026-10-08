@@ -1,5 +1,6 @@
 package com.edupilot.service;
 
+import com.edupilot.exception.GroqKeyRequiredException;
 import com.edupilot.model.ModuleType;
 import com.edupilot.model.QuizQuestion;
 import com.edupilot.model.StudentProfile;
@@ -716,6 +717,11 @@ public class QuizGenerationService {
             try {
                 String rawResponse = groqProvider.generateResponse(systemPrompt, currentPrompt.toString(), subContext);
 
+                if (rawResponse != null && (rawResponse.contains("UNAUTHENTICATED") || rawResponse.contains("Personal Groq API key is required"))) {
+                    System.err.println("[QuizGenerationService] Missing Personal Groq API Key detected. Halting retries.");
+                    throw new GroqKeyRequiredException("Personal Groq API Key is required to generate this assessment.");
+                }
+
                 if (rawResponse != null && (rawResponse.contains("RATE_LIMIT_TPD") || rawResponse.contains("daily token quota"))) {
                     System.err.println("[QuizGenerationService] Groq Daily Quota Exceeded (TPD). Halting retries.");
                     throw new IllegalStateException("Groq daily token quota (TPD) reached. Diagnostic assessment generation halted. Please try again after quota resets.");
@@ -765,6 +771,9 @@ public class QuizGenerationService {
                     }
                 }
             } catch (Exception ex) {
+                if (ex instanceof GroqKeyRequiredException) {
+                    throw (GroqKeyRequiredException) ex;
+                }
                 lastError = (ex.getMessage() != null && !ex.getMessage().isBlank()) ? ex.getMessage() : ex.toString();
                 System.err.println("[QuizGenerationService] Question " + position + "/" + totalQuestions + " attempt " + attempt + " exception: " + lastError);
                 if (lastError != null && lastError.contains("daily token quota")) throw ex;

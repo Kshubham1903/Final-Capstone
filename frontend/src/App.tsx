@@ -12,6 +12,7 @@ import AdminDashboard from "./app/admin/page";
 import SubjectAnalyticsPage from "./app/admin/subject-analytics/page";
 import StudentDirectoryPage from "./app/admin/student-directory/page";
 import IndividualStudentAnalyticsPage from "./app/admin/research-analytics/students/[userId]/page";
+import ResearchAnalyticsPage from "./app/admin/research-analytics/page";
 import AITutorPage from "./pages/AITutorPage";
 import OnboardingGuard from "./components/OnboardingGuard";
 
@@ -37,7 +38,7 @@ export default function App() {
       <Route path="/admin" element={<AdminDashboard />} />
       <Route path="/admin/subject-analytics" element={<SubjectAnalyticsPage />} />
       <Route path="/admin/student-directory" element={<StudentDirectoryPage />} />
-      <Route path="/admin/research-analytics" element={<Navigate to="/admin/subject-analytics" replace />} />
+      <Route path="/admin/research-analytics" element={<ResearchAnalyticsPage />} />
       <Route path="/admin/research-analytics/students/:userId" element={<IndividualStudentAnalyticsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

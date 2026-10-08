@@ -361,7 +361,11 @@ export default function Onboarding() {
           }
         } catch (err: any) {
           console.error("Failed to start assessment session:", err);
-          setError(err.message || "Failed to load assessment questions. Personal Groq API key is required.");
+          if (err.code === "GROQ_KEY_REQUIRED" || err.message?.includes("Groq API Key") || err.message?.includes("Groq")) {
+            setError("Personal Groq API key is required. Please configure your key before starting the Initial Diagnostic.");
+          } else {
+            setError(err.message || "Failed to load assessment questions. Personal Groq API key is required.");
+          }
         } finally {
           setLoadingQuestions(false);
         }

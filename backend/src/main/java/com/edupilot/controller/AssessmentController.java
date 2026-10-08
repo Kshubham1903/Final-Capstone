@@ -1,6 +1,7 @@
 package com.edupilot.controller;
 
 import com.edupilot.dto.*;
+import com.edupilot.exception.GroqKeyRequiredException;
 import com.edupilot.service.AssessmentService;
 import com.edupilot.service.StudentService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,10 +58,22 @@ public class AssessmentController {
             }
             AssessmentSessionResponse response = assessmentService.startAssessmentSession(request);
             return ResponseEntity.ok(response);
+        } catch (GroqKeyRequiredException groqEx) {
+            System.err.println("[AssessmentController /start GroqKeyRequiredException] " + groqEx.getMessage());
+            return ResponseEntity.status(400).body(Map.of(
+                "error", "GROQ_KEY_REQUIRED",
+                "message", "Personal Groq API Key is required to generate this assessment."
+            ));
         } catch (IllegalArgumentException argEx) {
             System.err.println("[AssessmentController /start IllegalArgumentException] " + argEx.getMessage());
             return ResponseEntity.status(400).body(Map.of("error", "INVALID_REQUEST", "message", argEx.getMessage()));
         } catch (Exception ex) {
+            if (ex instanceof GroqKeyRequiredException || (ex.getCause() instanceof GroqKeyRequiredException)) {
+                return ResponseEntity.status(400).body(Map.of(
+                    "error", "GROQ_KEY_REQUIRED",
+                    "message", "Personal Groq API Key is required to generate this assessment."
+                ));
+            }
             System.err.println("[AssessmentController /start Exception] " + ex.getMessage());
             return ResponseEntity.status(500).body(Map.of("error", "ASSESSMENT_START_FAILED", "message", ex.getMessage() != null ? ex.getMessage() : "Failed to start assessment session"));
         }
@@ -164,11 +177,22 @@ public class AssessmentController {
             String authUserId = getAuthenticatedUserId();
             AdaptiveAssessmentDTOs.AdaptiveNextResponse response = assessmentService.getInitialNextQuestion(request, authUserId);
             return ResponseEntity.ok(response);
+        } catch (GroqKeyRequiredException groqEx) {
+            return ResponseEntity.status(400).body(Map.of(
+                "error", "GROQ_KEY_REQUIRED",
+                "message", "Personal Groq API Key is required to generate this assessment."
+            ));
         } catch (SecurityException secEx) {
             return ResponseEntity.status(403).body(Map.of("error", "FORBIDDEN", "message", secEx.getMessage()));
         } catch (IllegalArgumentException argEx) {
             return ResponseEntity.status(404).body(Map.of("error", "SESSION_NOT_FOUND", "message", argEx.getMessage()));
         } catch (Exception ex) {
+            if (ex instanceof GroqKeyRequiredException || (ex.getCause() instanceof GroqKeyRequiredException)) {
+                return ResponseEntity.status(400).body(Map.of(
+                    "error", "GROQ_KEY_REQUIRED",
+                    "message", "Personal Groq API Key is required to generate this assessment."
+                ));
+            }
             return ResponseEntity.status(500).body(Map.of("error", "INITIAL_NEXT_FAILED", "message", ex.getMessage()));
         }
     }
