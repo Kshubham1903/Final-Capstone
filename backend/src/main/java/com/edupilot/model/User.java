@@ -12,13 +12,12 @@ public class User {
     private String email;
     private String password;
     private String fullName;
-    private Role role; // STUDENT, FACULTY, ADMIN
+    private Role role; // STUDENT, ADMIN
     private AccountType accountType; // GENUINE_STUDENT, TEST_AUTOMATION, SYNTHETIC_RESEARCH_SEED
     private LocalDateTime createdAt;
     
     public enum Role {
         STUDENT,
-        FACULTY,
         ADMIN
     }
 

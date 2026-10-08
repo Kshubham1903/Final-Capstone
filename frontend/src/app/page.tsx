@@ -19,7 +19,7 @@ export default function Home() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"STUDENT" | "FACULTY" | "ADMIN">("STUDENT");
+  const [role, setRole] = useState<"STUDENT" | "ADMIN">("STUDENT");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -29,8 +29,6 @@ export default function Home() {
   const [course, setCourse] = useState("Computer Science");
   const [semester, setSemester] = useState("1");
   const [targetCgpa, setTargetCgpa] = useState("8.5");
-  const [department, setDepartment] = useState("Computer Science Department");
-  const [designation, setDesignation] = useState("Assistant Professor");
   const [showPassword, setShowPassword] = useState(false);
 
   // Sync with active theme configuration
@@ -89,8 +87,6 @@ export default function Home() {
 
       if (role === "STUDENT") {
         navigate("/onboarding");
-      } else if (role === "FACULTY") {
-        navigate("/faculty");
       } else {
         navigate("/admin");
       }
@@ -126,8 +122,6 @@ export default function Home() {
       const targetRole = res.role || role;
       if (targetRole === "STUDENT") {
         navigate("/dashboard");
-      } else if (targetRole === "FACULTY") {
-        navigate("/faculty");
       } else if (targetRole === "ADMIN") {
         navigate("/admin");
       }
@@ -224,7 +218,7 @@ export default function Home() {
                   {role === "ADMIN" ? "System Admin Console Active" : "Select Portal Role"}
                 </label>
                 <div className="grid grid-cols-2 gap-2 p-1 bg-white/10 rounded-xl border border-white/10 text-xs font-semibold">
-                  {(["STUDENT", "FACULTY"] as const).map((r) => (
+                  {(["STUDENT", "ADMIN"] as const).map((r) => (
                     <button
                       type="button"
                       key={r}
@@ -343,33 +337,6 @@ export default function Home() {
                 </>
               )}
 
-              {/* FACULTY Specific Registration Inputs */}
-              {isRegister && role === "FACULTY" && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-secondary-theme uppercase tracking-wider">Department</label>
-                    <input
-                      type="text"
-                      required
-                      value={department}
-                      onChange={(e) => setDepartment(e.target.value)}
-                      className="w-full py-2.5 px-3 rounded-xl glass-input text-xs"
-                      placeholder="Computer Science"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-secondary-theme uppercase tracking-wider">Designation</label>
-                    <input
-                      type="text"
-                      required
-                      value={designation}
-                      onChange={(e) => setDesignation(e.target.value)}
-                      className="w-full py-2.5 px-3 rounded-xl glass-input text-xs"
-                      placeholder="Assistant Professor"
-                    />
-                  </div>
-                </div>
-              )}
 
               {/* Feedback Alert */}
               {error && (

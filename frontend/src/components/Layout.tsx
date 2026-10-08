@@ -28,7 +28,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = location.pathname;
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [currentRole, setCurrentRole] = useState<"STUDENT" | "FACULTY" | "ADMIN">("STUDENT");
+  const [currentRole, setCurrentRole] = useState<"STUDENT" | "ADMIN">("STUDENT");
   const [streak, setStreak] = useState(0);
   const [userName, setUserName] = useState("User");
   const [notifications, setNotifications] = useState<Array<{ id: number; text: string; type: string }>>([]);
@@ -78,21 +78,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     syncProfile();
 
     // Sync role based on pathname
-    if (pathname.includes("/faculty")) {
-      setCurrentRole("FACULTY");
-    } else if (pathname.includes("/admin")) {
+    if (pathname.includes("/admin")) {
       setCurrentRole("ADMIN");
     } else {
       setCurrentRole("STUDENT");
     }
   }, [pathname]);
 
-  const handleRoleChange = (role: "STUDENT" | "FACULTY" | "ADMIN") => {
+  const handleRoleChange = (role: "STUDENT" | "ADMIN") => {
     setCurrentRole(role);
     if (role === "STUDENT") {
       navigate("/dashboard");
-    } else if (role === "FACULTY") {
-      navigate("/faculty");
     } else if (role === "ADMIN") {
       navigate("/admin");
     }
@@ -118,10 +114,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       { name: "Adaptive Quizzes", href: "/dashboard/quizzes", icon: GraduationCap },
       { name: "AI Tutor", href: "/dashboard/ai-tutor", icon: Bot },
       { name: "My Profile", href: "/dashboard/profile", icon: User },
-    ],
-    FACULTY: [
-      { name: "Class Performance", href: "/faculty", icon: Users },
-      { name: "Quiz Manager", href: "/faculty/quiz-manager", icon: GraduationCap },
     ],
     ADMIN: [
       { name: "System Control", href: "/admin", icon: Settings },

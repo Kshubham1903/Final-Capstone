@@ -164,7 +164,7 @@ print(f"[DASHBOARD TEST LATEST RESULT PASS] score={latest_dash.json().get('total
 # ------------------------------------------------------------------------
 # 5. Practice Quiz Pool & Question Creation Flow
 # ------------------------------------------------------------------------
-print("\n--- 5. Testing Practice Quiz Pool & Faculty Question Creation Flow ---", flush=True)
+print("\n--- 5. Testing Practice Quiz Pool & Question Creation Flow ---", flush=True)
 new_q_payload = {
     "subject": "Data Structures & Algorithms",
     "concept": "Binary Search Trees",

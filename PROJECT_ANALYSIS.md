@@ -193,18 +193,16 @@ EduPilot AI Root (Capston/)
 ## Frontend Analysis
 
 ### Pages Overview
-- **Landing & Auth (`src/app/page.tsx`)**: Hero section featuring feature highlights, dark/light aesthetics, interactive modal supporting student/faculty/admin authentication with toggleable login & registration modes.
+- **Landing & Auth (`src/app/page.tsx`)**: Hero section featuring feature highlights, dark/light aesthetics, interactive modal supporting student/admin authentication with toggleable login & registration modes.
 - **Onboarding (`src/app/onboarding/page.tsx`)**: 5-step wizard capturing course details, subjects, career goals, target CGPA, study hours, sleep habits, stress levels, exercise time, and preferred learning style.
 - **Student Dashboard (`src/app/dashboard/page.tsx`)**: Primary analytics view featuring SGI radial gauge, predicted CGPA progress cards, radar chart breakdown of mastery vs lifestyle, weekly activity bar charts, daily lifestyle logging drawer, and AI copilot insight list.
 - **Career Center (`src/app/dashboard/career/page.tsx`)**: AI skill gap analyzer comparing current student competencies against target industry roles (e.g., AI/ML Specialist, Full Stack Developer, Data Engineer), required skill checklists, and recommended certifications.
 - **Pomodoro Focus Timer (`src/app/dashboard/pomodoro/page.tsx`)**: Customizable Pomodoro timer (25m work / 5m short break / 15m long break), integrated web audio oscillator engine producing ambient Lofi beats and white noise, and focus log tracker.
 - **Adaptive Quizzes (`src/app/dashboard/quizzes/page.tsx`)**: Quiz engine that dynamically fetches questions based on subject and difficulty. Adjusts difficulty in real-time based on accuracy and timer speed.
-- **Faculty Dashboard (`src/app/faculty/page.tsx`)**: Class performance analytics, student risk distribution pie charts, filterable student roster with risk level tags (`LOW`, `MEDIUM`, `HIGH`), and intervention request tools.
-- **Quiz Manager (`src/app/faculty/quiz-manager/page.tsx`)**: Question authoring interface allowing faculty to author multiple-choice questions with conceptual explanations and target difficulty tiers.
 - **Admin Dashboard (`src/app/admin/page.tsx`)**: System control console displaying cluster node metrics, DB sync status, global user management tables, and emergency broadcast creation.
 
 ### Components & Services
-- `Layout.tsx`: Common shell with dynamic sidebar links according to active user role (`STUDENT`, `FACULTY`, `ADMIN`), responsive mobile navbar, top header bar, light/dark theme switch, streak counter, and notification dropdown.
+- `Layout.tsx`: Common shell with dynamic sidebar links according to active user role (`STUDENT`, `ADMIN`), responsive mobile navbar, top header bar, light/dark theme switch, streak counter, and notification dropdown.
 - `api.ts`: Central API access module managing connection checks, REST invocations, and fallback switches.
 - `mockData.ts`: Client-side fallback state manager with static seed question banks and LocalStorage persistence logic.
 
@@ -350,7 +348,7 @@ Passes DataFrame to `rf_model.predict()` to obtain performance level (`Low`, `Me
 ### MongoDB Collections & Schemas
 
 1. **`users`**
-   - Fields: `_id`, `email`, `password`, `fullName`, `role` (`STUDENT`, `FACULTY`, `ADMIN`), `createdAt`.
+   - Fields: `_id`, `email`, `password`, `fullName`, `role` (`STUDENT`, `ADMIN`), `createdAt`.
    - Index: Unique index on `email`.
 2. **`student_profiles`**
    - Fields: `_id`, `userId`, `course`, `semester`, `subjects`, `careerGoals`, `preferredStudyHoursPerDay`, `targetCgpa`, `consistencyScore`, `productivityScore`, `lifestyleScore`, `learningStyle`, `currentStreakCount`, `studentGrowthIndex`, `conceptMastery` (Map), `weakConcepts` (Map), `strongConcepts` (Map), `completedQuizzesCount`, `predictedCgpa`, `academicRiskLevel`, demographic questionnaire fields.

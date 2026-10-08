@@ -56,10 +56,8 @@ All routes handled by `React Router DOM` v7 (`BrowserRouter` in `src/main.tsx` +
 4. `/dashboard/career` -> Career Center (`src/app/dashboard/career/page.tsx`): PASS
 5. `/dashboard/pomodoro` -> Pomodoro Focus Timer (`src/app/dashboard/pomodoro/page.tsx`): PASS
 6. `/dashboard/quizzes` -> Adaptive Quizzes (`src/app/dashboard/quizzes/page.tsx`): PASS
-7. `/faculty` -> Faculty Dashboard (`src/app/faculty/page.tsx`): PASS
-8. `/faculty/quiz-manager` -> Quiz Authoring (`src/app/faculty/quiz-manager/page.tsx`): PASS
-9. `/admin` -> Admin Dashboard (`src/app/admin/page.tsx`): PASS
-10. `*` -> Wildcard Catch-all (Redirects gracefully to `/` via `<Navigate to="/" replace />`): PASS
+7. `/admin` -> Admin Dashboard (`src/app/admin/page.tsx`): PASS
+8. `*` -> Wildcard Catch-all (Redirects gracefully to `/` via `<Navigate to="/" replace />`): PASS
 
 ---
 

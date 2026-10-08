@@ -148,7 +148,7 @@ def generate_personalized_insights(req: LifestyleQuestionnaireRequest, pred_leve
 
     # 6. Tutoring Sessions
     if req.tutoring_sessions == 0 and pred_level in ["Low", "Medium"]:
-        recs.append("Guidance Plan: Consider booking a faculty tutoring sync for complex topics in Algorithms and Database Systems.")
+        recs.append("Guidance Plan: Consider booking a peer or guided self-tutoring sync for complex topics in Algorithms and Database Systems.")
 
     # 7. General Productivity & Revision suggestion
     recs.append("Daily Routine: Activate Pomodoro cycles (25m study + 5m break) during focus blocks to bypass digital screen fatigue.")
@@ -243,7 +243,7 @@ def predict_performance(profile: StudentProfileRequest):
     if profile.lifestyle.screen_time_hours > 6.0:
         insights.append("High screen time detected. Replacing 1 hour of recreational screen time with active study yields better focus.")
     if profile.lifestyle.attendance_rate < 75:
-        insights.append("Attendance is below recommendation limit. Try to attend upcoming live faculty reviews to capture key test concepts.")
+        insights.append("Attendance is below recommendation limit. Try to review upcoming live lecture recordings to capture key test concepts.")
         
     if not insights:
         insights.append("Excellent balance! Student maintains a healthy growth velocity. Suggest moving to advanced quizzes.")

@@ -73,7 +73,7 @@ export async function registerUser(payload: {
   email: string;
   password: string;
   fullName: string;
-  role: "STUDENT" | "FACULTY" | "ADMIN";
+  role: "STUDENT" | "ADMIN";
 }): Promise<{ ok: boolean; message?: string; userId?: string; role?: string }> {
   try {
     const res = await fetch(`${getBackendUrl()}/api/auth/register`, {

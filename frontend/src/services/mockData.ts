@@ -57,7 +57,7 @@ export interface StudentProfile {
   weeklyGoalCompletion: number; // %
 }
 
-// Dynamic Question Bank (starts empty, populated from faculty authoring or API)
+// Dynamic Question Bank (starts empty, populated from API)
 export const QUESTION_BANK: QuizQuestion[] = [];
 
 // Default Empty Student Profile Template for New Registered Users
@@ -93,25 +93,6 @@ export const EMPTY_STUDENT_PROFILE: StudentProfile = {
   badges: [],
   completedQuizzesCount: 0,
   weeklyGoalCompletion: 0
-};
-
-// Class Performance Default Container for Faculty View
-export const MOCK_CLASS_DATA = {
-  averageSgi: 0.0,
-  averageCgpa: 0.0,
-  atRiskCount: 0,
-  quizCompletionRate: 0,
-  subjectBreakdown: [],
-  students: [] as Array<{
-    id: string;
-    name: string;
-    sgi: number;
-    cgpa: number;
-    risk: "LOW" | "MEDIUM" | "HIGH";
-    status: string;
-    attendance: number;
-    primaryIssue?: string;
-  }>
 };
 
 // Helper methods to read/write state with localStorage fallback

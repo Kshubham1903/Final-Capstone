@@ -93,11 +93,9 @@ public class AdminAnalyticsIntegrationTest {
 
     private String adminToken;
     private String studentToken;
-    private String facultyToken;
 
     private User adminUser;
     private User studentUser;
-    private User facultyUser;
 
     @BeforeEach
     public void setup() {
@@ -135,16 +133,6 @@ public class AdminAnalyticsIntegrationTest {
         studentUser.setCreatedAt(LocalDateTime.now());
         studentUser = userRepository.save(studentUser);
         studentToken = jwtService.generateToken(studentUser.getId(), studentUser.getEmail(), "STUDENT");
-
-        // 3. Create and persist Faculty user
-        facultyUser = new User();
-        facultyUser.setEmail("faculty_" + timestamp + "@edupilot.com");
-        facultyUser.setPassword(passwordEncoder.encode("facultypass123"));
-        facultyUser.setFullName("Professor Smith");
-        facultyUser.setRole(User.Role.FACULTY);
-        facultyUser.setCreatedAt(LocalDateTime.now());
-        facultyUser = userRepository.save(facultyUser);
-        facultyToken = jwtService.generateToken(facultyUser.getId(), facultyUser.getEmail(), "FACULTY");
     }
 
     @Test
@@ -243,13 +231,6 @@ public class AdminAnalyticsIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    @Test
-    public void testFacultyCannotAccessCohortEndpoint() throws Exception {
-        mockMvc.perform(get("/api/admin/analytics/cohort")
-                        .header("Authorization", "Bearer " + facultyToken)
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
-    }
 
     @Test
     public void testUnauthenticatedCannotAccessCohortEndpoint() throws Exception {
@@ -266,13 +247,6 @@ public class AdminAnalyticsIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    @Test
-    public void testFacultyCannotAccessAdminEndpoint() throws Exception {
-        mockMvc.perform(get("/api/admin/analytics/overview")
-                        .header("Authorization", "Bearer " + facultyToken)
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
-    }
 
     @Test
     public void testUnauthenticatedCannotAccessAdminEndpoint() throws Exception {
@@ -679,13 +653,6 @@ public class AdminAnalyticsIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    @Test
-    public void testFacultyCannotAccessStudentDirectoryEndpoint() throws Exception {
-        mockMvc.perform(get("/api/admin/analytics/students")
-                        .header("Authorization", "Bearer " + facultyToken)
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
-    }
 
     @Test
     public void testUnauthenticatedCannotAccessStudentDirectoryEndpoint() throws Exception {
@@ -715,11 +682,10 @@ public class AdminAnalyticsIntegrationTest {
         String json = result.getResponse().getContentAsString();
         List<AdminStudentDirectoryDTO> directory = objectMapper.readValue(json, new TypeReference<List<AdminStudentDirectoryDTO>>() {});
         assertNotNull(directory);
-        assertEquals(2, directory.size(), "Should only contain the 2 STUDENT users and exclude ADMIN/FACULTY");
+        assertEquals(2, directory.size(), "Should only contain the 2 STUDENT users and exclude ADMIN");
 
         for (AdminStudentDirectoryDTO item : directory) {
             assertNotEquals(adminUser.getId(), item.getUserId());
-            assertNotEquals(facultyUser.getId(), item.getUserId());
         }
     }
 
@@ -1031,12 +997,6 @@ public class AdminAnalyticsIntegrationTest {
         });
     }
 
-    @Test
-    public void testIndividualAnalyticsRejectsFacultyUserId() {
-        assertThrows(IllegalArgumentException.class, () -> {
-            adminAnalyticsService.getIndividualStudentAnalytics(facultyUser.getId());
-        });
-    }
 
     @Test
     public void testIndividualAnalyticsStudentWithoutAuthenticBaselineHasNullBaselineAndGain() {
@@ -1233,13 +1193,6 @@ public class AdminAnalyticsIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    @Test
-    public void testFacultyCannotAccessIndividualStudentAnalyticsEndpoint() throws Exception {
-        mockMvc.perform(get("/api/admin/analytics/students/" + studentUser.getId())
-                        .header("Authorization", "Bearer " + facultyToken)
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
-    }
 
     @Test
     public void testUnauthenticatedCannotAccessIndividualStudentAnalyticsEndpoint() throws Exception {
@@ -1256,13 +1209,6 @@ public class AdminAnalyticsIntegrationTest {
                 .andExpect(status().is4xxClientError());
     }
 
-    @Test
-    public void testAdminRequestingFacultyUserIdReturns4xx() throws Exception {
-        mockMvc.perform(get("/api/admin/analytics/students/" + facultyUser.getId())
-                        .header("Authorization", "Bearer " + adminToken)
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().is4xxClientError());
-    }
 
     @Test
     public void testAdminRequestingNonExistentUserIdReturns404() throws Exception {
@@ -1299,13 +1245,6 @@ public class AdminAnalyticsIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    @Test
-    public void testFacultyCannotAccessResearchTrendsEndpoint() throws Exception {
-        mockMvc.perform(get("/api/admin/analytics/trends")
-                        .header("Authorization", "Bearer " + facultyToken)
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
-    }
 
     @Test
     public void testUnauthenticatedCannotAccessResearchTrendsEndpoint() throws Exception {
@@ -1496,13 +1435,6 @@ public class AdminAnalyticsIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    @Test
-    public void testFacultyCannotAccessSubjectAnalyticsEndpoint_403() throws Exception {
-        mockMvc.perform(get("/api/admin/analytics/subjects")
-                        .header("Authorization", "Bearer " + facultyToken)
-                        .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
-    }
 
     @Test
     public void testUnauthenticatedCannotAccessSubjectAnalyticsEndpoint_401() throws Exception {
@@ -2480,11 +2412,6 @@ public class AdminAnalyticsIntegrationTest {
                         .param("branch", "CSE"))
                 .andExpect(status().isForbidden());
 
-        // Faculty role -> 403 Forbidden
-        mockMvc.perform(get("/api/admin/analytics/cohort")
-                        .header("Authorization", "Bearer " + facultyToken)
-                        .param("branch", "CSE"))
-                .andExpect(status().isForbidden());
 
         // Unauthenticated -> 401 Unauthorized
         mockMvc.perform(get("/api/admin/analytics/cohort")
@@ -2670,20 +2597,6 @@ public class AdminAnalyticsIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    @Test
-    public void testCompare_FacultyForbidden_Returns403() throws Exception {
-        AdminCohortComparisonRequest req = new AdminCohortComparisonRequest(
-                new AdminAnalyticsFilterCriteria(),
-                new AdminAnalyticsFilterCriteria(),
-                null, null
-        );
-
-        mockMvc.perform(post("/api/admin/analytics/compare")
-                        .header("Authorization", "Bearer " + facultyToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(req)))
-                .andExpect(status().isForbidden());
-    }
 
     @Test
     public void testCompare_Unauthenticated_Returns401() throws Exception {
@@ -3199,16 +3112,6 @@ public class AdminAnalyticsIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
-    @Test
-    public void testExport_Faculty_ReturnsForbidden() throws Exception {
-        mockMvc.perform(get("/api/admin/analytics/export/excel")
-                        .header("Authorization", "Bearer " + facultyToken))
-                .andExpect(status().isForbidden());
-
-        mockMvc.perform(get("/api/admin/analytics/export/pdf")
-                        .header("Authorization", "Bearer " + facultyToken))
-                .andExpect(status().isForbidden());
-    }
 
     @Test
     public void testExport_InvalidFilter_ReturnsBadRequest() throws Exception {

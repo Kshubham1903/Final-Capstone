@@ -6,8 +6,6 @@ import Onboarding from "./app/onboarding/page";
 import StudentDashboard from "./app/dashboard/page";
 import ProfilePage from "./app/dashboard/profile/page";
 import Quizzes from "./app/dashboard/quizzes/page";
-import FacultyDashboard from "./app/faculty/page";
-import QuizManagerDashboard from "./app/faculty/quiz-manager/page";
 import AdminDashboard from "./app/admin/page";
 import SubjectAnalyticsPage from "./app/admin/subject-analytics/page";
 import StudentDirectoryPage from "./app/admin/student-directory/page";
@@ -33,8 +31,6 @@ export default function App() {
       <Route path="/dashboard/profile" element={<OnboardingGuard><ProfilePage /></OnboardingGuard>} />
       <Route path="/dashboard/quizzes" element={<OnboardingGuard><Quizzes /></OnboardingGuard>} />
       <Route path="/dashboard/ai-tutor" element={<OnboardingGuard><AITutorPage /></OnboardingGuard>} />
-      <Route path="/faculty" element={<FacultyDashboard />} />
-      <Route path="/faculty/quiz-manager" element={<QuizManagerDashboard />} />
       <Route path="/admin" element={<AdminDashboard />} />
       <Route path="/admin/subject-analytics" element={<SubjectAnalyticsPage />} />
       <Route path="/admin/student-directory" element={<StudentDirectoryPage />} />
