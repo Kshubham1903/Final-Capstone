@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { 
-  GraduationCap, 
-  Lightbulb, 
-  Sparkles, 
-  ExternalLink 
+import {
+  GraduationCap,
+  Lightbulb,
+  Sparkles,
+  ExternalLink
 } from "lucide-react";
 import Layout from "../../components/Layout";
 import { StudentProfile, getStoredStudentProfile } from "../../services/mockData";
@@ -13,15 +13,13 @@ import { fetchProfile, getRecommendations, checkBackendConnection } from "../../
 // Reusable Modular Dashboard Components
 import DashboardHeader from "../../components/dashboard/DashboardHeader";
 import WelcomeCard from "../../components/dashboard/WelcomeCard";
-import TodaysLearningCard from "../../components/dashboard/TodaysLearningCard";
 import LearningProgressCard from "../../components/dashboard/LearningProgressCard";
+
 import SubjectProgressPanel from "../../components/dashboard/SubjectProgressPanel";
 import LearningPreferencesCard from "../../components/dashboard/LearningPreferencesCard";
 import KnowledgeProgressCard from "../../components/dashboard/KnowledgeProgressCard";
 import LearningGainCard from "../../components/dashboard/LearningGainCard";
-import EvaluationMetricsCard from "../../components/dashboard/EvaluationMetricsCard";
 import StudentGrowthCard from "../../components/dashboard/StudentGrowthCard";
-import { PendingKnowledgeCheckCard } from "../../components/dashboard/PendingKnowledgeCheckCard";
 
 export default function StudentDashboard() {
 
@@ -130,17 +128,17 @@ export default function StudentDashboard() {
   return (
     <Layout>
       <div className="space-y-6 animate-fade-in pb-8">
-        
+
         {/* 1. Dashboard Header */}
-        <DashboardHeader 
-          streak={profile?.currentStreakCount ?? 0} 
-          isBackendConnected={isBackendConnected} 
+        <DashboardHeader
+          streak={profile?.currentStreakCount ?? 0}
+          isBackendConnected={isBackendConnected}
         />
 
         {/* 2. Welcome Section */}
-        <WelcomeCard 
-          firstName={firstName} 
-          profile={profile} 
+        <WelcomeCard
+          firstName={firstName}
+          profile={profile}
         />
 
         {/* 3. Hero Action CTA Banner */}
@@ -152,14 +150,14 @@ export default function StudentDashboard() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link 
-              to="/dashboard/quizzes" 
+            <Link
+              to="/dashboard/quizzes"
               className="px-5 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-extrabold text-xs tracking-wider shadow-lg shadow-purple-500/20 hover:scale-105 transition-all cursor-pointer flex items-center justify-center"
             >
               🎯 Start Adaptive Quiz
             </Link>
-            <Link 
-              to="/dashboard/ai-tutor" 
+            <Link
+              to="/dashboard/ai-tutor"
               className="px-5 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-main-theme font-bold text-xs tracking-wider transition-all cursor-pointer flex items-center justify-center"
             >
               🤖 Consult AI Tutor
@@ -169,22 +167,16 @@ export default function StudentDashboard() {
 
         {/* 4. Two-Column Workspace Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
+
           {/* Left Column (2/3 width) - Focus areas & Mastery progress */}
           <div className="lg:col-span-2 space-y-6">
-            
-            {/* Pending Knowledge Check Reassessment Card */}
-            <PendingKnowledgeCheckCard studentId={profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") || "" : "")} />
 
             {/* Student Growth Pipeline Component */}
             <StudentGrowthCard userId={profile?.id || (typeof window !== "undefined" ? localStorage.getItem("edupilot_user_id") || "" : "")} />
 
-            {/* Today's Learning Focus (Primary Highlight) */}
-            <TodaysLearningCard profile={profile} />
-
             {/* Subject Mastery Progress chart */}
-            <LearningProgressCard 
-              profile={profile} 
+            <LearningProgressCard
+              profile={profile}
               onSelectSubject={(subj, val) => setSelectedSubjectForHistory({ name: subj, mastery: val })}
             />
 
@@ -205,7 +197,7 @@ export default function StudentDashboard() {
                 onClose={() => setSelectedSubjectForHistory(null)}
               />
             )}
-            
+
             {/* Compact Academic Profile Card */}
             <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-4 bg-gradient-to-br from-purple-900/5 to-pink-900/5">
               <div className="flex items-center justify-between border-b border-white/5 pb-3">
@@ -213,8 +205,8 @@ export default function StudentDashboard() {
                   <GraduationCap className="h-5 w-5 text-purple-theme" />
                   <h4 className="text-xs font-extrabold text-main-theme uppercase tracking-wider">Academic Summary</h4>
                 </div>
-                <Link 
-                  to="/dashboard/profile" 
+                <Link
+                  to="/dashboard/profile"
                   className="text-[10px] font-bold text-purple-theme hover:text-purple-300 flex items-center gap-1"
                 >
                   <span>Edit Profile</span>
@@ -254,37 +246,7 @@ export default function StudentDashboard() {
             {/* Normalized Learning Gain Metric Card (Pre vs Post Gain) */}
             <LearningGainCard profile={profile} />
 
-            {/* Evaluation Analytics Card (Completion Rate & Time to Mastery) */}
-            <EvaluationMetricsCard profile={profile} />
 
-            {/* Key AI Insights Card */}
-            <div className="glass-panel p-5 rounded-2xl border border-white/5 space-y-4">
-              <div className="flex items-center gap-2 border-b border-white/5 pb-3">
-                <Lightbulb className="h-5 w-5 text-cyan-theme" />
-                <h4 className="text-xs font-extrabold text-main-theme uppercase tracking-wider">Key AI Insights</h4>
-              </div>
-
-              <div className="space-y-3">
-                {aiInsights && aiInsights.length > 0 ? (
-                  aiInsights.slice(0, 3).map((insight, idx) => (
-                    <div 
-                      key={idx} 
-                      className="p-3.5 rounded-xl bg-white/5 border border-white/5 hover:border-purple-500/20 transition-all flex items-start gap-2.5 group animate-fade-in"
-                    >
-                      <div className="h-6 w-6 rounded-lg bg-purple-500/10 flex items-center justify-center mt-0.5 shrink-0 group-hover:bg-purple-500/20 transition-colors">
-                        <Sparkles className="h-3 w-3 text-purple-theme" />
-                      </div>
-                      <p className="text-[11px] text-main-theme leading-relaxed font-medium">{insight}</p>
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-4 bg-white/3 rounded-xl border border-white/5 text-center space-y-1.5">
-                    <Sparkles className="h-5 w-5 text-purple-theme/50 mx-auto animate-pulse" />
-                    <p className="text-[10px] text-secondary-theme">Generating customized insights from AI Engine...</p>
-                  </div>
-                )}
-              </div>
-            </div>
 
           </div>
 

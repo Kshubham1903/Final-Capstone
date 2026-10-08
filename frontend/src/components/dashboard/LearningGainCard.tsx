@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { TrendingUp, Award, Sparkles, RefreshCw } from "lucide-react";
+import { TrendingUp, Award, RefreshCw } from "lucide-react";
 import { fetchLearningGain } from "../../services/api";
 
 export interface LearningGainCardProps {
@@ -75,43 +75,6 @@ export default function LearningGainCard({ profile, className = "" }: LearningGa
         </div>
       </div>
 
-      {/* Topics Breakdown List */}
-      {loading ? (
-        <div className="space-y-3 py-2 animate-pulse">
-          {[1, 2].map((i) => (
-            <div key={i} className="h-12 bg-white/10 rounded-xl" />
-          ))}
-        </div>
-      ) : topicsList.length > 0 ? (
-        <div className="space-y-2.5">
-          {topicsList.map((t: any, idx: number) => {
-            const prePct = Math.round((t.preScore ?? 0) * 100);
-            const postPct = Math.round((t.postScore ?? 0) * 100);
-            const gainPct = Math.round((t.learningGain ?? 0) * 100);
-
-            return (
-              <div key={idx} className="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-extrabold text-main-theme truncate">{t.topic}</span>
-                  <span className="font-black text-emerald-theme">+{gainPct}%</span>
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-secondary-theme">
-                  <span>Pre: <strong className="text-main-theme">{prePct}%</strong></span>
-                  <span>Current: <strong className="text-purple-theme">{postPct}%</strong></span>
-                  <span>Gain: <strong className="text-emerald-theme">+{gainPct}%</strong></span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="p-3.5 rounded-xl bg-white/3 text-center space-y-1 border border-white/5">
-          <Sparkles className="h-4 w-4 text-purple-theme/50 mx-auto" />
-          <p className="text-[11px] text-secondary-theme">
-            Complete baseline diagnostic tests to track topic learning gain.
-          </p>
-        </div>
-      )}
 
     </div>
   );
