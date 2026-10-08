@@ -48,6 +48,7 @@ public class StudentIdentityResolutionTest {
         user.setFullName("Test Identity Student");
         user.setPassword("password");
         user.setRole(User.Role.STUDENT);
+        user.setAccountType(User.AccountType.TEST_AUTOMATION);
         user.setCreatedAt(LocalDateTime.now());
         user = userRepository.save(user);
         canonicalUserId = user.getId();
@@ -152,6 +153,7 @@ public class StudentIdentityResolutionTest {
         userB.setFullName("Student B");
         userB.setPassword("pass");
         userB.setRole(User.Role.STUDENT);
+        userB.setAccountType(User.AccountType.TEST_AUTOMATION);
         userB.setCreatedAt(LocalDateTime.now());
         userB = userRepository.save(userB);
 

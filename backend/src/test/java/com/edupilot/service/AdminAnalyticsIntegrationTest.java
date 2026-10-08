@@ -88,6 +88,9 @@ public class AdminAnalyticsIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private LegacyAccountClassificationService legacyClassificationService;
+
     private String adminToken;
     private String studentToken;
     private String facultyToken;
@@ -3415,5 +3418,155 @@ public class AdminAnalyticsIntegrationTest {
             }
             assertTrue(foundMeanDiffLabel, "Summary sheet must have metric labeled 'Mean Knowledge Difference (Kt - K0)'");
         }
+    }
+
+    // =========================================================================
+    // ENVIRONMENT-INDEPENDENT GENUINE STUDENT CLASSIFICATION SCENARIO TESTS
+    // =========================================================================
+
+    @Test
+    public void testScenarioA_freshDatabaseReturnsZeroStudents() {
+        userRepository.deleteAll();
+        studentProfileRepository.deleteAll();
+        assessmentResultRepository.deleteAll();
+        quizSessionRepository.deleteAll();
+
+        AdminAnalyticsService.FilteredStudentContext ctx = adminAnalyticsService.resolveFilteredPopulation(null);
+        assertEquals(0, ctx.validStudentIds.size(), "Scenario A: Fresh database with 0 users must produce 0 Admin genuine students");
+    }
+
+    @Test
+    public void testScenarioB_newRealUserRegistrationGetsGenuineStudent() throws Exception {
+        String regEmail = "new_real_student_" + System.currentTimeMillis() + "@gmail.com";
+        Map<String, Object> req = Map.of(
+            "email", regEmail,
+            "password", "Password123!",
+            "fullName", "New Real Student",
+            "role", "STUDENT"
+        );
+
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk());
+
+        User created = userRepository.findByEmail(regEmail).orElseThrow();
+        assertEquals(User.AccountType.GENUINE_STUDENT, created.getAccountType(),
+                "Scenario B: New registration via /api/auth/register MUST default to GENUINE_STUDENT");
+    }
+
+    @Test
+    public void testScenarioC_newAutomatedTestUserGetsTestAutomation() {
+        User testBot = new User();
+        testBot.setEmail("auto_bot_" + System.currentTimeMillis() + "@edupilot.com");
+        testBot.setFullName("Automation Bot");
+        testBot.setRole(User.Role.STUDENT);
+        testBot.setAccountType(User.AccountType.TEST_AUTOMATION);
+        testBot = userRepository.save(testBot);
+
+        AdminAnalyticsService.FilteredStudentContext ctx = adminAnalyticsService.resolveFilteredPopulation(null);
+        assertFalse(ctx.validStudentIds.contains(testBot.getId()),
+                "Scenario C: TEST_AUTOMATION accounts MUST be excluded from Admin Analytics");
+    }
+
+    @Test
+    public void testScenarioD_legacyUserWithGenuineActivityClassifiedAsGenuineStudent() {
+        long ts = System.currentTimeMillis();
+        String legacyEmail = "genuine_legacy_" + ts + "@gmail.com";
+        User legacyUser = new User();
+        legacyUser.setEmail(legacyEmail);
+        legacyUser.setFullName("Genuine Legacy Student");
+        legacyUser.setRole(User.Role.STUDENT);
+        legacyUser.setAccountType(null); // Unclassified
+        legacyUser = userRepository.save(legacyUser);
+
+        // Add real academic activity
+        AssessmentResult ar = new AssessmentResult();
+        ar.setUserId(legacyUser.getId());
+        ar.setSubjectName("Data Structures & Algorithms");
+        ar.setTotalQuestions(10);
+        ar.setPercentage(85.0);
+        ar.setCreatedAt(LocalDateTime.now());
+        assessmentResultRepository.save(ar);
+
+        int updated = legacyClassificationService.classifyLegacyStudentAccounts();
+        assertTrue(updated >= 1, "Legacy classifier must update legacy candidate");
+
+        User updatedUser = userRepository.findById(legacyUser.getId()).orElseThrow();
+        assertEquals(User.AccountType.GENUINE_STUDENT, updatedUser.getAccountType(),
+                "Scenario D: Legacy user with academic activity and no automation provenance MUST be classified as GENUINE_STUDENT");
+    }
+
+    @Test
+    public void testScenarioE_legacyUserWithNoActivityRemainsNullUnclassified() {
+        long ts = System.currentTimeMillis();
+        String inactiveEmail = "inactive_legacy_" + ts + "@gmail.com";
+        User inactiveUser = new User();
+        inactiveUser.setEmail(inactiveEmail);
+        inactiveUser.setFullName("Inactive Legacy Student");
+        inactiveUser.setRole(User.Role.STUDENT);
+        inactiveUser.setAccountType(null); // Unclassified
+        inactiveUser = userRepository.save(inactiveUser);
+
+        legacyClassificationService.classifyLegacyStudentAccounts();
+
+        User reloaded = userRepository.findById(inactiveUser.getId()).orElseThrow();
+        assertNull(reloaded.getAccountType(),
+                "Scenario E: Legacy user with 0 academic activity MUST remain null / unclassified");
+    }
+
+    @Test
+    public void testScenarioF_legacyUserWithAutomationProvenanceClassifiedAsTestAutomation() {
+        long ts = System.currentTimeMillis();
+        String testRunnerEmail = "growth_test_runner_" + ts + "@edupilot.com";
+        User testUser = new User();
+        testUser.setEmail(testRunnerEmail);
+        testUser.setFullName("Growth Test Runner");
+        testUser.setRole(User.Role.STUDENT);
+        testUser.setAccountType(null); // Unclassified
+        testUser = userRepository.save(testUser);
+
+        legacyClassificationService.classifyLegacyStudentAccounts();
+
+        User reloaded = userRepository.findById(testUser.getId()).orElseThrow();
+        assertEquals(User.AccountType.TEST_AUTOMATION, reloaded.getAccountType(),
+                "Scenario F: Legacy user with test automation provenance MUST be classified as TEST_AUTOMATION");
+    }
+
+    @Test
+    public void testScenarioG_explicitAccountTypesPreservedUnchanged() {
+        long ts = System.currentTimeMillis();
+        User gUser = new User(null, "g_" + ts + "@edupilot.com", "pass", "G", User.Role.STUDENT, User.AccountType.GENUINE_STUDENT, LocalDateTime.now());
+        User tUser = new User(null, "t_" + ts + "@edupilot.com", "pass", "T", User.Role.STUDENT, User.AccountType.TEST_AUTOMATION, LocalDateTime.now());
+        User sUser = new User(null, "s_" + ts + "@edupilot.com", "pass", "S", User.Role.STUDENT, User.AccountType.SYNTHETIC_RESEARCH_SEED, LocalDateTime.now());
+
+        gUser = userRepository.save(gUser);
+        tUser = userRepository.save(tUser);
+        sUser = userRepository.save(sUser);
+
+        legacyClassificationService.classifyLegacyStudentAccounts();
+
+        assertEquals(User.AccountType.GENUINE_STUDENT, userRepository.findById(gUser.getId()).orElseThrow().getAccountType());
+        assertEquals(User.AccountType.TEST_AUTOMATION, userRepository.findById(tUser.getId()).orElseThrow().getAccountType());
+        assertEquals(User.AccountType.SYNTHETIC_RESEARCH_SEED, userRepository.findById(sUser.getId()).orElseThrow().getAccountType());
+    }
+
+    @Test
+    public void testScenarioH_migrationExecutionIsIdempotent() {
+        long ts = System.currentTimeMillis();
+        User candidate = new User(null, "candidate_" + ts + "@gmail.com", "pass", "Candidate", User.Role.STUDENT, null, LocalDateTime.now());
+        candidate = userRepository.save(candidate);
+
+        AssessmentResult ar = new AssessmentResult();
+        ar.setUserId(candidate.getId());
+        ar.setSubjectName("Database Management Systems");
+        ar.setCreatedAt(LocalDateTime.now());
+        assessmentResultRepository.save(ar);
+
+        int pass1 = legacyClassificationService.classifyLegacyStudentAccounts();
+        assertTrue(pass1 >= 1, "First migration pass must classify user");
+
+        int pass2 = legacyClassificationService.classifyLegacyStudentAccounts();
+        assertEquals(0, pass2, "Scenario H: Second migration pass MUST be idempotent and return 0 updates");
     }
 }
