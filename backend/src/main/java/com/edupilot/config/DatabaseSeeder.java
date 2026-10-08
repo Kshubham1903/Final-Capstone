@@ -1,11 +1,9 @@
 package com.edupilot.config;
 
-import com.edupilot.repository.StudentProfileRepository;
-import com.edupilot.repository.QuizQuestionRepository;
-import com.edupilot.repository.UserRepository;
+import com.edupilot.repository.*;
+import com.edupilot.service.LegacyAccountClassificationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -21,12 +19,13 @@ public class DatabaseSeeder implements CommandLineRunner {
     private UserRepository userRepository;
 
     @Autowired
-    private PasswordEncoder passwordEncoder;
+    private LegacyAccountClassificationService legacyClassificationService;
 
     @Override
     public void run(String... args) throws Exception {
         // Production Ready: Automatic database seed insertions removed.
-        // Database starts cleanly with 0 pre-populated records.
-        System.out.println(">>> Database initialization: Ready with clean empty database and BCrypt password support.");
+        // Runs idempotent legacy student classification on startup for legacy unclassified accounts.
+        int updated = legacyClassificationService.classifyLegacyStudentAccounts();
+        System.out.println(">>> Database initialization: Ready with clean empty database support. Legacy accounts classified: " + updated);
     }
 }
