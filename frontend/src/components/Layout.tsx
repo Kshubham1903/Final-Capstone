@@ -17,8 +17,7 @@ import {
   User,
   Bot,
   BookOpen,
-  TrendingUp,
-  GitCompare
+  TrendingUp
 } from "lucide-react";
 import { getStoredStudentProfile } from "../services/mockData";
 import { fetchProfile } from "../services/api";
@@ -126,7 +125,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     ADMIN: [
       { name: "System Control", href: "/admin", icon: Settings },
       { name: "Subject Analytics", href: "/admin/subject-analytics", icon: BookOpen },
-      { name: "Cohort Comparison", href: "/admin/research-analytics", icon: GitCompare },
       { name: "Student Directory", href: "/admin/student-directory", icon: Users },
     ]
   };
