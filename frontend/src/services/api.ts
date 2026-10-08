@@ -880,10 +880,14 @@ export async function startDiagnosticAssessment(payload: {
     if (res.ok && data) {
       return data;
     }
-    throw new Error(data?.message || `Failed to start diagnostic assessment session (HTTP ${res.status}).`);
+    const errorObj: any = new Error(data?.message || `Failed to start diagnostic assessment session (HTTP ${res.status}).`);
+    if (data?.error) {
+      errorObj.code = data.error;
+    }
+    throw errorObj;
   } catch (err: any) {
     console.error("Error starting diagnostic assessment on backend:", err);
-    throw new Error(err.message || "Failed to start diagnostic assessment session.");
+    throw err;
   }
 }
 

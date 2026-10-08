@@ -17,7 +17,8 @@ import {
   User,
   Bot,
   BookOpen,
-  TrendingUp
+  TrendingUp,
+  GitCompare
 } from "lucide-react";
 import { getStoredStudentProfile } from "../services/mockData";
 import { fetchProfile } from "../services/api";
@@ -97,6 +98,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("edupilot_token");
+    localStorage.removeItem("edupilot_role");
+    localStorage.removeItem("edupilot_user");
+    localStorage.removeItem("edupilot_user_id");
+    localStorage.removeItem("edupilot_user_name");
+    localStorage.removeItem("edupilot_user_email");
+    localStorage.removeItem("edupilot_student_profile");
+    localStorage.removeItem("edupilot_profile_id");
+    navigate("/");
+  };
+
   const navItems = {
     STUDENT: [
       { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -113,6 +126,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     ADMIN: [
       { name: "System Control", href: "/admin", icon: Settings },
       { name: "Subject Analytics", href: "/admin/subject-analytics", icon: BookOpen },
+      { name: "Cohort Comparison", href: "/admin/research-analytics", icon: GitCompare },
       { name: "Student Directory", href: "/admin/student-directory", icon: Users },
     ]
   };
@@ -193,13 +207,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <h2 className="text-xs font-semibold truncate text-main-theme">{userName}</h2>
               <span className="text-[10px] text-secondary-theme truncate block font-bold">{currentRole} Profile</span>
             </div>
-            <Link to="/" onClick={() => {
-              localStorage.removeItem("edupilot_user_id");
-              localStorage.removeItem("edupilot_user_name");
-              localStorage.removeItem("edupilot_user_email");
-            }} className="text-secondary-theme hover:text-red-400">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="text-secondary-theme hover:text-red-400 bg-transparent border-0 cursor-pointer p-1"
+              title="Sign Out"
+            >
               <LogOut className="h-4 w-4" />
-            </Link>
+            </button>
           </div>
         </div>
       </aside>

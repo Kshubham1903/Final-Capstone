@@ -1,4 +1,7 @@
-package com.edupilot.service.llm;
+package com.edupilot.service;
+
+import com.edupilot.service.llm.GroqProvider;
+import com.edupilot.service.llm.RoadmapGroqProvider;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

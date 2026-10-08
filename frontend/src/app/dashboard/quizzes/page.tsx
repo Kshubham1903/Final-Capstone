@@ -239,7 +239,11 @@ export default function Quizzes() {
         await loadNextInitialQuestion(startRes.sessionId);
       }
     } catch (err: any) {
-      setGroqError(err.message || "Diagnostic session setup failed.");
+      if (err.code === "GROQ_KEY_REQUIRED" || err.message?.includes("Groq API Key") || err.message?.includes("Groq")) {
+        setGroqError("Personal Groq API Key is required to generate this assessment. Please configure your key in your Profile settings.");
+      } else {
+        setGroqError(err.message || "Diagnostic session setup failed.");
+      }
       setRetryAction(() => () => startAiQuiz(subj));
     } finally {
       setIsGeneratingAi(false);

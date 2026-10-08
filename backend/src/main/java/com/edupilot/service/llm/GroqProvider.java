@@ -254,7 +254,7 @@ public class GroqProvider implements LLMProvider {
         }
     }
 
-    long parseRetryDelayMs(HttpStatusCodeException hsce, String rawBody) {
+    public long parseRetryDelayMs(HttpStatusCodeException hsce, String rawBody) {
         String selectedSource = "default (3000ms)";
         long parsedMs = 3000;
 

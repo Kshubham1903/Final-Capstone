@@ -176,7 +176,11 @@ export default function AssessmentRunner({
       }
     } catch (err: any) {
       console.error("Failed to start assessment session:", err);
-      setErrorMessage(err.message || "Failed to start diagnostic assessment session. Please try again.");
+      if (err.code === "GROQ_KEY_REQUIRED" || err.message?.includes("Groq API Key") || err.message?.includes("Groq")) {
+        setErrorMessage("Personal Groq API Key is required to generate this assessment. Please configure your key in your Profile settings.");
+      } else {
+        setErrorMessage(err.message || "Failed to start diagnostic assessment session. Please try again.");
+      }
     } finally {
       setStartingTest(false);
     }
