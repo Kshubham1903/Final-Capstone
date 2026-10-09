@@ -291,6 +291,42 @@ public class RoadmapService {
      * - A non-completed topic is UNLOCKED ONLY IF ALL of its prerequisite topics are COMPLETED AND it is the FIRST eligible uncompleted topic.
      * - All other non-completed topics remain LOCKED.
      */
+    /**
+     * Normalizes concept IDs, display names, and topic names into a uniform comparison key.
+     * Preserves distinctions for symbol-heavy technical terms (e.g., C++, C#, .NET).
+     * e.g., "C++" -> "cpp", "C#" -> "csharp", "Arrays & Linked Lists" -> "arrayslinkedlists"
+     */
+    public String normalizeConceptKey(String input) {
+        if (input == null) return "";
+        String s = input.toLowerCase().trim();
+        s = s.replaceAll("\\+\\+", "pp");
+        s = s.replaceAll("#", "sharp");
+        s = s.replaceAll("\\.net", "dotnet");
+        s = s.replaceAll("[^a-z0-9]", "");
+        return s.trim();
+    }
+
+    /**
+     * Resolves effective prerequisites for a node on a PER-NODE basis.
+     * Preserves explicit graph prerequisites if present; falls back to the preceding topic sequence if absent.
+     */
+    private List<String> getEffectivePrerequisites(SubjectRoadmap.RoadmapTopicNode node, int index, List<SubjectRoadmap.RoadmapTopicNode> topics) {
+        if (node.getPrerequisiteConceptIds() != null && !node.getPrerequisiteConceptIds().isEmpty()) {
+            return node.getPrerequisiteConceptIds();
+        }
+        if (index > 0 && topics.get(index - 1) != null && topics.get(index - 1).getConceptId() != null) {
+            return List.of(topics.get(index - 1).getConceptId());
+        }
+        return Collections.emptyList();
+    }
+
+    /**
+     * Evaluates existing ConceptMastery metrics and updates topic completion and lock/unlock states.
+     * Enforces strict prerequisite dependency resolution:
+     * - A topic can ONLY be COMPLETED if its own ConceptMastery is mastered AND ALL of its prerequisite topics are COMPLETED.
+     * - A non-completed topic is UNLOCKED ONLY IF ALL of its prerequisite topics are COMPLETED AND it is the FIRST eligible uncompleted topic.
+     * - All other non-completed topics remain LOCKED.
+     */
     public SubjectRoadmap updateTopicStatesWithExistingMastery(SubjectRoadmap roadmap, String userId) {
         if (roadmap == null || roadmap.getTopics() == null) return roadmap;
 
@@ -301,6 +337,8 @@ public class RoadmapService {
 
         // Step 1: Update currentAccuracy and check raw self-mastery for each node
         Map<String, Boolean> selfMasteredMap = new HashMap<>();
+        Map<String, Set<String>> nodeKeyMap = new HashMap<>();
+
         for (SubjectRoadmap.RoadmapTopicNode node : topics) {
             ConceptMastery cm = findMatchingConceptMastery(node, userCmList);
             double acc = cm != null ? cm.getAccuracy() : 0.0;
@@ -309,19 +347,36 @@ public class RoadmapService {
 
             node.setCurrentAccuracy(acc);
 
-            // Self-mastery condition: Accuracy >= 70% AND Confidence >= 50% (or status STRONG)
+            // Self-mastery condition: Accuracy >= 70% AND (Confidence >= 50% OR status STRONG)
             boolean isSelfMastered = (cm != null && acc >= reqAcc && (conf >= 50.0 || cm.getStatus() == ConceptMastery.ConceptStatus.STRONG));
             selfMasteredMap.put(node.getConceptId(), isSelfMastered);
+
+            Set<String> keys = new HashSet<>();
+            if (node.getConceptId() != null) keys.add(normalizeConceptKey(node.getConceptId()));
+            if (node.getConceptName() != null) keys.add(normalizeConceptKey(node.getConceptName()));
+            nodeKeyMap.put(node.getConceptId(), keys);
         }
 
         // Step 2: Iteratively determine COMPLETED topics respecting prerequisite dependency chains
-        Set<String> completedConceptIds = new HashSet<>();
+        Set<String> completedNormalizedKeys = new HashSet<>();
         boolean changed = true;
         while (changed) {
             changed = false;
-            for (SubjectRoadmap.RoadmapTopicNode node : topics) {
+            for (int i = 0; i < topics.size(); i++) {
+                SubjectRoadmap.RoadmapTopicNode node = topics.get(i);
                 String cId = node.getConceptId();
-                if (completedConceptIds.contains(cId)) {
+                Set<String> cKeys = nodeKeyMap.get(cId);
+
+                boolean alreadyCompleted = false;
+                if (cKeys != null) {
+                    for (String k : cKeys) {
+                        if (completedNormalizedKeys.contains(k)) {
+                            alreadyCompleted = true;
+                            break;
+                        }
+                    }
+                }
+                if (alreadyCompleted) {
                     continue;
                 }
 
@@ -330,18 +385,22 @@ public class RoadmapService {
                     continue;
                 }
 
+                // Determine effective prerequisites per node
+                List<String> prereqsToCheck = getEffectivePrerequisites(node, i, topics);
+
                 boolean allPrereqsCompleted = true;
-                if (node.getPrerequisiteConceptIds() != null && !node.getPrerequisiteConceptIds().isEmpty()) {
-                    for (String pId : node.getPrerequisiteConceptIds()) {
-                        if (!completedConceptIds.contains(pId)) {
-                            allPrereqsCompleted = false;
-                            break;
-                        }
+                for (String pId : prereqsToCheck) {
+                    String normPId = normalizeConceptKey(pId);
+                    if (!completedNormalizedKeys.contains(normPId)) {
+                        allPrereqsCompleted = false;
+                        break;
                     }
                 }
 
                 if (allPrereqsCompleted) {
-                    completedConceptIds.add(cId);
+                    if (cKeys != null) {
+                        completedNormalizedKeys.addAll(cKeys);
+                    }
                     changed = true;
                 }
             }
@@ -350,9 +409,22 @@ public class RoadmapService {
         // Step 3: Assign status and completion flags to all nodes
         boolean firstIncompleteUnlocked = false;
 
-        for (SubjectRoadmap.RoadmapTopicNode node : topics) {
+        for (int i = 0; i < topics.size(); i++) {
+            SubjectRoadmap.RoadmapTopicNode node = topics.get(i);
             String cId = node.getConceptId();
-            if (completedConceptIds.contains(cId)) {
+            Set<String> cKeys = nodeKeyMap.get(cId);
+
+            boolean isCompleted = false;
+            if (cKeys != null) {
+                for (String k : cKeys) {
+                    if (completedNormalizedKeys.contains(k)) {
+                        isCompleted = true;
+                        break;
+                    }
+                }
+            }
+
+            if (isCompleted) {
                 node.setCompleted(true);
                 node.setStatus(SubjectRoadmap.TopicStatus.COMPLETED);
                 continue;
@@ -360,13 +432,14 @@ public class RoadmapService {
 
             node.setCompleted(false);
 
+            List<String> prereqsToCheck = getEffectivePrerequisites(node, i, topics);
+
             boolean allPrereqsCompleted = true;
-            if (node.getPrerequisiteConceptIds() != null && !node.getPrerequisiteConceptIds().isEmpty()) {
-                for (String pId : node.getPrerequisiteConceptIds()) {
-                    if (!completedConceptIds.contains(pId)) {
-                        allPrereqsCompleted = false;
-                        break;
-                    }
+            for (String pId : prereqsToCheck) {
+                String normPId = normalizeConceptKey(pId);
+                if (!completedNormalizedKeys.contains(normPId)) {
+                    allPrereqsCompleted = false;
+                    break;
                 }
             }
 
