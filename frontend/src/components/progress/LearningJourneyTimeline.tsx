@@ -66,56 +66,58 @@ export const LearningJourneyTimeline: React.FC<LearningJourneyTimelineProps> = (
         </span>
       </div>
 
-      <div className="relative pl-6 border-l-2 border-slate-200 space-y-6">
-        {timeline.map((event, idx) => {
-          const typeUpper = event.type ? event.type.toUpperCase() : "";
-          const isDiagnostic = typeUpper === "DIAGNOSTIC";
-          const isProgress = typeUpper === "PROGRESS_ASSESSMENT";
+      <div className="max-h-[480px] overflow-y-auto pr-2">
+        <div className="relative pl-6 border-l-2 border-slate-200 space-y-6">
+          {timeline.map((event, idx) => {
+            const typeUpper = event.type ? event.type.toUpperCase() : "";
+            const isDiagnostic = typeUpper === "DIAGNOSTIC";
+            const isProgress = typeUpper === "PROGRESS_ASSESSMENT";
 
-          return (
-            <div key={event.id || idx} className="relative group">
-              {/* Dot icon */}
-              <div
-                className={`absolute -left-[31px] top-0.5 w-6 h-6 rounded-full border-2 bg-white flex items-center justify-center shadow-sm ${
-                  isDiagnostic ? "border-purple-600" : isProgress ? "border-emerald-600" : "border-blue-600"
-                }`}
-              >
-                {getEventIcon(event.type)}
-              </div>
-
-              <div className="bg-slate-50 hover:bg-slate-100/80 transition-colors p-4 rounded-xl border border-slate-200/80">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-800 text-sm">{event.title}</span>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${getEventBadgeColor(
-                        event.type
-                      )}`}
-                    >
-                      {event.subtitle || event.type}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3 text-xs text-slate-500">
-                    <span className="flex items-center gap-1 font-mono">
-                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                      {event.timestamp ? new Date(event.timestamp).toLocaleString() : "Date N/A"}
-                    </span>
-                    {event.scorePercentage !== null && (
-                      <span className="font-mono font-bold text-slate-800 bg-white px-2.5 py-0.5 rounded border border-slate-200">
-                        {event.scorePercentage.toFixed(1)}%
-                      </span>
-                    )}
-                  </div>
+            return (
+              <div key={event.id || idx} className="relative group">
+                {/* Dot icon */}
+                <div
+                  className={`absolute -left-[31px] top-0.5 w-6 h-6 rounded-full border-2 bg-white flex items-center justify-center shadow-sm ${
+                    isDiagnostic ? "border-purple-600" : isProgress ? "border-emerald-600" : "border-blue-600"
+                  }`}
+                >
+                  {getEventIcon(event.type)}
                 </div>
 
-                <p className="text-xs text-slate-600 font-mono bg-white p-2.5 rounded-lg border border-slate-200/60">
-                  {event.details}
-                </p>
+                <div className="bg-slate-50 hover:bg-slate-100/80 transition-colors p-4 rounded-xl border border-slate-200/80">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-800 text-sm">{event.title}</span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${getEventBadgeColor(
+                          event.type
+                        )}`}
+                      >
+                        {event.subtitle || event.type}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-xs text-slate-500">
+                      <span className="flex items-center gap-1 font-mono">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        {event.timestamp ? new Date(event.timestamp).toLocaleString() : "Date N/A"}
+                      </span>
+                      {event.scorePercentage !== null && (
+                        <span className="font-mono font-bold text-slate-800 bg-white px-2.5 py-0.5 rounded border border-slate-200">
+                          {event.scorePercentage.toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-600 font-mono bg-white p-2.5 rounded-lg border border-slate-200/60">
+                    {event.details}
+                  </p>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

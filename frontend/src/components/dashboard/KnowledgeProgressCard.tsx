@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Sparkles, Activity } from "lucide-react";
+import { CheckCircle2, AlertCircle, Sparkles, Activity } from "lucide-react";
 import { KnowledgeProgressCardProps } from "./types";
 import { fetchKnowledgeProfile } from "../../services/api";
 
@@ -87,6 +87,64 @@ export default function KnowledgeProgressCard({ profile }: KnowledgeProgressCard
         </div>
       </div>
 
+      {/* Concept Breakdown Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        {/* Strong Mastered Concepts */}
+        <div className="space-y-2.5">
+          <div className="text-xs font-bold text-emerald-theme uppercase tracking-wider flex items-center gap-1.5">
+            <CheckCircle2 className="h-4 w-4" />
+            <span>Mastered & Strong Concepts ({strongConceptsList.length})</span>
+          </div>
+          <div className="space-y-1.5 max-h-[180px] overflow-y-auto pr-1">
+            {strongConceptsList.length > 0 ? (
+              strongConceptsList.map((cName: string, idx: number) => (
+                <div
+                  key={idx}
+                  className="p-2.5 bg-emerald-500/5 border border-emerald-500/15 rounded-lg text-xs flex justify-between items-center"
+                >
+                  <span className="font-semibold text-main-theme truncate">{cName}</span>
+                  <span className="text-[10px] text-emerald-400 font-extrabold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                    STRONG
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="p-4 bg-white/3 rounded-xl border border-white/5 text-center text-[10px] text-secondary-theme">
+                No mastered concepts evaluated yet. Take a diagnostic assessment to populate strengths.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Weak Concepts Needing Review */}
+        <div className="space-y-2.5">
+          <div className="text-xs font-bold text-pink-theme uppercase tracking-wider flex items-center gap-1.5">
+            <AlertCircle className="h-4 w-4" />
+            <span>Concepts Needing Focus ({weakConceptsList.length})</span>
+          </div>
+          <div className="space-y-1.5 max-h-[180px] overflow-y-auto pr-1">
+            {weakConceptsList.length > 0 ? (
+              weakConceptsList.map((cName: string, idx: number) => (
+                <div
+                  key={idx}
+                  className="p-2.5 bg-pink-500/5 border border-pink-500/15 rounded-lg text-xs flex justify-between items-center"
+                >
+                  <span className="font-semibold text-main-theme truncate">{cName}</span>
+                  <span className="px-2.5 py-1 bg-pink-500/20 text-pink-300 text-[10px] font-bold rounded-md shrink-0">
+                    Needs Focus
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="p-4 bg-white/3 rounded-xl border border-white/5 text-center text-[10px] text-secondary-theme">
+                No weak concepts identified. Exceptional performance!
+              </div>
+            )}
+          </div>
+        </div>
+
+      </div>
 
     </div>
   );
