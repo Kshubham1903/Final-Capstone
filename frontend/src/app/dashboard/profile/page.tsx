@@ -56,6 +56,11 @@ export default function ProfilePage() {
   const [groqApiKeyConfigured, setGroqApiKeyConfigured] = useState(false);
   const [removeKeyRequested, setRemoveKeyRequested] = useState(false);
 
+  // Personal Gemini API Key State
+  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState("");
+  const [geminiApiKeyConfigured, setGeminiApiKeyConfigured] = useState(false);
+  const [removeGeminiKeyRequested, setRemoveGeminiKeyRequested] = useState(false);
+
   useEffect(() => {
     async function loadData() {
       if (!userId) {
@@ -83,6 +88,7 @@ export default function ProfilePage() {
         setRiskLevel(p.academicRiskLevel || "LOW");
         setStreakCount(p.currentStreakCount || 0);
         setGroqApiKeyConfigured(Boolean(p.groqApiKeyConfigured));
+        setGeminiApiKeyConfigured(Boolean(p.geminiApiKeyConfigured));
       }
       setLoading(false);
     }
@@ -169,6 +175,12 @@ export default function ProfilePage() {
       updatePayload.groqApiKey = groqApiKeyInput.trim();
     }
 
+    if (removeGeminiKeyRequested) {
+      updatePayload.geminiApiKey = "";
+    } else if (geminiApiKeyInput.trim()) {
+      updatePayload.geminiApiKey = geminiApiKeyInput.trim();
+    }
+
     try {
       const updated = await updateFullProfile(userId, updatePayload);
       if (updated) {
@@ -178,6 +190,9 @@ export default function ProfilePage() {
         setGroqApiKeyConfigured(Boolean(updated.groqApiKeyConfigured));
         setGroqApiKeyInput("");
         setRemoveKeyRequested(false);
+        setGeminiApiKeyConfigured(Boolean(updated.geminiApiKeyConfigured));
+        setGeminiApiKeyInput("");
+        setRemoveGeminiKeyRequested(false);
         setSuccessMsg("Academic profile updated successfully! Python AI recalculated your Student Growth Index.");
       }
     } catch (err: any) {
@@ -574,6 +589,76 @@ export default function ProfilePage() {
                   </div>
                   <p className="text-[10px] text-secondary-theme leading-relaxed">
                     🔒 Your API key is encrypted using AES-GCM before storage. It is never returned in REST responses or saved in browser local storage.
+                  </p>
+                </div>
+              </div>
+
+              {/* Personal Gemini API Key Configuration Card */}
+              <div className="md:col-span-2 space-y-4 p-5 rounded-2xl bg-indigo-900/10 border border-indigo-500/20 mt-2">
+                <div className="flex justify-between items-center border-b border-white/10 pb-3">
+                  <div>
+                    <h4 className="font-extrabold text-main-theme text-sm flex items-center gap-2">
+                      <Key className="h-4 w-4 text-indigo-400" />
+                      <span>AI & Google Gemini Integration Settings</span>
+                    </h4>
+                    <p className="text-[11px] text-secondary-theme mt-0.5">
+                      Configure your personal Google Gemini API Key (<code className="text-indigo-300 font-mono">AIzaSy...</code>) to enable Gemini AI features.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {geminiApiKeyConfigured && !removeGeminiKeyRequested ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        <span>Personal Key Active</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-pink-300 bg-pink-500/10 px-3 py-1 rounded-full border border-pink-500/20">
+                        <Lock className="h-3.5 w-3.5" />
+                        <span>{removeGeminiKeyRequested ? "Key Removal Pending" : "Gemini API key is required to use Gemini AI features."}</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      value={geminiApiKeyInput}
+                      onChange={e => {
+                        setGeminiApiKeyInput(e.target.value);
+                        setRemoveGeminiKeyRequested(false);
+                      }}
+                      placeholder={geminiApiKeyConfigured && !removeGeminiKeyRequested ? "•••••••••••••••••••••••••••• (Leave blank to keep current key)" : "Enter your personal Gemini API Key (AIzaSy...)"}
+                      className="flex-1 p-3 rounded-xl glass-input text-xs font-mono"
+                    />
+                    {geminiApiKeyConfigured && !removeGeminiKeyRequested && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRemoveGeminiKeyRequested(true);
+                          setGeminiApiKeyInput("");
+                        }}
+                        className="px-4 py-2 rounded-xl bg-pink-500/10 hover:bg-pink-500/20 text-pink-300 border border-pink-500/20 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                        title="Remove personal Gemini API key"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        <span>Remove Key</span>
+                      </button>
+                    )}
+                    {removeGeminiKeyRequested && (
+                      <button
+                        type="button"
+                        onClick={() => setRemoveGeminiKeyRequested(false)}
+                        className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-all cursor-pointer"
+                      >
+                        Undo Remove
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-secondary-theme leading-relaxed">
+                    🔒 Your Gemini API key belongs strictly to your student account and is encrypted using AES-GCM before database storage. It is never exposed, logged, or returned to the browser.
                   </p>
                 </div>
               </div>

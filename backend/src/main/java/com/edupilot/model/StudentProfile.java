@@ -72,6 +72,9 @@ public class StudentProfile {
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String groqApiKey;
 
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    private String geminiApiKey;
+
     public StudentProfile() {
     }
 
@@ -484,8 +487,22 @@ public class StudentProfile {
         this.groqApiKey = groqApiKey;
     }
 
+    @JsonProperty("groqApiKeyConfigured")
     public boolean isGroqApiKeyConfigured() {
         return groqApiKey != null && !groqApiKey.isBlank();
+    }
+
+    public String getGeminiApiKey() {
+        return geminiApiKey;
+    }
+
+    public void setGeminiApiKey(String geminiApiKey) {
+        this.geminiApiKey = geminiApiKey;
+    }
+
+    @JsonProperty("geminiApiKeyConfigured")
+    public boolean isGeminiApiKeyConfigured() {
+        return geminiApiKey != null && !geminiApiKey.isBlank();
     }
 
     public static StudentProfileBuilder builder() {

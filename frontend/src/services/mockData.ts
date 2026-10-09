@@ -54,6 +54,7 @@ export interface StudentProfile {
   badges: { name: string; icon: string; description: string }[];
   completedQuizzesCount: number;
   groqApiKeyConfigured?: boolean;
+  geminiApiKeyConfigured?: boolean;
   weeklyGoalCompletion: number; // %
 }
 

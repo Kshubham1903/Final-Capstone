@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from "react";
-import { Send, Sparkles, CornerDownLeft, Eraser } from "lucide-react";
+import { Send, Eraser } from "lucide-react";
 
 interface ChatInputProps {
   value: string;
@@ -36,7 +36,7 @@ export default function ChatInput({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-2">
+    <div className="max-w-4xl mx-auto">
       {/* Input Box Container */}
       <div className={`relative rounded-2xl border transition-all duration-200 glass-panel bg-[var(--glass-bg)] backdrop-blur-xl ${
         disabled
@@ -48,7 +48,7 @@ export default function ChatInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={`Ask EduPilot AI anything about your course... (${activeModeLabel || "Adaptive"} mode)`}
+          placeholder={`Ask EduPilot AI... (${activeModeLabel || "Adaptive Mastery"})`}
           disabled={disabled}
           rows={1}
           className="w-full bg-transparent text-main-theme text-xs sm:text-sm placeholder-secondary-theme px-4 py-3.5 pr-24 focus:outline-none resize-none max-h-44"
@@ -80,22 +80,6 @@ export default function ChatInput({
             <Send className="h-4 w-4" />
           </button>
         </div>
-      </div>
-
-      {/* Keyboard hints footer */}
-      <div className="flex items-center justify-between px-2 text-[10px] text-secondary-theme">
-        <span className="flex items-center gap-1">
-          <Sparkles className="h-3 w-3 text-purple-theme" />
-          <span>Active Mode: <strong className="text-purple-theme">{activeModeLabel || "Adaptive Mastery"}</strong></span>
-        </span>
-
-        <span className="hidden sm:flex items-center gap-1 font-mono text-secondary-theme">
-          <span>Press</span>
-          <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-[var(--glass-border)] text-main-theme font-sans">Enter ↵</kbd>
-          <span>to send,</span>
-          <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-[var(--glass-border)] text-main-theme font-sans">Shift + Enter</kbd>
-          <span>for new line</span>
-        </span>
       </div>
     </div>
   );
