@@ -18,6 +18,10 @@ public class GeminiProvider implements LLMProvider {
     @Value("${llm.gemini.api-key:mock-key}")
     private String apiKey;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @org.springframework.context.annotation.Lazy
+    private com.edupilot.service.StudentService studentService;
+
     @Value("${llm.gemini.model:gemini-flash-latest}")
     private String modelName;
 
@@ -61,11 +65,61 @@ public class GeminiProvider implements LLMProvider {
 
         System.out.println("========== GEMINI CONFIG ==========");
         System.out.println("Provider: Google Gemini");
-        System.out.println("API Key Loaded: " + loaded);
+        System.out.println("Global Fallback Key Configured: " + loaded + " (Note: Per-student keys required for student requests)");
         System.out.println("Resolved Model: " + modelName);
-        System.out.println("REST Endpoint:");
-        System.out.println(endpoint);
+        System.out.println("REST Endpoint: " + endpoint);
         System.out.println("==================================");
+    }
+
+    private String resolveEffectiveApiKey(Map<String, Object> context) {
+        String resolvedUserId = null;
+        if (context != null) {
+            if (context.get("userId") != null) {
+                resolvedUserId = context.get("userId").toString();
+            } else if (context.get("studentId") != null) {
+                resolvedUserId = context.get("studentId").toString();
+            }
+        }
+
+        if ((resolvedUserId == null || resolvedUserId.isBlank()) && studentService != null) {
+            try {
+                org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
+                    if (auth.getPrincipal() instanceof org.springframework.security.core.userdetails.UserDetails) {
+                        resolvedUserId = ((org.springframework.security.core.userdetails.UserDetails) auth.getPrincipal()).getUsername();
+                    } else if (auth.getPrincipal() instanceof String) {
+                        resolvedUserId = (String) auth.getPrincipal();
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (resolvedUserId != null && !resolvedUserId.isBlank() && studentService != null) {
+            try {
+                String personalKey = studentService.getDecryptedGeminiApiKey(resolvedUserId);
+                if (personalKey != null && !personalKey.isBlank()) {
+                    System.out.println("[GeminiProvider] Using student-specific Gemini API key for userId: " + resolvedUserId);
+                    return personalKey;
+                }
+            } catch (Exception ex) {
+                System.err.println("[GeminiProvider] Failed to resolve personal Gemini key for user " + resolvedUserId + ": " + ex.getMessage());
+            }
+        }
+
+        return null;
+    }
+
+    private List<String> getCandidateModels(String primaryModel) {
+        List<String> list = new ArrayList<>();
+        if (primaryModel != null && !primaryModel.isBlank()) {
+            list.add(primaryModel);
+        }
+        for (String m : List.of("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.5-flash")) {
+            if (!list.contains(m)) {
+                list.add(m);
+            }
+        }
+        return list;
     }
 
     @Override
@@ -84,21 +138,23 @@ public class GeminiProvider implements LLMProvider {
 
         String fullPrompt = (systemPrompt != null ? systemPrompt : "") + "\n\n[USER QUESTION]\n" + (userMessage != null ? userMessage : "");
         int promptLength = fullPrompt.length();
-        String sanitizedUrl = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent";
-        String apiUrl = sanitizedUrl + "?key=" + apiKey;
 
-        System.out.println("\n[STAGE: GeminiProvider] [" + Instant.now() + "] ConvID: " + conversationId + " | Mode: " + learningMode + " | Model: " + modelName + " | Elapsed: " + (System.currentTimeMillis() - requestStartInstant) + "ms");
-
-        // 3. Verify API Key Configuration
-        if (apiKey == null || apiKey.isBlank() || "mock-key".equalsIgnoreCase(apiKey)) {
-            System.err.println("[GeminiProvider Error] GEMINI_API_KEY is not configured or set to default 'mock-key'.");
-            return buildStructuredError("UNAUTHENTICATED", "GEMINI_API_KEY is not configured or set to default 'mock-key'. Please set a valid GEMINI_API_KEY.", "0s", "Configure GEMINI_API_KEY in application.yml or environment variables.");
+        // 3. Resolve Per-Student Gemini API Key
+        String effectiveApiKey = resolveEffectiveApiKey(context);
+        if (effectiveApiKey == null || effectiveApiKey.isBlank() || "mock-key".equalsIgnoreCase(effectiveApiKey)) {
+            System.err.println("[GeminiProvider Error] Personal Gemini API key is missing or not configured for student.");
+            return buildStructuredError(
+                    "UNAUTHENTICATED",
+                    "Personal Gemini API key is required. Please configure your Gemini API key in your profile.",
+                    "0s",
+                    "Please add your personal Gemini API key in your Profile."
+            );
         }
 
-        // 4. Construct JSON Payload Structure according to Google Gemini v1beta REST Specification
+        // 4. Construct Base Payload Structure according to Google Gemini v1beta REST Specification
         Map<String, Object> textPart = Map.of("text", fullPrompt);
         Map<String, Object> contentObj = Map.of("role", "user", "parts", List.of(textPart));
-        
+
         Map<String, Object> genConfig = new HashMap<>();
         genConfig.put("temperature", temperature);
         genConfig.put("topP", topP);
@@ -114,94 +170,98 @@ public class GeminiProvider implements LLMProvider {
         headers.setContentType(MediaType.APPLICATION_JSON);
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-        // 5. Exponential Backoff Retry Loop for HTTP 429 RESOURCE_EXHAUSTED
-        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-            long startTime = System.currentTimeMillis();
-            System.out.println("[STAGE: Google Gemini REST API Outbound] [" + Instant.now() + "] Attempt: " + attempt + "/" + MAX_ATTEMPTS + " | Endpoint: " + sanitizedUrl);
+        List<String> candidateModels = getCandidateModels(modelName);
+        String lastErrorResponse = null;
 
-            try {
-                ResponseEntity<Map> response = restTemplate.postForEntity(apiUrl, entity, Map.class);
-                long latency = System.currentTimeMillis() - startTime;
-                int httpStatus = response.getStatusCode().value();
+        // 5. Model Fallback & Retry Loop using SAME student's API key
+        for (int mIdx = 0; mIdx < candidateModels.size(); mIdx++) {
+            String currentModel = candidateModels.get(mIdx);
+            String sanitizedUrl = "https://generativelanguage.googleapis.com/v1beta/models/" + currentModel + ":generateContent";
+            String apiUrl = sanitizedUrl + "?key=" + effectiveApiKey;
 
-                // --- RAW GOOGLE RESPONSE AUDIT LOGGING ---
-                System.out.println("\n================ RAW GOOGLE RESPONSE AUDIT ================");
-                System.out.println("HTTP Status Code: " + httpStatus);
-                System.out.println("Latency: " + latency + " ms");
-                System.out.println("Response Headers: " + response.getHeaders());
-                System.out.println("Full Response Body: " + response.getBody());
-                System.out.println("============================================================\n");
+            System.out.println("\n[STAGE: GeminiProvider Attempting Model] [" + Instant.now() + "] ConvID: " + conversationId + " | Mode: " + learningMode + " | Target Model: " + currentModel + " (" + (mIdx + 1) + "/" + candidateModels.size() + ") | Elapsed: " + (System.currentTimeMillis() - requestStartInstant) + "ms");
 
-                if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                    Map body = response.getBody();
-                    System.out.println("[STAGE: Response Parser] [" + Instant.now() + "] Parsing candidates[0].content.parts[0].text...");
+            for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+                long startTime = System.currentTimeMillis();
+                System.out.println("[STAGE: Google Gemini REST API Outbound] [" + Instant.now() + "] Attempt: " + attempt + "/" + MAX_ATTEMPTS + " | Model: " + currentModel + " | Endpoint: " + sanitizedUrl + " [KEY_PROTECTED]");
 
-                    if (body.containsKey("candidates")) {
-                        List candidates = (List) body.get("candidates");
-                        int candidateCount = candidates != null ? candidates.size() : 0;
-                        printRuntimeDiagnostics(conversationId, learningMode, modelName, sanitizedUrl, promptLength, httpStatus + " OK", latency, candidateCount);
+                try {
+                    ResponseEntity<Map> response = restTemplate.postForEntity(apiUrl, entity, Map.class);
+                    long latency = System.currentTimeMillis() - startTime;
+                    int httpStatus = response.getStatusCode().value();
 
-                        if (candidates != null && !candidates.isEmpty()) {
-                            Map firstCand = (Map) candidates.get(0);
-                            if (firstCand.containsKey("content")) {
-                                Map contentObjMap = (Map) firstCand.get("content");
-                                if (contentObjMap.containsKey("parts")) {
-                                    List parts = (List) contentObjMap.get("parts");
-                                    if (parts != null && !parts.isEmpty()) {
-                                        Map firstPart = (Map) parts.get(0);
-                                        if (firstPart.containsKey("text")) {
-                                            String generatedText = (String) firstPart.get("text");
-                                            String initialFinishReason = (String) firstCand.get("finishReason");
-                                            System.out.println("[STAGE: Response Parser SUCCESS] Extracted " + (generatedText != null ? generatedText.length() : 0) + " chars | Initial FinishReason: " + initialFinishReason);
+                    System.out.println("\n================ RAW GOOGLE RESPONSE AUDIT ================");
+                    System.out.println("HTTP Status Code: " + httpStatus);
+                    System.out.println("Latency: " + latency + " ms");
+                    System.out.println("Model Used: " + currentModel);
+                    System.out.println("Response Headers: " + response.getHeaders());
+                    System.out.println("============================================================\n");
 
-                                            // AUTOMATIC CONTINUATION LOOP IF TRUNCATED BY MAX_TOKENS
-                                            if (generatedText != null && ("MAX_TOKENS".equalsIgnoreCase(initialFinishReason) || generatedText.length() >= 7500)) {
-                                                StringBuilder mergedText = new StringBuilder(generatedText);
-                                                String currentFinishReason = initialFinishReason;
-                                                int maxContinuations = 5;
-                                                int continuationCount = 0;
+                    if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                        Map body = response.getBody();
 
-                                                while (("MAX_TOKENS".equalsIgnoreCase(currentFinishReason) || (mergedText.length() > 0 && mergedText.length() % 7500 == 0)) && continuationCount < maxContinuations) {
-                                                    continuationCount++;
-                                                    System.out.println("[STAGE: Automatic Continuation] [" + Instant.now() + "] Attempt " + continuationCount + "/" + maxContinuations + " | Merged Length so far: " + mergedText.length() + " chars.");
+                        if (body.containsKey("candidates")) {
+                            List candidates = (List) body.get("candidates");
+                            int candidateCount = candidates != null ? candidates.size() : 0;
+                            printRuntimeDiagnostics(conversationId, learningMode, currentModel, sanitizedUrl, promptLength, httpStatus + " OK", latency, candidateCount);
 
-                                                    String tailSnippet = mergedText.length() > 400 ? mergedText.substring(mergedText.length() - 400) : mergedText.toString();
-                                                    String continuationPrompt = fullPrompt + "\n\n[CONTINUATION DIRECTIVE]\nYour previous output was cut off mid-response due to token limits. Continue EXACTLY from where you left off below:\n\"" 
-                                                            + tailSnippet + "\"\nDo NOT repeat any previous content or header. Resume mid-sentence or mid-code seamlessly.";
+                            if (candidates != null && !candidates.isEmpty()) {
+                                Map firstCand = (Map) candidates.get(0);
+                                if (firstCand.containsKey("content")) {
+                                    Map contentObjMap = (Map) firstCand.get("content");
+                                    if (contentObjMap.containsKey("parts")) {
+                                        List parts = (List) contentObjMap.get("parts");
+                                        if (parts != null && !parts.isEmpty()) {
+                                            Map firstPart = (Map) parts.get(0);
+                                            if (firstPart.containsKey("text")) {
+                                                String generatedText = (String) firstPart.get("text");
+                                                String initialFinishReason = (String) firstCand.get("finishReason");
 
-                                                    Map<String, Object> contTextPart = Map.of("text", continuationPrompt);
-                                                    Map<String, Object> contContentObj = Map.of("role", "user", "parts", List.of(contTextPart));
-                                                    Map<String, Object> contRequestBody = new HashMap<>();
-                                                    contRequestBody.put("contents", List.of(contContentObj));
-                                                    contRequestBody.put("generationConfig", genConfig);
+                                                // AUTOMATIC CONTINUATION LOOP IF TRUNCATED BY MAX_TOKENS
+                                                if (generatedText != null && ("MAX_TOKENS".equalsIgnoreCase(initialFinishReason) || generatedText.length() >= 7500)) {
+                                                    StringBuilder mergedText = new StringBuilder(generatedText);
+                                                    String currentFinishReason = initialFinishReason;
+                                                    int maxContinuations = 5;
+                                                    int continuationCount = 0;
 
-                                                    HttpEntity<Map<String, Object>> contEntity = new HttpEntity<>(contRequestBody, headers);
+                                                    while (("MAX_TOKENS".equalsIgnoreCase(currentFinishReason) || (mergedText.length() > 0 && mergedText.length() % 7500 == 0)) && continuationCount < maxContinuations) {
+                                                        continuationCount++;
+                                                        String tailSnippet = mergedText.length() > 400 ? mergedText.substring(mergedText.length() - 400) : mergedText.toString();
+                                                        String continuationPrompt = fullPrompt + "\n\n[CONTINUATION DIRECTIVE]\nYour previous output was cut off mid-response due to token limits. Continue EXACTLY from where you left off below:\n\""
+                                                                + tailSnippet + "\"\nDo NOT repeat any previous content or header. Resume mid-sentence or mid-code seamlessly.";
 
-                                                    try {
-                                                        ResponseEntity<Map> contResponse = restTemplate.postForEntity(apiUrl, contEntity, Map.class);
-                                                        if (contResponse.getStatusCode().is2xxSuccessful() && contResponse.getBody() != null) {
-                                                            Map contBody = contResponse.getBody();
-                                                            if (contBody.containsKey("candidates")) {
-                                                                List contCands = (List) contBody.get("candidates");
-                                                                if (contCands != null && !contCands.isEmpty()) {
-                                                                    Map contCand = (Map) contCands.get(0);
-                                                                    currentFinishReason = (String) contCand.get("finishReason");
-                                                                    if (contCand.containsKey("content")) {
-                                                                        Map contContent = (Map) contCand.get("content");
-                                                                        if (contContent.containsKey("parts")) {
-                                                                            List contParts = (List) contContent.get("parts");
-                                                                            if (contParts != null && !contParts.isEmpty()) {
-                                                                                Map contPart = (Map) contParts.get(0);
-                                                                                if (contPart.containsKey("text")) {
-                                                                                    String chunk = (String) contPart.get("text");
-                                                                                    if (chunk == null || chunk.isBlank() || mergedText.toString().endsWith(chunk.trim())) {
-                                                                                        System.out.println("[STAGE: Continuation Safety Guard] Empty or duplicate chunk received. Stopping continuation loop.");
-                                                                                        break;
-                                                                                    }
-                                                                                    mergedText.append("\n").append(chunk);
-                                                                                    System.out.println("[STAGE: Continuation SUCCESS] Appended " + chunk.length() + " chars. Total Length: " + mergedText.length() + " chars | FinishReason: " + currentFinishReason);
-                                                                                    if (!"MAX_TOKENS".equalsIgnoreCase(currentFinishReason)) {
-                                                                                        break;
+                                                        Map<String, Object> contTextPart = Map.of("text", continuationPrompt);
+                                                        Map<String, Object> contContentObj = Map.of("role", "user", "parts", List.of(contTextPart));
+                                                        Map<String, Object> contRequestBody = new HashMap<>();
+                                                        contRequestBody.put("contents", List.of(contContentObj));
+                                                        contRequestBody.put("generationConfig", genConfig);
+
+                                                        HttpEntity<Map<String, Object>> contEntity = new HttpEntity<>(contRequestBody, headers);
+
+                                                        try {
+                                                            ResponseEntity<Map> contResponse = restTemplate.postForEntity(apiUrl, contEntity, Map.class);
+                                                            if (contResponse.getStatusCode().is2xxSuccessful() && contResponse.getBody() != null) {
+                                                                Map contBody = contResponse.getBody();
+                                                                if (contBody.containsKey("candidates")) {
+                                                                    List contCands = (List) contBody.get("candidates");
+                                                                    if (contCands != null && !contCands.isEmpty()) {
+                                                                        Map contCand = (Map) contCands.get(0);
+                                                                        currentFinishReason = (String) contCand.get("finishReason");
+                                                                        if (contCand.containsKey("content")) {
+                                                                            Map contContent = (Map) contCand.get("content");
+                                                                            if (contContent.containsKey("parts")) {
+                                                                                List contParts = (List) contContent.get("parts");
+                                                                                if (contParts != null && !contParts.isEmpty()) {
+                                                                                    Map contPart = (Map) contParts.get(0);
+                                                                                    if (contPart.containsKey("text")) {
+                                                                                        String chunk = (String) contPart.get("text");
+                                                                                        if (chunk == null || chunk.isBlank() || mergedText.toString().endsWith(chunk.trim())) {
+                                                                                            break;
+                                                                                        }
+                                                                                        mergedText.append("\n").append(chunk);
+                                                                                        if (!"MAX_TOKENS".equalsIgnoreCase(currentFinishReason)) {
+                                                                                            break;
+                                                                                        }
                                                                                     }
                                                                                 }
                                                                             }
@@ -209,98 +269,106 @@ public class GeminiProvider implements LLMProvider {
                                                                     }
                                                                 }
                                                             }
+                                                        } catch (Exception contEx) {
+                                                            break;
                                                         }
-                                                    } catch (Exception contEx) {
-                                                        System.err.println("[STAGE: Continuation Error] " + contEx.getMessage() + ". Returning merged text so far.");
-                                                        break;
                                                     }
+                                                    return mergedText.toString();
                                                 }
-                                                return mergedText.toString();
+
+                                                return generatedText;
                                             }
-
-                                            return generatedText;
-                                        } else {
-                                            System.err.println("[Response Parser FAIL] 'text' key missing in parts[0]. Part keys: " + firstPart.keySet());
                                         }
-                                    } else {
-                                        System.err.println("[Response Parser FAIL] 'parts' list is empty.");
                                     }
-                                } else {
-                                    System.err.println("[Response Parser FAIL] 'parts' key missing in content. Content keys: " + contentObjMap.keySet());
                                 }
-                            } else {
-                                System.err.println("[Response Parser FAIL] 'content' key missing in candidates[0]. Candidate keys: " + firstCand.keySet());
                             }
-                        } else {
-                            System.err.println("[Response Parser FAIL] 'candidates' list is empty.");
                         }
-                    } else {
-                        System.err.println("[Response Parser FAIL] 'candidates' key missing in response body. Body keys: " + body.keySet());
+
+                        return body.toString();
                     }
+                } catch (HttpStatusCodeException hsce) {
+                    long latency = System.currentTimeMillis() - startTime;
+                    int httpStatus = hsce.getStatusCode().value();
+                    String rawErrorBody = hsce.getResponseBodyAsString();
 
-                    return body.toString();
-                }
-            } catch (HttpStatusCodeException hsce) {
-                long latency = System.currentTimeMillis() - startTime;
-                int httpStatus = hsce.getStatusCode().value();
-                String rawErrorBody = hsce.getResponseBodyAsString();
+                    System.out.println("\n================ RAW GOOGLE ERROR RESPONSE AUDIT ================");
+                    System.out.println("HTTP Status Code: " + httpStatus + " " + hsce.getStatusText());
+                    System.out.println("Latency: " + latency + " ms");
+                    System.out.println("Model: " + currentModel);
+                    System.out.println("Response Headers: " + hsce.getResponseHeaders());
+                    System.out.println("Raw Error Body JSON:\n" + rawErrorBody);
+                    System.out.println("==================================================================\n");
 
-                System.out.println("\n================ RAW GOOGLE ERROR RESPONSE AUDIT ================");
-                System.out.println("HTTP Status Code: " + httpStatus + " " + hsce.getStatusText());
-                System.out.println("Latency: " + latency + " ms");
-                System.out.println("Response Headers: " + hsce.getResponseHeaders());
-                System.out.println("Raw Error Body JSON:\n" + rawErrorBody);
-                System.out.println("==================================================================\n");
+                    printRuntimeDiagnostics(conversationId, learningMode, currentModel, sanitizedUrl, promptLength, httpStatus + " " + hsce.getStatusText(), latency, 0);
 
-                printRuntimeDiagnostics(conversationId, learningMode, modelName, sanitizedUrl, promptLength, httpStatus + " " + hsce.getStatusText(), latency, 0);
-
-                boolean isQuotaExceeded = httpStatus == 429 || (rawErrorBody != null && rawErrorBody.contains("RESOURCE_EXHAUSTED"));
-                int remainingRetries = MAX_ATTEMPTS - attempt;
-
-                if (isQuotaExceeded) {
-                    System.err.println("[GeminiProvider Audit] Quota Exceeded (HTTP 429). Remaining retries: " + remainingRetries);
-
-                    if (attempt < MAX_ATTEMPTS) {
-                        long backoff = BACKOFF_DELAYS_MS[attempt - 1];
-                        System.out.println("[GeminiProvider Backoff] Sleeping " + backoff + " ms before retry attempt " + (attempt + 1) + "...");
-                        try {
-                            Thread.sleep(backoff);
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                        }
-                        continue;
-                    } else {
-                        System.err.println("[GeminiProvider Audit] Quota Exceeded. Final failure after " + MAX_ATTEMPTS + " attempts.");
-                        String retryAfter = extractRetryAfter(rawErrorBody);
+                    // HTTP 401 / 403: Invalid or Unauthorized Key — DO NOT try other models or other keys
+                    if (httpStatus == 401 || httpStatus == 403) {
+                        System.err.println("[GeminiProvider Audit] Invalid or Unauthorized Gemini API key (HTTP " + httpStatus + "). Stopping model fallback.");
                         return buildStructuredError(
-                                "QUOTA_EXCEEDED",
-                                "Daily Gemini API quota exceeded.",
-                                retryAfter,
-                                "Please try again later or use another configured provider."
+                                "UNAUTHENTICATED",
+                                "Your Gemini API key is invalid or unauthorized. Please update your Gemini API key in your profile.",
+                                "0s",
+                                "Please verify and update your Gemini API key in your Profile."
                         );
                     }
-                } else {
-                    return buildStructuredError(
+
+                    boolean isQuotaExceeded = httpStatus == 429 || (rawErrorBody != null && rawErrorBody.contains("RESOURCE_EXHAUSTED"));
+                    if (isQuotaExceeded) {
+                        System.err.println("[GeminiProvider Audit] Quota Exceeded / Rate Limit on model " + currentModel + " (HTTP 429). Attempt " + attempt + "/" + MAX_ATTEMPTS);
+                        if (attempt < MAX_ATTEMPTS) {
+                            long backoff = BACKOFF_DELAYS_MS[attempt - 1];
+                            try {
+                                Thread.sleep(backoff);
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                            }
+                            continue;
+                        } else {
+                            lastErrorResponse = buildStructuredError(
+                                    "QUOTA_EXHAUSTED",
+                                    "Daily Gemini API quota exceeded for key.",
+                                    extractRetryAfter(rawErrorBody),
+                                    "Please try again later or check your Gemini API key quota."
+                            );
+                            // Quota error is key-level, break attempt loop to check fallback model if appropriate
+                            break;
+                        }
+                    }
+
+                    // HTTP 404 (Model Not Found) or 5xx Server Error -> trigger model fallback using SAME student key
+                    if (httpStatus == 404 || httpStatus >= 500) {
+                        System.err.println("[GeminiProvider] Model " + currentModel + " failed with status " + httpStatus + ". Will attempt fallback model if available.");
+                        lastErrorResponse = buildStructuredError(
+                                "HTTP_ERROR_" + httpStatus,
+                                "Gemini model " + currentModel + " returned HTTP " + httpStatus + ".",
+                                "0s",
+                                rawErrorBody != null && !rawErrorBody.isBlank() ? rawErrorBody : hsce.getStatusText()
+                        );
+                        break; // Exit retry loop for this model, fallback to next model
+                    }
+
+                    lastErrorResponse = buildStructuredError(
                             "HTTP_ERROR_" + httpStatus,
                             "Gemini REST API request failed with status " + httpStatus + ".",
                             "0s",
                             rawErrorBody != null && !rawErrorBody.isBlank() ? rawErrorBody : hsce.getStatusText()
                     );
-                }
-            } catch (Exception e) {
-                long latency = System.currentTimeMillis() - startTime;
-                printRuntimeDiagnostics(conversationId, learningMode, modelName, sanitizedUrl, promptLength, "500 INTERNAL_SERVER_ERROR", latency, 0);
 
-                return buildStructuredError(
-                        "INTERNAL_ERROR",
-                        "Gemini provider internal exception: " + e.getClass().getSimpleName(),
-                        "0s",
-                        e.getMessage()
-                );
+                } catch (Exception e) {
+                    long latency = System.currentTimeMillis() - startTime;
+                    printRuntimeDiagnostics(conversationId, learningMode, currentModel, sanitizedUrl, promptLength, "500 INTERNAL_SERVER_ERROR", latency, 0);
+                    lastErrorResponse = buildStructuredError(
+                            "INTERNAL_ERROR",
+                            "Gemini provider internal exception: " + e.getClass().getSimpleName(),
+                            "0s",
+                            e.getMessage()
+                    );
+                    break;
+                }
             }
         }
 
-        return buildStructuredError("QUOTA_EXCEEDED", "Daily Gemini API quota exceeded.", "a few minutes", "Please try again later or use another configured provider.");
+        return lastErrorResponse != null ? lastErrorResponse : buildStructuredError("GEMINI_ERROR", "All Gemini model attempts failed.", "0s", "Check Gemini API key configuration.");
     }
 
     private String extractRetryAfter(String rawJson) {
@@ -338,7 +406,7 @@ public class GeminiProvider implements LLMProvider {
         System.out.println("Conversation ID: " + conversationId);
         System.out.println("Learning Mode: " + learningMode);
         System.out.println("Selected Model: " + model);
-        System.out.println("REST Endpoint: " + endpoint);
+        System.out.println("REST Endpoint: " + endpoint + " [KEY_PROTECTED]");
         System.out.println("Prompt Length: " + promptLength + " chars");
         System.out.println("HTTP Status: " + httpStatus);
         System.out.println("Latency: " + latency + " ms");

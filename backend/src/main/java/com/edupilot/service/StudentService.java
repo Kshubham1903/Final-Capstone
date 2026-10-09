@@ -766,6 +766,16 @@ public class StudentService {
             }
         }
 
+        if (payload.containsKey("geminiApiKey")) {
+            Object rawKeyObj = payload.get("geminiApiKey");
+            String rawKey = rawKeyObj != null ? rawKeyObj.toString().trim() : "";
+            if (!rawKey.isEmpty()) {
+                profile.setGeminiApiKey(cryptoUtils.encrypt(rawKey));
+            } else {
+                profile.setGeminiApiKey(null);
+            }
+        }
+
         // Sync with AcademicProfile collection
         Optional<AcademicProfile> academicOpt = academicRepository.findByUserId(userId);
         AcademicProfile academic = academicOpt.orElseGet(() -> {
@@ -799,6 +809,21 @@ public class StudentService {
         }
         if (opt.isPresent() && opt.get().getGroqApiKey() != null && !opt.get().getGroqApiKey().isBlank()) {
             return cryptoUtils.decrypt(opt.get().getGroqApiKey());
+        }
+        return null;
+    }
+
+    public String getDecryptedGeminiApiKey(String userId) {
+        if (userId == null || userId.isBlank() || "anonymous_student".equals(userId)) {
+            return null;
+        }
+        String canonicalUserId = resolveUserId(userId);
+        Optional<StudentProfile> opt = profileRepository.findByUserId(canonicalUserId);
+        if (opt.isEmpty()) {
+            opt = profileRepository.findById(canonicalUserId);
+        }
+        if (opt.isPresent() && opt.get().getGeminiApiKey() != null && !opt.get().getGeminiApiKey().isBlank()) {
+            return cryptoUtils.decrypt(opt.get().getGeminiApiKey());
         }
         return null;
     }

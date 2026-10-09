@@ -276,140 +276,67 @@ export default function AITutorPage() {
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[var(--glass-bg)]">
 
             {/* ── Chat Header Bar ── */}
-            <div className="shrink-0 border-b border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-xl px-4 py-3 space-y-2">
+            <div className="shrink-0 border-b border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-xl px-4 py-3 flex items-center justify-between gap-3">
+              {/* Left: Mobile hamburger + Avatar + Title */}
+              <div className="flex items-center gap-3 min-w-0">
+                <button
+                  onClick={() => setShowMobileSidebar(true)}
+                  className="md:hidden p-2 rounded-xl bg-white/5 border border-[var(--glass-border)] text-secondary-theme hover:text-main-theme transition-all cursor-pointer shrink-0"
+                  title="Toggle Thread History"
+                >
+                  <Menu className="h-4 w-4" />
+                </button>
 
-              {/* Title row */}
-              <div className="flex items-center justify-between gap-3">
-                {/* Left: mobile menu + title */}
-                <div className="flex items-center gap-3 min-w-0">
-                  {/* Mobile hamburger */}
-                  <button
-                    onClick={() => setShowMobileSidebar(true)}
-                    className="md:hidden p-2 rounded-xl bg-white/5 border border-[var(--glass-border)] text-secondary-theme hover:text-main-theme transition-all cursor-pointer shrink-0"
-                    title="Toggle Thread History"
-                  >
-                    <Menu className="h-4 w-4" />
-                  </button>
-
-                  {/* AI Avatar */}
-                  <div className="h-9 w-9 rounded-2xl bg-gradient-to-tr from-purple-600 via-pink-600 to-cyan-600 flex items-center justify-center text-white shadow-lg shadow-purple-500/25 shrink-0 border border-white/10">
-                    <Bot className="h-5 w-5" />
-                  </div>
-
-                  <div className="min-w-0">
-                    <h1 className="text-sm font-extrabold tracking-wide text-main-theme flex items-center gap-2 flex-wrap">
-                      <span>AI Tutor Companion</span>
-                      <span className="hidden sm:inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full">
-                        <Sparkles className="h-2.5 w-2.5 text-purple-400" />
-                        Adaptive AI Active
-                      </span>
-                    </h1>
-                    <p className="text-[10px] text-secondary-theme hidden sm:block truncate">
-                      Gemini microservice · multi-turn memory · {currentModeObj.label}
-                    </p>
-                  </div>
+                <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-purple-600 via-pink-600 to-cyan-600 flex items-center justify-center text-white shadow-md shadow-purple-500/20 shrink-0 border border-white/10">
+                  <Bot className="h-4 w-4" />
                 </div>
 
-                {/* Right: actions */}
-                <div className="flex items-center gap-2 shrink-0">
-                  {/* Gemini live badge */}
-                  <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-bold text-main-theme glass-panel px-2.5 py-1 rounded-xl border border-[var(--glass-border)]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>Gemini Live</span>
-                  </div>
-
-                  {/* Mode selector toggle on mobile */}
-                  <button
-                    onClick={() => setModeSelectorVisible((p) => !p)}
-                    title="Toggle learning mode strip"
-                    className="sm:hidden p-2 rounded-xl bg-white/5 border border-[var(--glass-border)] text-secondary-theme hover:text-main-theme transition-all cursor-pointer"
-                  >
-                    <BookOpen className="h-4 w-4" />
-                  </button>
-
-                  {/* Context toggle */}
-                  <button
-                    onClick={() => setContextExpanded((p) => !p)}
-                    title={contextExpanded ? "Hide student context" : "Show student context"}
-                    className="p-2 rounded-xl bg-white/5 border border-[var(--glass-border)] text-secondary-theme hover:text-main-theme transition-all cursor-pointer"
-                  >
-                    {contextExpanded ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
-                  </button>
-
-                  {/* Focus mode toggle */}
-                  <button
-                    onClick={focusMode ? exitFocusMode : enterFocusMode}
-                    title={focusMode ? "Exit Focus Mode" : "Enter Focus Mode — expand chat"}
-                    className={`p-2 rounded-xl border transition-all cursor-pointer ${
-                      focusMode
-                        ? "bg-purple-500/20 border-purple-500/40 text-purple-300 hover:bg-purple-500/30"
-                        : "bg-white/5 border-[var(--glass-border)] text-secondary-theme hover:text-main-theme"
-                    }`}
-                  >
-                    {focusMode ? (
-                      <Minimize2 className="h-4 w-4" />
-                    ) : (
-                      <Maximize2 className="h-4 w-4" />
-                    )}
-                  </button>
-
-                  {/* Clear thread */}
-                  {activeConvId && (
-                    <button
-                      onClick={() => setShowClearModal(true)}
-                      className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/20 text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      <span className="hidden sm:inline">Clear Thread</span>
-                    </button>
-                  )}
+                <div className="min-w-0">
+                  <h1 className="text-sm font-bold tracking-wide text-main-theme truncate">
+                    AI Tutor
+                  </h1>
                 </div>
               </div>
 
-              {/* ── Collapsible Student Context Strip ── */}
-              {contextExpanded && (
+              {/* Right: Compact Learning Mode Dropdown + Context Toggle + Clear Thread */}
+              <div className="flex items-center gap-2 shrink-0">
+                <LearningModeSelector activeMode={activeMode} onModeChange={setActiveMode} />
+
+                <button
+                  onClick={() => setContextExpanded((p) => !p)}
+                  title={contextExpanded ? "Hide student context" : "Show student context"}
+                  className="p-2 rounded-xl bg-white/5 border border-[var(--glass-border)] text-secondary-theme hover:text-main-theme transition-all cursor-pointer"
+                >
+                  {contextExpanded ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </button>
+
+                {activeConvId && (
+                  <button
+                    onClick={() => setShowClearModal(true)}
+                    className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/20 text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Clear current thread"
+                  >
+                    <Trash2 className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
+                    <span className="hidden sm:inline">Clear</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Collapsible Context Strip */}
+            {contextExpanded && (
+              <div className="px-4 py-2 border-b border-[var(--glass-border)] shrink-0">
                 <ContextHeader
                   studentContext={studentContext}
                   providerName={runtimeModel}
                   compact
                 />
-              )}
-
-              {/* ── Learning Mode Chips ── */}
-              {(!hasMessages || modeSelectorVisible) && (
-                <div
-                  className={`transition-all duration-200 overflow-hidden ${
-                    hasMessages && !modeSelectorVisible ? "max-h-0 opacity-0" : "max-h-20 opacity-100"
-                  }`}
-                >
-                  <LearningModeSelector activeMode={activeMode} onModeChange={setActiveMode} />
-                </div>
-              )}
-
-              {/* Show chips toggle when messages exist */}
-              {hasMessages && (
-                <button
-                  onClick={() => setModeSelectorVisible((p) => !p)}
-                  className="hidden sm:flex items-center gap-1 text-[10px] text-secondary-theme hover:text-main-theme transition-colors cursor-pointer w-full justify-center py-0.5"
-                >
-                  {modeSelectorVisible ? (
-                    <>
-                      <ChevronUp className="h-3 w-3" />
-                      <span>Hide mode selector</span>
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="h-3 w-3" />
-                      <span>Show mode selector · Active: <strong className="text-purple-theme">{currentModeObj.label}</strong></span>
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* ── Chat Area ── */}
             <AIChatWindow
