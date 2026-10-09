@@ -10,7 +10,6 @@ import { ConceptImprovementTable } from "../../components/progress/ConceptImprov
 import { LearningJourneyTimeline } from "../../components/progress/LearningJourneyTimeline";
 import { CurrentStateKPEWCard } from "../../components/progress/CurrentStateKPEWCard";
 import { AdaptiveInsightsSection } from "../../components/progress/AdaptiveInsightsSection";
-import { FutureMLPredictionSection } from "../../components/progress/FutureMLPredictionSection";
 import { Loader2, AlertCircle, PlayCircle, RefreshCw } from "lucide-react";
 
 export default function StudentProgressPage() {
@@ -131,8 +130,6 @@ export default function StudentProgressPage() {
             {/* Adaptive Insights & Next Steps */}
             <AdaptiveInsightsSection growthData={growthData} />
 
-            {/* Reserved ML Growth Prediction Model Placeholder */}
-            <FutureMLPredictionSection />
           </>
         )}
       </div>
